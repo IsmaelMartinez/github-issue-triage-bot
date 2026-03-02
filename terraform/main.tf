@@ -20,6 +20,15 @@ provider "google" {
   region  = var.gcp_region
 }
 
+# Billing budgets API requires a quota project for user credentials.
+provider "google" {
+  alias                 = "billing"
+  project               = var.gcp_project_id
+  region                = var.gcp_region
+  user_project_override = true
+  billing_project       = var.gcp_project_id
+}
+
 # --- Variables ---
 
 variable "gcp_project_id" {
@@ -32,6 +41,12 @@ variable "gcp_region" {
   description = "GCP region for Cloud Run and Artifact Registry"
   type        = string
   default     = "us-central1"
+}
+
+variable "gcp_project_number" {
+  description = "GCP project number (numeric)"
+  type        = string
+  default     = "62054333602"
 }
 
 variable "billing_account_id" {
@@ -129,12 +144,9 @@ resource "google_cloud_run_v2_service" "triage_bot" {
         name  = "WEBHOOK_SECRET"
         value = var.webhook_secret
       }
-      env {
-        name  = "PORT"
-        value = "8080"
-      }
 
       resources {
+        cpu_idle = true
         limits = {
           cpu    = "1"
           memory = "256Mi"
@@ -165,33 +177,36 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
 # --- Budget ---
 
 resource "google_billing_budget" "triage_bot" {
+  provider        = google.billing
   billing_account = var.billing_account_id
   display_name    = "Triage Bot Budget"
 
   budget_filter {
-    projects = ["projects/${var.gcp_project_id}"]
+    projects               = ["projects/${var.gcp_project_number}"]
+    credit_types_treatment = "INCLUDE_ALL_CREDITS"
+    calendar_period        = "MONTH"
   }
 
   amount {
     specified_amount {
-      currency_code = "USD"
-      units         = "20"
+      currency_code = "GBP"
+      units         = "15"
     }
   }
 
-  # Alert at $1 (5%)
+  # Alert at ~£0.75 (5%)
   threshold_rules {
     threshold_percent = 0.05
     spend_basis       = "CURRENT_SPEND"
   }
 
-  # Alert at $5 (25%)
+  # Alert at ~£3.75 (25%)
   threshold_rules {
     threshold_percent = 0.25
     spend_basis       = "CURRENT_SPEND"
   }
 
-  # Alert at $10 (50%)
+  # Alert at ~£7.50 (50%)
   threshold_rules {
     threshold_percent = 0.50
     spend_basis       = "CURRENT_SPEND"
