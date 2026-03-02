@@ -1,0 +1,21 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# NEVER commit terraform.tfvars — it contains secrets.
+
+gcp_project_id     = "gen-lang-client-0421325030"
+gcp_region         = "us-central1"
+billing_account_id = "01B3C7-DE2DE2-BB9ACE"
+
+# Neon PostgreSQL pooler connection string
+database_url = "postgresql://neondb_owner:PASSWORD@HOST-pooler.c-2.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+# Gemini API key (from Google AI Studio)
+gemini_api_key = ""
+
+# GitHub personal access token with 'issues:write' scope
+github_token = ""
+
+# Shared secret for webhook signature verification (generate with: openssl rand -hex 20)
+webhook_secret = ""
+
+# Docker image tag to deploy
+image_tag = "v1"
