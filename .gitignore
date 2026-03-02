@@ -1,0 +1,19 @@
+# Binaries
+/server
+/seed
+*.exe
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Test
+coverage.out
