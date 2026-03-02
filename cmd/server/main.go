@@ -21,7 +21,10 @@ func main() {
 
 	// Required environment variables
 	databaseURL := requireEnv("DATABASE_URL")
-	geminiAPIKey := requireEnv("GEMINI_API_KEY")
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	if geminiAPIKey == "" {
+		logger.Warn("GEMINI_API_KEY not set, LLM features will be unavailable")
+	}
 	githubToken := requireEnv("GITHUB_TOKEN")
 	webhookSecret := requireEnv("WEBHOOK_SECRET")
 
