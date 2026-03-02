@@ -1,6 +1,6 @@
 module github.com/IsmaelMartinez/github-issue-triage-bot
 
-go 1.24.0
+go 1.26.0
 
 require (
 	github.com/jackc/pgx/v5 v5.8.0
