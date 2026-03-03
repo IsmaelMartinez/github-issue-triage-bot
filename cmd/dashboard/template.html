@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triage Bot Dashboard — {{.Repo}}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        header { background: #24292e; color: #fff; padding: 24px 0; margin-bottom: 24px; }
+        header .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        header h1 { font-size: 1.4rem; font-weight: 600; }
+        header .meta { font-size: 0.85rem; color: #8b949e; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card .label { font-size: 0.8rem; text-transform: uppercase; color: #666; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .card .value { font-size: 2rem; font-weight: 700; color: #24292e; }
+        .card .value.green { color: #2ea44f; }
+        .card .value.red { color: #d73a49; }
+        section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        section h2 { font-size: 1.1rem; margin-bottom: 12px; color: #24292e; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+        th { font-weight: 600; color: #555; }
+        a { color: #0366d6; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .phases { display: flex; gap: 4px; flex-wrap: wrap; }
+        .phase-tag { background: #e1e4e8; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Triage Bot Dashboard</h1>
+            <div class="meta">{{.Repo}} &middot; Generated {{.Generated}}</div>
+        </div>
+    </header>
+    <div class="container">
+        <div class="cards" id="cards"></div>
+        <section>
+            <h2>Phase Breakdown</h2>
+            <table id="phase-table">
+                <thead><tr><th>Phase</th><th>Count</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
+            <h2>Recent Comments</h2>
+            <table id="comments-table">
+                <thead><tr><th>Issue</th><th>Phases</th><th>Thumbs Up</th><th>Thumbs Down</th><th>Date</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+    </div>
+    <script>
+        const stats = {{.StatsJSON}};
+
+        const docTotal = Object.values(stats.document_counts || {}).reduce((a, b) => a + b, 0);
+        const thumbsRatio = stats.total_comments > 0
+            ? ((stats.total_thumbs_up / (stats.total_thumbs_up + stats.total_thumbs_down)) * 100 || 0).toFixed(0) + '%'
+            : 'N/A';
+
+        const cards = [
+            { label: 'Total Comments', value: stats.total_comments },
+            { label: 'Thumbs Up Rate', value: thumbsRatio, cls: 'green' },
+            { label: 'Documents Indexed', value: docTotal },
+            { label: 'Issues Indexed', value: stats.issue_count },
+        ];
+
+        const cardsEl = document.getElementById('cards');
+        cards.forEach(function(c) {
+            var div = document.createElement('div');
+            div.className = 'card';
+            var lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = c.label;
+            var val = document.createElement('div');
+            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
+            val.textContent = c.value;
+            div.appendChild(lbl);
+            div.appendChild(val);
+            cardsEl.appendChild(div);
+        });
+
+        var phaseBody = document.querySelector('#phase-table tbody');
+        Object.entries(stats.phase_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
+            var tr = document.createElement('tr');
+            var tdPhase = document.createElement('td');
+            tdPhase.textContent = entry[0];
+            var tdCount = document.createElement('td');
+            tdCount.textContent = entry[1];
+            tr.appendChild(tdPhase);
+            tr.appendChild(tdCount);
+            phaseBody.appendChild(tr);
+        });
+
+        var commentsBody = document.querySelector('#comments-table tbody');
+        (stats.recent_comments || []).forEach(function(c) {
+            var tr = document.createElement('tr');
+
+            var tdIssue = document.createElement('td');
+            var link = document.createElement('a');
+            link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number;
+            link.textContent = '#' + c.issue_number;
+            tdIssue.appendChild(link);
+
+            var tdPhases = document.createElement('td');
+            var phasesDiv = document.createElement('div');
+            phasesDiv.className = 'phases';
+            (c.phases_run || []).forEach(function(p) {
+                var span = document.createElement('span');
+                span.className = 'phase-tag';
+                span.textContent = p;
+                phasesDiv.appendChild(span);
+            });
+            tdPhases.appendChild(phasesDiv);
+
+            var tdUp = document.createElement('td');
+            tdUp.textContent = c.thumbs_up;
+            var tdDown = document.createElement('td');
+            tdDown.textContent = c.thumbs_down;
+            var tdDate = document.createElement('td');
+            tdDate.textContent = c.created_at ? c.created_at.substring(0, 10) : '';
+
+            tr.appendChild(tdIssue);
+            tr.appendChild(tdPhases);
+            tr.appendChild(tdUp);
+            tr.appendChild(tdDown);
+            tr.appendChild(tdDate);
+            commentsBody.appendChild(tr);
+        });
+    </script>
+</body>
+</html>
