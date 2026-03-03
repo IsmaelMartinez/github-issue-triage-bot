@@ -23,7 +23,7 @@ func Phase4a(ctx context.Context, s *store.Store, l *llm.Client, repo, title, bo
 	}
 
 	// Find similar features/ADRs/research
-	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"roadmap", "adr", "research"}, embedding, 5)
+	docs, err := s.FindSimilarDocuments(ctx, repo, store.EnhancementDocTypes, embedding, 5)
 	if err != nil {
 		return nil, fmt.Errorf("find similar features: %w", err)
 	}

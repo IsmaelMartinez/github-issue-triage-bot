@@ -194,6 +194,18 @@ func seedFeatures(ctx context.Context, s *store.Store, l *llm.Client, repo strin
 	}
 
 	for i, e := range entries {
+		// Validate doc_type against allowed enhancement types
+		validType := false
+		for _, dt := range store.EnhancementDocTypes {
+			if e.Source == dt {
+				validType = true
+				break
+			}
+		}
+		if !validType {
+			return fmt.Errorf("feature %d has invalid source %q, must be one of %v", i, e.Source, store.EnhancementDocTypes)
+		}
+
 		text := fmt.Sprintf("%s\n%s", e.Topic, e.Summary)
 		embedding, err := l.Embed(ctx, text)
 		if err != nil {
