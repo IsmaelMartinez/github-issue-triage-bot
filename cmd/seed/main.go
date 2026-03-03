@@ -147,6 +147,15 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			return fmt.Errorf("embed issue %d: %w", i, err)
 		}
 
+		var closedAt *time.Time
+		if e.ClosedAt != nil {
+			t, err := time.Parse(time.RFC3339, *e.ClosedAt)
+			if err != nil {
+				return fmt.Errorf("parse closed_at for issue %d: %w", e.Number, err)
+			}
+			closedAt = &t
+		}
+
 		issue := store.Issue{
 			Repo:      repo,
 			Number:    e.Number,
@@ -155,6 +164,7 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			State:     e.State,
 			Labels:    e.Labels,
 			Milestone: e.Milestone,
+			ClosedAt:  closedAt,
 			Embedding: embedding,
 		}
 		if err := s.UpsertIssue(ctx, issue); err != nil {
