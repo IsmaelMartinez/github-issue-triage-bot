@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
+	pgxvector "github.com/pgvector/pgvector-go/pgx"
 )
 
 // Store provides database operations for the triage bot.
@@ -161,9 +162,7 @@ func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)
 		return nil, fmt.Errorf("parse database URL: %w", err)
 	}
 	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		// Register pgvector type
-		_, err := conn.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS vector")
-		return err
+		return pgxvector.RegisterTypes(ctx, conn)
 	}
 	return pgxpool.NewWithConfig(ctx, config)
 }
