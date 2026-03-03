@@ -28,7 +28,9 @@ Validated on test repo (issue #15).
 
 ---
 
-## Batch 2: Secret Manager Migration
+## Batch 2: Secret Manager Migration [DONE]
+
+Completed 2026-03-03. PR #2 merged to main. Terraform changes to use Google Secret Manager for all sensitive env vars.
 
 ### Codex prompt
 
@@ -79,7 +81,9 @@ Then create a test issue on triage-bot-test-repo to verify the bot still works.
 
 ---
 
-## Batch 3: Prompt Injection Defenses
+## Batch 3: Prompt Injection Defenses [DONE]
+
+Completed 2026-03-03. PR #1 merged to main. Added systemInstruction support, migrated all phases, added LLM output sanitization. Follow-up PR #3 added URL sanitization for DocURL/Title fields in the comment builder.
 
 ### Codex prompt
 
@@ -166,7 +170,9 @@ Run `go vet ./...` and `go test ./...` after all changes. Push the branch.
 
 ---
 
-## Batch 4: Webhook Replay Protection and CI Hardening
+## Batch 4: Webhook Replay Protection and CI Hardening [PR #4]
+
+PR #4 open. Three commits: webhook_deliveries migration, replay protection in store/handler, GitHub Actions pinned to SHAs. Code review passed with no issues.
 
 ### Codex prompt
 
@@ -239,7 +245,9 @@ DATABASE_URL=$(grep database_url terraform/terraform.tfvars | cut -d'"' -f2) \
 
 ---
 
-## Batch 5: Data Seeding
+## Batch 5: Data Seeding [PR #5]
+
+PR #5 open. Four commits: issue export tool, rate limiting in seed CLI, ivfflat migration, and a fix to parse closed_at timestamps during seeding. Code review found the closed_at issue which was fixed.
 
 ### Codex prompt
 
