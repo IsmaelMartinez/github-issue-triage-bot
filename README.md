@@ -52,7 +52,7 @@ go test ./...
 docker-compose up -d
 
 # Run the server
-DATABASE_URL="..." GEMINI_API_KEY="..." GITHUB_TOKEN="..." WEBHOOK_SECRET="..." go run ./cmd/server
+DATABASE_URL="..." GEMINI_API_KEY="..." GITHUB_APP_ID="..." GITHUB_PRIVATE_KEY="..." WEBHOOK_SECRET="..." go run ./cmd/server
 ```
 
 ### Deployment
@@ -88,3 +88,13 @@ After the initial seed, the webhook handler keeps issue data up to date in real-
 Terraform manages the GCP resources (Cloud Run, Artifact Registry, billing budget). State is stored in a GCS bucket with versioning and locking. The database is Neon PostgreSQL with pgvector, managed outside Terraform.
 
 See `docs/decisions/` for architecture decision records and `docs/plans/` for implementation plans.
+
+## Installing the GitHub App
+
+To use this bot on your own repository:
+
+1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write). Subscribe to the "Issues" webhook event. Set the webhook URL to your Cloud Run service URL + `/webhook`.
+2. Generate and download a private key PEM file from the App settings.
+3. Install the App on the target repository.
+4. Set the environment variables: `GITHUB_APP_ID` (numeric App ID from settings), `GITHUB_PRIVATE_KEY` (base64-encoded PEM or raw PEM content), and `WEBHOOK_SECRET` (the secret you configured when creating the App).
+5. Deploy via `terraform apply` or set the secrets in your CI/CD environment.

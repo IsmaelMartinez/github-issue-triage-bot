@@ -46,20 +46,26 @@ All phase results are consolidated into a single markdown comment by the comment
 ## Project Structure
 
 ```
-cmd/server/main.go          # HTTP server entry point (/webhook, /health)
-cmd/seed/main.go             # CLI to import JSON indexes into database
-internal/webhook/handler.go  # Webhook verification and routing
-internal/phases/             # Triage phases (phase1.go through phase4b.go)
-internal/comment/builder.go  # Consolidates phase results into markdown
-internal/llm/client.go       # Gemini API client (generation + embeddings)
-internal/github/client.go    # GitHub API client (comments, webhook verification)
-internal/store/postgres.go   # PostgreSQL + pgvector queries
-internal/store/models.go     # Shared data types
-migrations/001_initial.sql   # Database schema (pgvector extension, 3 tables)
-terraform/main.tf            # GCP infrastructure (Cloud Run, AR, budget, GCS backend)
-.github/workflows/deploy.yml # CI/CD: test on PR, build+deploy on push to main
-docs/decisions/              # Architecture decision records
-docs/plans/                  # Implementation plans
+cmd/server/main.go           # HTTP server entry point (/webhook, /health, /report)
+cmd/seed/main.go              # CLI to import JSON indexes into database
+cmd/dashboard/main.go         # Static dashboard HTML generator
+cmd/export-issues/main.go    # One-time CLI to export GitHub issues to JSON
+cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
+internal/webhook/handler.go   # Webhook verification, replay protection, routing
+internal/phases/              # Triage phases (phase1.go through phase4b.go)
+internal/comment/builder.go   # Consolidates phase results into markdown
+internal/comment/sanitize.go  # LLM output and URL sanitization
+internal/llm/client.go        # Gemini API client (generation + embeddings)
+internal/github/client.go     # GitHub App client (comments, webhook verification)
+internal/store/postgres.go    # PostgreSQL + pgvector queries
+internal/store/report.go      # Dashboard stats queries
+internal/store/models.go      # Shared data types
+migrations/                   # Database migrations (001-003)
+terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
+.github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
+.github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages
+docs/decisions/               # Architecture decision records
+docs/plans/                   # Implementation plans
 ```
 
 ## Infrastructure
@@ -82,7 +88,7 @@ Secrets are in terraform/terraform.tfvars (gitignored, never committed). CI/CD s
 
 ## Development Patterns
 
-Go 1.26 with standard library where possible. The only external dependencies are pgx/v5 (PostgreSQL driver) and pgvector-go. Tests use table-driven patterns and Go's built-in testing. No mocking frameworks.
+Go 1.26 with standard library where possible. External dependencies: pgx/v5 (PostgreSQL driver), pgvector-go, and ghinstallation/v2 (GitHub App authentication). Tests use table-driven patterns and Go's built-in testing. No mocking frameworks.
 
 The Gemini API client uses the REST API directly rather than an SDK to minimize dependencies. JSON responses are parsed with `responseMimeType: application/json` for structured output.
 
