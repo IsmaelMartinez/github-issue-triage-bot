@@ -533,7 +533,9 @@ Run `go vet ./...` and `go test ./...`. Push the branch.
 
 ---
 
-## Batch 8: Production Cutover
+## Batch 8: Production Cutover [DONE]
+
+Completed 2026-03-03. PR #8. Updated remaining work doc (all items marked complete), updated CLAUDE.md project structure and dependencies, updated README.md with GitHub App installation instructions.
 
 ### Codex prompt
 
