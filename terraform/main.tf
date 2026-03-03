@@ -57,7 +57,6 @@ variable "gcp_project_number" {
 variable "billing_account_id" {
   description = "GCP billing account ID"
   type        = string
-  default     = "01B3C7-DE2DE2-BB9ACE"
 }
 
 variable "database_url" {
@@ -113,6 +112,11 @@ resource "google_project_service" "billingbudgets" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager" {
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 # --- Artifact Registry ---
 
 resource "google_artifact_registry_repository" "triage_bot" {
@@ -126,12 +130,103 @@ resource "google_artifact_registry_repository" "triage_bot" {
 
 # --- Cloud Run ---
 
+resource "google_service_account" "triage_bot" {
+  account_id   = "triage-bot-run"
+  display_name = "Triage Bot Cloud Run"
+}
+
+resource "google_secret_manager_secret" "database_url" {
+  secret_id = "triage-bot-database_url"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "database_url" {
+  secret      = google_secret_manager_secret.database_url.id
+  secret_data = var.database_url
+}
+
+resource "google_secret_manager_secret_iam_member" "database_url" {
+  secret_id = google_secret_manager_secret.database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.triage_bot.email}"
+}
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  secret_id = "triage-bot-gemini_api_key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "gemini_api_key" {
+  secret      = google_secret_manager_secret.gemini_api_key.id
+  secret_data = var.gemini_api_key
+}
+
+resource "google_secret_manager_secret_iam_member" "gemini_api_key" {
+  secret_id = google_secret_manager_secret.gemini_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.triage_bot.email}"
+}
+
+resource "google_secret_manager_secret" "github_token" {
+  secret_id = "triage-bot-github_token"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "github_token" {
+  secret      = google_secret_manager_secret.github_token.id
+  secret_data = var.github_token
+}
+
+resource "google_secret_manager_secret_iam_member" "github_token" {
+  secret_id = google_secret_manager_secret.github_token.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.triage_bot.email}"
+}
+
+resource "google_secret_manager_secret" "webhook_secret" {
+  secret_id = "triage-bot-webhook_secret"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "webhook_secret" {
+  secret      = google_secret_manager_secret.webhook_secret.id
+  secret_data = var.webhook_secret
+}
+
+resource "google_secret_manager_secret_iam_member" "webhook_secret" {
+  secret_id = google_secret_manager_secret.webhook_secret.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.triage_bot.email}"
+}
+
 resource "google_cloud_run_v2_service" "triage_bot" {
   name     = "triage-bot"
   location = var.gcp_region
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   template {
+    service_account = google_service_account.triage_bot.email
+
     containers {
       image = "${var.gcp_region}-docker.pkg.dev/${var.gcp_project_id}/triage-bot/server:${var.image_tag}"
 
@@ -140,20 +235,40 @@ resource "google_cloud_run_v2_service" "triage_bot" {
       }
 
       env {
-        name  = "DATABASE_URL"
-        value = var.database_url
+        name = "DATABASE_URL"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.database_url.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
-        name  = "GEMINI_API_KEY"
-        value = var.gemini_api_key
+        name = "GEMINI_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.gemini_api_key.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
-        name  = "GITHUB_TOKEN"
-        value = var.github_token
+        name = "GITHUB_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.github_token.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
-        name  = "WEBHOOK_SECRET"
-        value = var.webhook_secret
+        name = "WEBHOOK_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.webhook_secret.secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "SOURCE_REPO"
