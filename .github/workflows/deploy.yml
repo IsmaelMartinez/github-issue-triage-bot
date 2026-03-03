@@ -1,0 +1,64 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT: gen-lang-client-0421325030
+  GCP_REGION: us-central1
+  AR_REPO: triage-bot
+  SERVICE_NAME: triage-bot
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
+          service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push Docker image
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          SHORT_SHA=${COMMIT_SHA:0:7}
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/server:sha-${SHORT_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          SHORT_SHA=${COMMIT_SHA:0:7}
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/server:sha-${SHORT_SHA}"
+          gcloud run services update "$SERVICE_NAME" \
+            --region="$GCP_REGION" \
+            --image="$IMAGE"
