@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -69,7 +70,17 @@ func (s *Store) UpsertIssue(ctx context.Context, issue Issue) error {
 
 // FindSimilarDocuments returns the top-k documents closest to the given embedding, filtered by repo and doc types.
 func (s *Store) FindSimilarDocuments(ctx context.Context, repo string, docTypes []string, embedding []float32, limit int) ([]SimilarDocument, error) {
-	rows, err := s.pool.Query(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL ivfflat.probes = 5"); err != nil {
+		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `
 		SELECT id, repo, doc_type, title, content, metadata, embedding,
 		       created_at, updated_at,
 		       embedding <=> $1 AS distance
@@ -100,12 +111,25 @@ func (s *Store) FindSimilarDocuments(ctx context.Context, repo string, docTypes 
 		sd.Embedding = vec.Slice()
 		results = append(results, sd)
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, tx.Commit(ctx)
 }
 
 // FindSimilarIssues returns the top-k issues closest to the given embedding, excluding the specified issue number.
 func (s *Store) FindSimilarIssues(ctx context.Context, repo string, embedding []float32, excludeNumber int, limit int) ([]SimilarIssue, error) {
-	rows, err := s.pool.Query(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, "SET LOCAL ivfflat.probes = 6"); err != nil {
+		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `
 		SELECT id, repo, number, title, summary, state, labels, milestone,
 		       embedding, created_at, updated_at, closed_at,
 		       embedding <=> $1 AS distance
@@ -134,7 +158,10 @@ func (s *Store) FindSimilarIssues(ctx context.Context, repo string, embedding []
 		si.Embedding = vec.Slice()
 		results = append(results, si)
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, tx.Commit(ctx)
 }
 
 // HasBotCommented checks if the bot has already commented on the given issue.
@@ -176,6 +203,17 @@ func (s *Store) CheckAndRecordDelivery(ctx context.Context, deliveryID string) (
 		SELECT NOT EXISTS(SELECT 1 FROM ins)
 	`, deliveryID).Scan(&exists)
 	return exists, err
+}
+
+// CleanupOldDeliveries deletes webhook delivery records older than the given duration.
+// Returns the number of rows deleted.
+func (s *Store) CleanupOldDeliveries(ctx context.Context, olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().Add(-olderThan)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM webhook_deliveries WHERE created_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // ConnectPool creates a new pgxpool connection pool from a database URL.
