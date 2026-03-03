@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
@@ -116,6 +117,10 @@ func seedTroubleshooting(ctx context.Context, s *store.Store, l *llm.Client, rep
 			return fmt.Errorf("upsert entry %d: %w", i, err)
 		}
 		logger.Info("seeded troubleshooting", "title", e.Title, "index", i)
+		if (i+1)%50 == 0 {
+			logger.Info("rate limit pause", "processed", i+1, "remaining", len(entries)-i-1)
+			time.Sleep(3 * time.Second)
+		}
 	}
 	return nil
 }
@@ -142,6 +147,15 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			return fmt.Errorf("embed issue %d: %w", i, err)
 		}
 
+		var closedAt *time.Time
+		if e.ClosedAt != nil {
+			t, err := time.Parse(time.RFC3339, *e.ClosedAt)
+			if err != nil {
+				return fmt.Errorf("parse closed_at for issue %d: %w", e.Number, err)
+			}
+			closedAt = &t
+		}
+
 		issue := store.Issue{
 			Repo:      repo,
 			Number:    e.Number,
@@ -150,12 +164,17 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			State:     e.State,
 			Labels:    e.Labels,
 			Milestone: e.Milestone,
+			ClosedAt:  closedAt,
 			Embedding: embedding,
 		}
 		if err := s.UpsertIssue(ctx, issue); err != nil {
 			return fmt.Errorf("upsert issue %d: %w", i, err)
 		}
 		logger.Info("seeded issue", "number", e.Number, "index", i)
+		if (i+1)%50 == 0 {
+			logger.Info("rate limit pause", "processed", i+1, "remaining", len(entries)-i-1)
+			time.Sleep(3 * time.Second)
+		}
 	}
 	return nil
 }
@@ -199,6 +218,10 @@ func seedFeatures(ctx context.Context, s *store.Store, l *llm.Client, repo strin
 			return fmt.Errorf("upsert feature %d: %w", i, err)
 		}
 		logger.Info("seeded feature", "topic", e.Topic, "index", i)
+		if (i+1)%50 == 0 {
+			logger.Info("rate limit pause", "processed", i+1, "remaining", len(entries)-i-1)
+			time.Sleep(3 * time.Second)
+		}
 	}
 	return nil
 }
