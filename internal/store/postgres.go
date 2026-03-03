@@ -163,6 +163,21 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
 
+// CheckAndRecordDelivery atomically checks if a webhook delivery ID has been seen before
+// and records it if not. Returns true if the delivery was already recorded (duplicate).
+func (s *Store) CheckAndRecordDelivery(ctx context.Context, deliveryID string) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		WITH ins AS (
+			INSERT INTO webhook_deliveries (delivery_id) VALUES ($1)
+			ON CONFLICT (delivery_id) DO NOTHING
+			RETURNING delivery_id
+		)
+		SELECT NOT EXISTS(SELECT 1 FROM ins)
+	`, deliveryID).Scan(&exists)
+	return exists, err
+}
+
 // ConnectPool creates a new pgxpool connection pool from a database URL.
 func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
