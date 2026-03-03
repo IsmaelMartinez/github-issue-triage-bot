@@ -72,7 +72,7 @@ func main() {
 	ghClient := gh.New(appID, privateKey)
 
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)
@@ -113,11 +113,13 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		logger.Info("shutting down")
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("shutdown error", "error", err)
 		}
+		logger.Info("waiting for in-flight triage to complete")
+		handler.Wait()
 		cancel()
 	}()
 

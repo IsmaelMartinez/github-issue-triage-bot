@@ -8,6 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
@@ -24,11 +27,14 @@ type Handler struct {
 	llm           *llm.Client
 	github        *gh.Client
 	logger        *slog.Logger
+	wg            sync.WaitGroup
+	ctx           context.Context
 }
 
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
-func New(webhookSecret string, sourceRepo string, s *store.Store, l *llm.Client, g *gh.Client, logger *slog.Logger) *Handler {
+// ctx is used as the parent context for background triage goroutines.
+func New(webhookSecret string, sourceRepo string, s *store.Store, l *llm.Client, g *gh.Client, logger *slog.Logger, ctx context.Context) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
 		sourceRepo:    sourceRepo,
@@ -36,7 +42,13 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l *llm.Client,
 		llm:           l,
 		github:        g,
 		logger:        logger,
+		ctx:           ctx,
 	}
+}
+
+// Wait blocks until all in-flight triage goroutines have completed.
+func (h *Handler) Wait() {
+	h.wg.Wait()
 }
 
 // ServeHTTP handles incoming webhook POST requests.
@@ -66,7 +78,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		duplicate, err := h.store.CheckAndRecordDelivery(r.Context(), deliveryID)
 		if err != nil {
 			h.logger.Error("checking delivery ID", "error", err)
-		} else if duplicate {
+			http.Error(w, "dedup check failed", http.StatusInternalServerError)
+			return
+		}
+		if duplicate {
 			h.logger.Info("duplicate delivery rejected", "deliveryID", deliveryID)
 			w.WriteHeader(http.StatusOK)
 			fmt.Fprint(w, "duplicate delivery")
@@ -89,7 +104,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle asynchronously so we respond to GitHub quickly
-	go h.processEvent(context.Background(), event)
+	h.wg.Add(1)
+	go func() {
+		defer h.wg.Done()
+		ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+		defer cancel()
+		h.processEvent(ctx, event)
+	}()
 
 	w.WriteHeader(http.StatusAccepted)
 	fmt.Fprint(w, "accepted")
@@ -113,9 +134,6 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {
 	h.logger.Info("processing new issue", "repo", repo, "issue", issue.Number)
 
-	// Update issue in database under the webhook repo
-	h.upsertIssue(ctx, repo, issue)
-
 	// Skip bot accounts
 	if strings.Contains(issue.User.Login, "[bot]") || strings.HasSuffix(issue.User.Login, "-bot") {
 		h.logger.Info("skipping bot account", "user", issue.User.Login)
@@ -132,6 +150,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		h.logger.Info("bot already commented", "issue", issue.Number)
 		return
 	}
+
+	// Update issue in database under the webhook repo (after bot/duplicate checks to avoid wasting an embedding call)
+	h.upsertIssue(ctx, repo, issue)
 
 	// Use sourceRepo for data lookups (vector searches), falling back to webhook repo
 	dataRepo := repo
@@ -296,6 +317,10 @@ func sanitizeBody(body string, maxLen int) string {
 
 	result = strings.TrimSpace(result)
 	if len(result) > maxLen {
+		// Walk back from the cut point to avoid splitting a multi-byte UTF-8 rune
+		for maxLen > 0 && !utf8.RuneStart(result[maxLen]) {
+			maxLen--
+		}
 		result = result[:maxLen]
 	}
 	return result
