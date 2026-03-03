@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
@@ -12,7 +13,8 @@ import (
 
 // Phase4a matches enhancement requests against the feature index (roadmap, ADRs, research)
 // using vector similarity search and LLM-based semantic matching.
-func Phase4a(ctx context.Context, s *store.Store, l *llm.Client, repo, title, body string) ([]ContextMatch, error) {
+func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string) ([]ContextMatch, error) {
+	logger.Info("phase4a start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
 
@@ -27,7 +29,9 @@ func Phase4a(ctx context.Context, s *store.Store, l *llm.Client, repo, title, bo
 	if err != nil {
 		return nil, fmt.Errorf("find similar features: %w", err)
 	}
+	logger.Info("phase4a vector search", "documents", len(docs))
 	if len(docs) == 0 {
+		logger.Info("phase4a finish", "matches", 0)
 		return nil, nil
 	}
 
@@ -99,5 +103,6 @@ Respond with ONLY valid JSON, no other text.`
 			break
 		}
 	}
+	logger.Info("phase4a finish", "matches", len(results))
 	return results, nil
 }

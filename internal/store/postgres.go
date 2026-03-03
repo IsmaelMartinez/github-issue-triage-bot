@@ -12,6 +12,12 @@ import (
 	pgxvector "github.com/pgvector/pgvector-go/pgx"
 )
 
+// PhaseQuerier defines the database operations that triage phases require.
+type PhaseQuerier interface {
+	FindSimilarDocuments(ctx context.Context, repo string, docTypes []string, embedding []float32, limit int) ([]SimilarDocument, error)
+	FindSimilarIssues(ctx context.Context, repo string, embedding []float32, excludeNumber int, limit int) ([]SimilarIssue, error)
+}
+
 // Store provides database operations for the triage bot.
 type Store struct {
 	pool *pgxpool.Pool

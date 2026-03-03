@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 )
 
 // Phase4b detects misclassified issues using LLM classification.
 // No vector search needed — just sends the issue to the LLM for classification.
-func Phase4b(ctx context.Context, l *llm.Client, title, body, currentLabel string) (*Misclassification, error) {
+func Phase4b(ctx context.Context, l llm.Provider, logger *slog.Logger, title, body, currentLabel string) (*Misclassification, error) {
+	logger.Info("phase4b start")
 	cleanBody := stripCodeFences(body, 1500)
 
 	systemPrompt := `You are a classification assistant for the "Teams for Linux" open source project.
@@ -50,11 +52,13 @@ Respond with ONLY valid JSON, no other text.`
 	// Validate classification
 	validClasses := map[string]bool{"bug": true, "enhancement": true, "question": true}
 	if !validClasses[result.Classification] || result.Reason == "" {
+		logger.Info("phase4b finish", "result", "invalid_classification")
 		return nil, nil
 	}
 
 	// Only surface if classification disagrees AND confidence >= 80
 	if result.Classification != currentLabel && result.Confidence >= 80 {
+		logger.Info("phase4b finish", "result", "misclassified", "suggested", result.Classification, "confidence", result.Confidence)
 		return &Misclassification{
 			SuggestedLabel: result.Classification,
 			Confidence:     result.Confidence,
@@ -62,5 +66,6 @@ Respond with ONLY valid JSON, no other text.`
 		}, nil
 	}
 
+	logger.Info("phase4b finish", "result", "correct_classification")
 	return nil, nil
 }

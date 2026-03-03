@@ -75,7 +75,7 @@ func main() {
 	}
 
 	// Initialize clients
-	llmClient := llm.New(geminiAPIKey)
+	llmClient := llm.New(geminiAPIKey, logger)
 	ghClient := gh.New(appID, privateKey)
 
 	// Set up HTTP server
