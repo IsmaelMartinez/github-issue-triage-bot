@@ -77,6 +77,59 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 	return result.Candidates[0].Content.Parts[0].Text, nil
 }
 
+// GenerateJSONWithSystem sends user content to Gemini with a trusted system instruction
+// and returns the raw JSON response text.
+func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userContent string, temperature float64, maxTokens int) (string, error) {
+	body := geminiRequestWithSystem{
+		SystemInstruction: &content{
+			Parts: []part{{Text: systemPrompt}},
+		},
+		Contents: []content{
+			{Parts: []part{{Text: userContent}}},
+		},
+		GenerationConfig: generationConfig{
+			Temperature:      temperature,
+			MaxOutputTokens:  maxTokens,
+			ResponseMimeType: "application/json",
+		},
+	}
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/models/gemini-2.5-flash:generateContent", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("gemini API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result geminiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+
+	if len(result.Candidates) == 0 || len(result.Candidates[0].Content.Parts) == 0 {
+		return "", fmt.Errorf("empty response from gemini")
+	}
+
+	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
 // Embed generates an embedding for the given text using Gemini's embedding model.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	body := embeddingRequest{
@@ -124,6 +177,12 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 type geminiRequest struct {
 	Contents         []content        `json:"contents"`
 	GenerationConfig generationConfig `json:"generationConfig"`
+}
+
+type geminiRequestWithSystem struct {
+	SystemInstruction *content         `json:"systemInstruction,omitempty"`
+	Contents          []content        `json:"contents"`
+	GenerationConfig  generationConfig `json:"generationConfig"`
 }
 
 type content struct {

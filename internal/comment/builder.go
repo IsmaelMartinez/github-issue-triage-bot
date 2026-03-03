@@ -56,7 +56,7 @@ func Build(r TriageResult) string {
 	if r.IsBug && len(r.Phase2) > 0 {
 		parts = append(parts, "**This might be related to a known issue:**\n")
 		for _, s := range r.Phase2 {
-			parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", s.Title, s.DocURL, s.Reason, s.ActionableStep))
+			parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", s.Title, s.DocURL, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
 		}
 		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")
 	}
@@ -71,7 +71,7 @@ func Build(r TriageResult) string {
 		if len(openDups) > 0 {
 			parts = append(parts, "*Potentially related open issues:*")
 			for _, d := range openDups {
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%d%% similar) \u2014 %s", d.Number, d.Title, d.Similarity, d.Reason))
+				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%d%% similar) \u2014 %s", d.Number, d.Title, d.Similarity, sanitizeLLMOutput(d.Reason)))
 			}
 			parts = append(parts, "")
 		}
@@ -83,7 +83,7 @@ func Build(r TriageResult) string {
 				if d.Milestone != nil {
 					resolvedNote = fmt.Sprintf("Resolved in %s", *d.Milestone)
 				}
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%s) \u2014 %s", d.Number, d.Title, resolvedNote, d.Reason))
+				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%s) \u2014 %s", d.Number, d.Title, resolvedNote, sanitizeLLMOutput(d.Reason)))
 			}
 			parts = append(parts, "")
 		}
@@ -122,10 +122,10 @@ func Build(r TriageResult) string {
 
 			if ctx.IsInfeasible {
 				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s) \u2014 We explored this and documented our findings.%s %s",
-					ctx.Topic, ctx.DocURL, sourceLabel, updatedNote, ctx.Reason))
+					ctx.Topic, ctx.DocURL, sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			} else {
 				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s, %s)%s \u2014 %s",
-					ctx.Topic, ctx.DocURL, sourceLabel, statusLabel, updatedNote, ctx.Reason))
+					ctx.Topic, ctx.DocURL, sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			}
 		}
 		parts = append(parts, "")
@@ -172,7 +172,7 @@ func Build(r TriageResult) string {
 		}
 		parts = append(parts, fmt.Sprintf(
 			"> **Label suggestion:** This might be %s rather than what it's currently labelled as. %s Re-labelling as `%s` would help us apply the right triage process.\n",
-			labelHint, r.Phase4b.Reason, r.Phase4b.SuggestedLabel))
+			labelHint, sanitizeLLMOutput(r.Phase4b.Reason), r.Phase4b.SuggestedLabel))
 	}
 
 	// Tip link

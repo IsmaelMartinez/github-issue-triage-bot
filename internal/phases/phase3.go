@@ -37,15 +37,8 @@ func Phase3(ctx context.Context, s *store.Store, l *llm.Client, repo string, iss
 		summaries = append(summaries, fmt.Sprintf("[#%d] (%s) %s: %s", iss.Number, iss.State, iss.Title, truncate(iss.Summary, 120)))
 	}
 
-	prompt := fmt.Sprintf(`You are a helpful assistant for the "Teams for Linux" open source project.
+	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
 Compare this new issue against existing issues to find potential duplicates or closely related reports.
-
-EXISTING ISSUES:
-%s
-
-NEW ISSUE:
-Title: %s
-Body: %s
 
 Return a JSON array of 0-3 matches. Only include issues with a strong semantic connection (same bug, same feature request, clearly overlapping symptoms). Use humble language in the reason field ("might be related", "appears similar", "could be the same issue").
 
@@ -54,9 +47,11 @@ For each match, estimate a similarity percentage (60-95). Only include matches a
 Format: [{"number": 123, "reason": "This might be related because...", "similarity": 75}]
 
 If no issues are similar, return: []
-Respond with ONLY valid JSON, no other text.`, strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
+Respond with ONLY valid JSON, no other text.`
+	userContent := fmt.Sprintf("EXISTING ISSUES:\n%s\n\nNEW ISSUE:\nTitle: %s\nBody: %s",
+		strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.2, 8192)
+	raw, err := l.GenerateJSONWithSystem(ctx, systemPrompt, userContent, 0.2, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate duplicates: %w", err)
 	}
