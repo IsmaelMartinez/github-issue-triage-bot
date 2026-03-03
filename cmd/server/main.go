@@ -67,6 +67,13 @@ func main() {
 	}
 	logger.Info("connected to database")
 
+	// Clean up old webhook delivery records (30-day retention)
+	if deleted, err := s.CleanupOldDeliveries(ctx, 30*24*time.Hour); err != nil {
+		logger.Error("cleanup old deliveries failed", "error", err)
+	} else if deleted > 0 {
+		logger.Info("cleaned up old deliveries", "deleted", deleted)
+	}
+
 	// Initialize clients
 	llmClient := llm.New(geminiAPIKey)
 	ghClient := gh.New(appID, privateKey)
@@ -84,10 +91,18 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 	})
+	allowedRepos := map[string]bool{"IsmaelMartinez/teams-for-linux": true}
+	if sourceRepo != "" {
+		allowedRepos[sourceRepo] = true
+	}
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
 			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
 		}
 		stats, err := s.GetDashboardStats(r.Context(), repo)
 		if err != nil {
@@ -95,7 +110,6 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(stats)
 	})
 
