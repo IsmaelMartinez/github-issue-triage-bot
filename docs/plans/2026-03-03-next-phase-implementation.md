@@ -1,3 +1,5 @@
+> **DEPRECATED**: This plan has been superseded by `docs/plans/2026-03-03-consolidated-implementation.md`. Do not use this document for planning or implementation.
+
 # Next Phase Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

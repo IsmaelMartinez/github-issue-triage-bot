@@ -55,6 +55,10 @@ docker-compose up -d
 DATABASE_URL="..." GEMINI_API_KEY="..." GITHUB_APP_ID="..." GITHUB_PRIVATE_KEY="..." WEBHOOK_SECRET="..." go run ./cmd/server
 ```
 
+### Environment variables
+
+The server requires `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, and `WEBHOOK_SECRET`. `GEMINI_API_KEY` is optional (the bot logs a warning and skips LLM phases if unset). `GITHUB_PRIVATE_KEY` should contain the PEM content either as raw PEM text or base64-encoded PEM. Two optional variables control runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks), and `PORT` sets the HTTP listen port (defaults to 8080).
+
 ### Deployment
 
 Pushes to `main` automatically build and deploy via GitHub Actions. The workflow builds a Docker image tagged with the git SHA, pushes to Artifact Registry, and updates the Cloud Run service. Authentication uses Workload Identity Federation (no service account keys).

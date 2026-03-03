@@ -13,9 +13,17 @@ go test ./...
 # Run vet
 go vet ./...
 
-# Build server and seed binaries
+# Build server, seed, dashboard, and sync-reactions binaries
 go build -o server ./cmd/server
 go build -o seed ./cmd/seed
+go build -o dashboard ./cmd/dashboard
+go build -o sync-reactions ./cmd/sync-reactions
+
+# Generate dashboard HTML (requires DATABASE_URL)
+go run ./cmd/dashboard [output-path]
+
+# Sync GitHub reactions to bot comments in DB (requires DATABASE_URL, GITHUB_TOKEN)
+go run ./cmd/sync-reactions
 
 # Run locally (requires DATABASE_URL, GEMINI_API_KEY, GITHUB_APP_ID, GITHUB_PRIVATE_KEY, WEBHOOK_SECRET)
 go run ./cmd/server
@@ -49,7 +57,6 @@ All phase results are consolidated into a single markdown comment by the comment
 cmd/server/main.go           # HTTP server entry point (/webhook, /health, /report)
 cmd/seed/main.go              # CLI to import JSON indexes into database
 cmd/dashboard/main.go         # Static dashboard HTML generator
-cmd/export-issues/main.go    # One-time CLI to export GitHub issues to JSON
 cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
 internal/webhook/handler.go   # Webhook verification, replay protection, routing
 internal/phases/              # Triage phases (phase1.go through phase4b.go)
@@ -94,7 +101,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/extractJSONObject helpers with fallback parsing.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080).
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool currently hardcodes the repo to IsmaelMartinez/teams-for-linux; the naming difference with REPO is intentional since the dashboard is single-purpose while sync-reactions is more general.
 
 ## Issue Template Headers
 
