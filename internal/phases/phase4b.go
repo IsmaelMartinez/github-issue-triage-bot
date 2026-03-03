@@ -13,15 +13,9 @@ import (
 func Phase4b(ctx context.Context, l *llm.Client, title, body, currentLabel string) (*Misclassification, error) {
 	cleanBody := stripCodeFences(body, 1500)
 
-	prompt := fmt.Sprintf(`You are a classification assistant for the "Teams for Linux" open source project.
+	systemPrompt := `You are a classification assistant for the "Teams for Linux" open source project.
 
 Classify this GitHub issue as one of: bug, enhancement, or question.
-
-ISSUE:
-Title: %s
-Body: %s
-
-Current label: %s
 
 Classification rules:
 - "bug": Something that used to work and broke, a crash, an error, unexpected behavior, a regression
@@ -34,9 +28,11 @@ Return a JSON object with:
 - "reason": a brief explanation (1 sentence) of why you chose this classification
 
 Format: {"classification": "bug", "confidence": 85, "reason": "The issue describes something that stopped working after an update."}
-Respond with ONLY valid JSON, no other text.`, truncate(title, 200), cleanBody, currentLabel)
+Respond with ONLY valid JSON, no other text.`
+	userContent := fmt.Sprintf("ISSUE:\nTitle: %s\nBody: %s\n\nCurrent label: %s",
+		truncate(title, 200), cleanBody, currentLabel)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.15, 8192)
+	raw, err := l.GenerateJSONWithSystem(ctx, systemPrompt, userContent, 0.15, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate classification: %w", err)
 	}
