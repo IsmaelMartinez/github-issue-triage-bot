@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Comma-separated list of repos to generate dashboards for'
+        default: 'IsmaelMartinez/teams-for-linux'
+        required: false
 permissions:
   contents: write
   pages: write
@@ -14,17 +19,20 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
         with:
           go-version-file: go.mod
-      - name: Sync reactions
+      - name: Sync reactions and generate dashboards
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-        run: go run ./cmd/sync-reactions
-      - name: Generate dashboard
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux' }}
         run: |
           mkdir -p docs/dashboard
-          go run ./cmd/dashboard docs/dashboard/index.html
+          IFS=',' read -ra REPO_LIST <<< "$REPOS"
+          for repo in "${REPO_LIST[@]}"; do
+            repo=$(echo "$repo" | xargs)  # trim whitespace
+            echo "Processing $repo..."
+            REPO="$repo" go run ./cmd/sync-reactions
+            DASHBOARD_REPO="$repo" go run ./cmd/dashboard docs/dashboard/index.html
+          done
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e  # v4
         with:
