@@ -21,12 +21,12 @@ go build -o seed ./cmd/seed
 go run ./cmd/server
 
 # Docker build (linux/amd64 for Cloud Run)
-docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/gen-lang-client-0421325030/triage-bot/server:v1 .
+docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/gen-lang-client-0421325030/triage-bot/server:latest .
 
 # Local dev with docker-compose (PostgreSQL + pgvector)
 docker-compose up -d
 
-# Terraform
+# Terraform (state in GCS, needs gcloud auth or GOOGLE_OAUTH_ACCESS_TOKEN)
 cd terraform && terraform plan && terraform apply
 
 # Seed database
@@ -56,8 +56,10 @@ internal/github/client.go    # GitHub API client (comments, webhook verification
 internal/store/postgres.go   # PostgreSQL + pgvector queries
 internal/store/models.go     # Shared data types
 migrations/001_initial.sql   # Database schema (pgvector extension, 3 tables)
-terraform/main.tf            # GCP infrastructure as code
+terraform/main.tf            # GCP infrastructure (Cloud Run, AR, budget, GCS backend)
+.github/workflows/deploy.yml # CI/CD: test on PR, build+deploy on push to main
 docs/decisions/              # Architecture decision records
+docs/plans/                  # Implementation plans
 ```
 
 ## Infrastructure
@@ -71,8 +73,12 @@ docs/decisions/              # Architecture decision records
 | Database | PostgreSQL 17 + pgvector 0.8.0 |
 | LLM | Gemini 2.5 Flash (generation) + gemini-embedding-001 (768-dim) |
 | Budget | GBP 15/month with alerts at 5%, 25%, 50% |
+| Terraform state | gs://triage-bot-terraform-state (GCS, versioned, locked) |
+| CI/CD | GitHub Actions (.github/workflows/deploy.yml) |
+| WIF pool | projects/62054333602/locations/global/workloadIdentityPools/github-actions |
+| Deploy SA | triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com |
 
-Secrets are in terraform/terraform.tfvars (gitignored, never committed).
+Secrets are in terraform/terraform.tfvars (gitignored, never committed). CI/CD secrets are in GitHub repo settings.
 
 ## Development Patterns
 
