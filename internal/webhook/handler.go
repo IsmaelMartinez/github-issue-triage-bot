@@ -24,7 +24,7 @@ type Handler struct {
 	webhookSecret string
 	sourceRepo    string
 	store         *store.Store
-	llm           *llm.Client
+	llm           llm.Provider
 	github        *gh.Client
 	logger        *slog.Logger
 	wg            sync.WaitGroup
@@ -34,7 +34,7 @@ type Handler struct {
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
 // ctx is used as the parent context for background triage goroutines.
-func New(webhookSecret string, sourceRepo string, s *store.Store, l *llm.Client, g *gh.Client, logger *slog.Logger, ctx context.Context) *Handler {
+func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
 		sourceRepo:    sourceRepo,
@@ -132,22 +132,23 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 }
 
 func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {
-	h.logger.Info("processing new issue", "repo", repo, "issue", issue.Number)
+	issueLog := h.logger.With("repo", repo, "issue", issue.Number)
+	issueLog.Info("processing new issue")
 
 	// Skip bot accounts
 	if strings.Contains(issue.User.Login, "[bot]") || strings.HasSuffix(issue.User.Login, "-bot") {
-		h.logger.Info("skipping bot account", "user", issue.User.Login)
+		issueLog.Info("skipping bot account", "user", issue.User.Login)
 		return
 	}
 
 	// Check if bot already commented
 	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
 	if err != nil {
-		h.logger.Error("checking bot comment", "error", err)
+		issueLog.Error("checking bot comment", "error", err)
 		return
 	}
 	if commented {
-		h.logger.Info("bot already commented", "issue", issue.Number)
+		issueLog.Info("bot already commented")
 		return
 	}
 
@@ -158,13 +159,13 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	dataRepo := repo
 	if h.sourceRepo != "" {
 		dataRepo = h.sourceRepo
-		h.logger.Info("using source repo for data lookups", "dataRepo", dataRepo, "webhookRepo", repo)
+		issueLog.Info("using source repo for data lookups", "dataRepo", dataRepo)
 	}
 
 	// Determine issue type
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
-	h.logger.Info("issue classification", "issue", issue.Number, "isBug", isBug, "isEnhancement", isEnhancement, "labelCount", len(issue.Labels))
+	issueLog.Info("issue classification", "isBug", isBug, "isEnhancement", isEnhancement, "labelCount", len(issue.Labels))
 
 	// Run phases
 	var result comment.TriageResult
@@ -176,31 +177,31 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 
 	// Phase 2: Solution suggestions (bugs only)
 	if isBug {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, dataRepo, issue.Title, issue.Body)
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
 		if err != nil {
-			h.logger.Error("phase 2 failed", "error", err)
+			issueLog.Error("phase 2 failed", "error", err)
 		}
-		h.logger.Info("phase 2 complete", "issue", issue.Number, "suggestions", len(p2))
+		issueLog.Info("phase 2 complete", "suggestions", len(p2))
 		result.Phase2 = p2
 	}
 
 	// Phase 3: Duplicate detection (bugs only)
 	if isBug {
-		p3, err := phases.Phase3(ctx, h.store, h.llm, dataRepo, issue.Number, issue.Title, issue.Body)
+		p3, err := phases.Phase3(ctx, h.store, h.llm, issueLog, dataRepo, issue.Number, issue.Title, issue.Body)
 		if err != nil {
-			h.logger.Error("phase 3 failed", "error", err)
+			issueLog.Error("phase 3 failed", "error", err)
 		}
-		h.logger.Info("phase 3 complete", "issue", issue.Number, "duplicates", len(p3))
+		issueLog.Info("phase 3 complete", "duplicates", len(p3))
 		result.Phase3 = p3
 	}
 
 	// Phase 4a: Enhancement context (enhancements only)
 	if isEnhancement {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, dataRepo, issue.Title, issue.Body)
+		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
 		if err != nil {
-			h.logger.Error("phase 4a failed", "error", err)
+			issueLog.Error("phase 4a failed", "error", err)
 		}
-		h.logger.Info("phase 4a complete", "issue", issue.Number, "matches", len(p4a))
+		issueLog.Info("phase 4a complete", "matches", len(p4a))
 		result.Phase4a = p4a
 	}
 
@@ -209,24 +210,24 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	if isEnhancement {
 		currentLabel = "enhancement"
 	}
-	p4b, err := phases.Phase4b(ctx, h.llm, issue.Title, issue.Body, currentLabel)
+	p4b, err := phases.Phase4b(ctx, h.llm, issueLog, issue.Title, issue.Body, currentLabel)
 	if err != nil {
-		h.logger.Error("phase 4b failed", "error", err)
+		issueLog.Error("phase 4b failed", "error", err)
 	}
-	h.logger.Info("phase 4b complete", "issue", issue.Number, "result", p4b)
+	issueLog.Info("phase 4b complete", "result", p4b)
 	result.Phase4b = p4b
 
 	// Build comment
 	body := comment.Build(result)
 	if body == "" {
-		h.logger.Info("nothing to report", "issue", issue.Number)
+		issueLog.Info("nothing to report")
 		return
 	}
 
 	// Post comment
 	commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
 	if err != nil {
-		h.logger.Error("posting comment", "error", err)
+		issueLog.Error("posting comment", "error", err)
 		return
 	}
 
@@ -238,10 +239,10 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		CommentID:   commentID,
 		PhasesRun:   phasesRun,
 	}); err != nil {
-		h.logger.Error("recording bot comment", "error", err)
+		issueLog.Error("recording bot comment", "error", err)
 	}
 
-	h.logger.Info("comment posted", "issue", issue.Number, "phases", phasesRun)
+	issueLog.Info("comment posted", "phases", phasesRun)
 }
 
 func (h *Handler) handleStateChange(ctx context.Context, repo string, issue gh.IssueDetail) {

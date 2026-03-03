@@ -45,7 +45,7 @@ func main() {
 	defer pool.Close()
 
 	s := store.New(pool)
-	l := llm.New(geminiAPIKey)
+	l := llm.New(geminiAPIKey, logger)
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {

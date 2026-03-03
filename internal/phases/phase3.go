@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
@@ -12,7 +13,8 @@ import (
 
 // Phase3 detects potential duplicate issues using vector similarity search
 // and LLM-based semantic comparison.
-func Phase3(ctx context.Context, s *store.Store, l *llm.Client, repo string, issueNumber int, title, body string) ([]Duplicate, error) {
+func Phase3(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo string, issueNumber int, title, body string) ([]Duplicate, error) {
+	logger.Info("phase3 start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
 
@@ -27,7 +29,9 @@ func Phase3(ctx context.Context, s *store.Store, l *llm.Client, repo string, iss
 	if err != nil {
 		return nil, fmt.Errorf("find similar issues: %w", err)
 	}
+	logger.Info("phase3 vector search", "issues", len(issues))
 	if len(issues) == 0 {
+		logger.Info("phase3 finish", "duplicates", 0)
 		return nil, nil
 	}
 
@@ -96,5 +100,6 @@ Respond with ONLY valid JSON, no other text.`
 			break
 		}
 	}
+	logger.Info("phase3 finish", "duplicates", len(results))
 	return results, nil
 }

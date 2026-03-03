@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -17,7 +18,8 @@ var reStripCodeFences = regexp.MustCompile("(?s)```[\\s\\S]*?```")
 
 // Phase2 searches for matching troubleshooting documentation using vector similarity
 // and then asks the LLM to pick the best matches with actionable suggestions.
-func Phase2(ctx context.Context, s *store.Store, l *llm.Client, repo, title, body string) ([]Suggestion, error) {
+func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string) ([]Suggestion, error) {
+	logger.Info("phase2 start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
 
@@ -31,7 +33,9 @@ func Phase2(ctx context.Context, s *store.Store, l *llm.Client, repo, title, bod
 	if err != nil {
 		return nil, fmt.Errorf("find similar docs: %w", err)
 	}
+	logger.Info("phase2 vector search", "documents", len(docs))
 	if len(docs) == 0 {
+		logger.Info("phase2 finish", "suggestions", 0)
 		return nil, nil
 	}
 
@@ -87,6 +91,7 @@ Respond with ONLY valid JSON, no other text.`
 			break
 		}
 	}
+	logger.Info("phase2 finish", "suggestions", len(results))
 	return results, nil
 }
 

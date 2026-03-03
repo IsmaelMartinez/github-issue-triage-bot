@@ -6,30 +6,46 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
+
+// Provider defines the LLM operations that triage phases require.
+type Provider interface {
+	GenerateJSON(ctx context.Context, prompt string, temperature float64, maxTokens int) (string, error)
+	GenerateJSONWithSystem(ctx context.Context, systemPrompt, userContent string, temperature float64, maxTokens int) (string, error)
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
 
 // Client wraps the Gemini API for text generation and embeddings.
 type Client struct {
 	apiKey     string
 	httpClient *http.Client
 	baseURL    string
+	logger     *slog.Logger
 }
 
 // New creates a new LLM client.
-func New(apiKey string) *Client {
+func New(apiKey string, logger *slog.Logger) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		baseURL: "https://generativelanguage.googleapis.com/v1beta",
+		logger:  logger,
 	}
 }
 
 // GenerateJSON sends a prompt to Gemini and returns the raw JSON response text.
 func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature float64, maxTokens int) (string, error) {
+	start := time.Now()
+	c.logger.Info("llm GenerateJSON start")
+	defer func() {
+		c.logger.Info("llm GenerateJSON complete", "duration", time.Since(start))
+	}()
+
 	body := geminiRequest{
 		Contents: []content{
 			{Parts: []part{{Text: prompt}}},
@@ -80,6 +96,12 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 // GenerateJSONWithSystem sends user content to Gemini with a trusted system instruction
 // and returns the raw JSON response text.
 func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userContent string, temperature float64, maxTokens int) (string, error) {
+	start := time.Now()
+	c.logger.Info("llm GenerateJSONWithSystem start")
+	defer func() {
+		c.logger.Info("llm GenerateJSONWithSystem complete", "duration", time.Since(start))
+	}()
+
 	body := geminiRequestWithSystem{
 		SystemInstruction: &content{
 			Parts: []part{{Text: systemPrompt}},
@@ -132,6 +154,12 @@ func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userC
 
 // Embed generates an embedding for the given text using Gemini's embedding model.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
+	start := time.Now()
+	c.logger.Info("llm Embed start")
+	defer func() {
+		c.logger.Info("llm Embed complete", "duration", time.Since(start))
+	}()
+
 	body := embeddingRequest{
 		Model: "models/gemini-embedding-001",
 		Content: content{
