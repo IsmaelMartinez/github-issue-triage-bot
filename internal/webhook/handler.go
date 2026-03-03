@@ -60,6 +60,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reject duplicate deliveries
+	deliveryID := r.Header.Get("X-GitHub-Delivery")
+	if deliveryID != "" {
+		duplicate, err := h.store.CheckAndRecordDelivery(r.Context(), deliveryID)
+		if err != nil {
+			h.logger.Error("checking delivery ID", "error", err)
+		} else if duplicate {
+			h.logger.Info("duplicate delivery rejected", "deliveryID", deliveryID)
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "duplicate delivery")
+			return
+		}
+	}
+
 	// Only handle issue events
 	eventType := r.Header.Get("X-GitHub-Event")
 	if eventType != "issues" {
