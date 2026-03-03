@@ -21,8 +21,13 @@ func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+const EmbeddingDim = 768
+
 // UpsertDocument inserts or updates a document and its embedding.
 func (s *Store) UpsertDocument(ctx context.Context, doc Document) error {
+	if len(doc.Embedding) != EmbeddingDim {
+		return fmt.Errorf("embedding dimension mismatch: got %d, want %d", len(doc.Embedding), EmbeddingDim)
+	}
 	meta, err := json.Marshal(doc.Metadata)
 	if err != nil {
 		return fmt.Errorf("marshal metadata: %w", err)
@@ -42,6 +47,9 @@ func (s *Store) UpsertDocument(ctx context.Context, doc Document) error {
 
 // UpsertIssue inserts or updates an issue and its embedding.
 func (s *Store) UpsertIssue(ctx context.Context, issue Issue) error {
+	if len(issue.Embedding) != EmbeddingDim {
+		return fmt.Errorf("embedding dimension mismatch: got %d, want %d", len(issue.Embedding), EmbeddingDim)
+	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO issues (repo, number, title, summary, state, labels, milestone, embedding, closed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
