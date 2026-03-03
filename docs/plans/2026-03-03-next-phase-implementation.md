@@ -4,7 +4,7 @@
 
 **Goal:** Harden infrastructure (GCS state backend, CI/CD), seed all 1,356 issues + feature index into the database, add a public dashboard showing bot activity and feedback, then cut over to production on teams-for-linux.
 
-**Architecture:** Five sequential phases: (1) Terraform state migration to GCS bucket with locking, (2) bulk issue export via GitHub API and seeding via the existing seed CLI with rate limiting, (3) GitHub Actions CI/CD that builds Docker images tagged by git SHA and deploys to Cloud Run, (4) a static dashboard generated from database queries and published to GitHub Pages, (5) production cutover.
+**Architecture:** Six sequential phases: (1) Terraform state migration to GCS bucket with locking, (2) bulk issue export via GitHub API and seeding via the existing seed CLI with rate limiting, (3) GitHub Actions CI/CD that builds Docker images tagged by git SHA and deploys to Cloud Run, (4) a static dashboard generated from database queries and published to GitHub Pages, (5) convert to GitHub App for proper authentication and one-click repo installation (ADR 006), (6) production cutover.
 
 **Tech Stack:** Go 1.26, Terraform >= 1.5, GCS, GitHub Actions, Gemini embedding API, Neon PostgreSQL + pgvector, Cloud Run v2, GitHub Pages (static HTML).
 
@@ -1060,3 +1060,66 @@ In teams-for-linux, disable the old triage bot GitHub Actions workflows. Don't d
 **Step 5: Update remaining-work.md**
 
 Update `docs/decisions/001-remaining-work.md` to mark cutover as complete.
+
+---
+
+### Task 15: Convert to GitHub App
+
+See ADR 006 for the full rationale. This replaces the current PAT-based webhook with a registered GitHub App.
+
+**Files:**
+- Modify: `internal/github/client.go` (replace PAT auth with installation token auth)
+- Modify: `cmd/server/main.go` (load app private key, pass app ID)
+- Modify: `go.mod` (add `bradleyfalzon/ghinstallation/v2`)
+- Modify: `terraform/main.tf` (add Secret Manager resource for private key)
+
+**Step 1: Register the GitHub App**
+
+Go to https://github.com/settings/apps/new and configure:
+- App name: `teams-for-linux-triage-bot` (or similar)
+- Webhook URL: `https://triage-bot-lhuutxzbnq-uc.a.run.app/webhook`
+- Webhook secret: same as current WEBHOOK_SECRET
+- Permissions: Issues (read/write)
+- Subscribe to events: Issues
+- Where can this app be installed: Only on this account
+
+After creation, note the App ID and generate a private key (.pem file).
+
+**Step 2: Add ghinstallation dependency**
+
+```bash
+cd /Users/ismael.martinez/projects/github/github-issue-triage-bot
+go get github.com/bradleyfalzon/ghinstallation/v2
+```
+
+**Step 3: Update the GitHub client**
+
+Replace the PAT-based client in `internal/github/client.go` with one that accepts either a PAT or app credentials. The `ghinstallation` library provides an `http.Transport` that handles JWT signing and installation token refresh automatically. The installation ID comes from the webhook payload's `installation.id` field.
+
+**Step 4: Update the webhook handler**
+
+In `internal/webhook/handler.go`, extract `installation.id` from the webhook JSON payload and pass it to the GitHub client so it can obtain the correct installation token.
+
+**Step 5: Store the private key in Secret Manager**
+
+```bash
+gcloud secrets create triage-bot-app-key --project=gen-lang-client-0421325030
+gcloud secrets versions add triage-bot-app-key --data-file=path/to/private-key.pem
+```
+
+Update `terraform/main.tf` to mount the secret as a volume or environment variable in the Cloud Run service.
+
+**Step 6: Test on triage-bot-test-repo**
+
+Install the app on `IsmaelMartinez/triage-bot-test-repo`. Create test issues to verify the bot posts comments using the app identity instead of the PAT user identity.
+
+**Step 7: Install on teams-for-linux**
+
+Once validated, install the app on `IsmaelMartinez/teams-for-linux`. Remove the old webhook configuration and PAT-based setup. Remove the GITHUB_TOKEN environment variable from Cloud Run since the app authenticates with its own key.
+
+**Step 8: Commit**
+
+```bash
+git add internal/github/ cmd/server/main.go go.mod go.sum terraform/main.tf
+git commit -m "feat: convert to GitHub App authentication (ADR 006)"
+```

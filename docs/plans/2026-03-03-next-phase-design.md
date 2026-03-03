@@ -151,17 +151,19 @@ A webhook listener for the `issue_comment` event with `reaction` action would gi
 
 ## 5. Implementation Order
 
-The work breaks down into five phases, roughly in priority order:
+The work breaks down into six phases, roughly in priority order:
 
-Phase 1 is Terraform state migration to GCS. This is a one-time operation with no code changes to the bot itself, just the backend block in main.tf and a state migration command.
+Phase 1 is Terraform state migration to GCS. This is a one-time operation with no code changes to the bot itself, just the backend block in main.tf and a state migration command. DONE.
 
-Phase 2 is data seeding. Export all issues from GitHub API, seed them, seed the feature index. This directly improves bot quality.
+Phase 2 is CI/CD. Set up the GitHub Actions workflow so future changes deploy automatically. DONE.
 
-Phase 3 is CI/CD. Set up the GitHub Actions workflow so future changes deploy automatically.
+Phase 3 is data seeding. Export all issues from GitHub API, seed them, seed the feature index. This directly improves bot quality.
 
 Phase 4 is the public dashboard. Build the static page generator, add the report endpoint or CLI, set up GitHub Pages publishing.
 
-Phase 5 is production cutover to teams-for-linux. Configure the webhook, run both bots in parallel briefly, then remove the old bot.
+Phase 5 is GitHub App conversion. Register a GitHub App, replace PAT-based authentication with JWT/installation tokens using `bradleyfalzon/ghinstallation`, store the private key in Secret Manager. This gives repos one-click installation and eliminates dependency on a personal access token. See ADR 006.
+
+Phase 6 is production cutover to teams-for-linux. Install the GitHub App on teams-for-linux, run both bots in parallel briefly, then remove the old bot workflows and scripts.
 
 
 ## Scope boundaries
