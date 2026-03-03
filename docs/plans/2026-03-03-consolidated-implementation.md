@@ -312,7 +312,9 @@ git add -A cmd/export-issues && git commit -m "chore: remove export-issues tool"
 
 ---
 
-## Batch 6: Dashboard
+## Batch 6: Dashboard [DONE]
+
+Completed 2026-03-03. PR #6 merged. Added dashboard store methods, /report endpoint, static HTML generator, reaction sync tool, and daily dashboard workflow. Review fixes: pinned GH Actions SHAs, fixed createdAt scan, removed unused method, initialized RecentComments slice.
 
 ### Codex prompt
 
@@ -439,7 +441,9 @@ Run `go vet ./...` and `go test ./...`. Push the branch.
 
 ---
 
-## Batch 7: GitHub App Conversion
+## Batch 7: GitHub App Conversion [DONE]
+
+Completed 2026-03-03. PR #7 merged. Added ghinstallation dependency, refactored GitHub client for App auth, threaded installation ID through handler, updated server main and Terraform. Review fixes: marked ghinstallation as direct dep, updated docker-compose.yml and CLAUDE.md.
 
 ### Codex prompt
 
