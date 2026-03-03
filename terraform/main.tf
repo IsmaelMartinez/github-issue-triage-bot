@@ -123,6 +123,11 @@ resource "google_project_service" "secretmanager" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "iam" {
+  service            = "iam.googleapis.com"
+  disable_on_destroy = false
+}
+
 # --- Artifact Registry ---
 
 resource "google_artifact_registry_repository" "triage_bot" {
@@ -139,6 +144,8 @@ resource "google_artifact_registry_repository" "triage_bot" {
 resource "google_service_account" "triage_bot" {
   account_id   = "triage-bot-run"
   display_name = "Triage Bot Cloud Run"
+
+  depends_on = [google_project_service.iam]
 }
 
 resource "google_secret_manager_secret" "database_url" {
