@@ -98,10 +98,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 	repo := event.Repo.FullName
 	issue := event.Issue
+	installationID := event.Installation.ID
 
 	switch event.Action {
 	case "opened":
-		h.handleOpened(ctx, repo, issue)
+		h.handleOpened(ctx, installationID, repo, issue)
 	case "closed", "reopened":
 		h.handleStateChange(ctx, repo, issue)
 	default:
@@ -109,7 +110,7 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 	}
 }
 
-func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueDetail) {
+func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {
 	h.logger.Info("processing new issue", "repo", repo, "issue", issue.Number)
 
 	// Update issue in database under the webhook repo
@@ -202,7 +203,7 @@ func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueD
 	}
 
 	// Post comment
-	commentID, err := h.github.CreateComment(ctx, repo, issue.Number, body)
+	commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
 	if err != nil {
 		h.logger.Error("posting comment", "error", err)
 		return
