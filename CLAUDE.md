@@ -82,7 +82,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/extractJSONObject helpers with fallback parsing.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_TOKEN (required), WEBHOOK_SECRET (required), PORT (optional, defaults to 8080).
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_TOKEN (required), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080).
 
 ## Issue Template Headers
 

@@ -22,7 +22,6 @@ func Phase2(ctx context.Context, s *store.Store, l *llm.Client, repo, title, bod
 	if err != nil {
 		return nil, fmt.Errorf("embed issue: %w", err)
 	}
-
 	// Find similar troubleshooting documents
 	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration"}, embedding, 5)
 	if err != nil {
@@ -58,11 +57,10 @@ Format: [{"index": 0, "reason": "This appears similar because...", "actionable_s
 If no sections match, return: []
 Respond with ONLY valid JSON, no other text.`, strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.3, 500)
+	raw, err := l.GenerateJSON(ctx, prompt, 0.3, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate suggestions: %w", err)
 	}
-
 	// Parse and validate response
 	raw = extractJSONArray(raw)
 	var matches []struct {

@@ -28,6 +28,8 @@ func main() {
 	githubToken := requireEnv("GITHUB_TOKEN")
 	webhookSecret := requireEnv("WEBHOOK_SECRET")
 
+	sourceRepo := os.Getenv("SOURCE_REPO")
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -56,7 +58,7 @@ func main() {
 	ghClient := gh.New(githubToken)
 
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, s, llmClient, ghClient, logger)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)

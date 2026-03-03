@@ -36,7 +36,7 @@ Return a JSON object with:
 Format: {"classification": "bug", "confidence": 85, "reason": "The issue describes something that stopped working after an update."}
 Respond with ONLY valid JSON, no other text.`, truncate(title, 200), cleanBody, currentLabel)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.15, 1024)
+	raw, err := l.GenerateJSON(ctx, prompt, 0.15, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate classification: %w", err)
 	}

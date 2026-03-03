@@ -19,6 +19,7 @@ import (
 // Handler processes GitHub webhook events.
 type Handler struct {
 	webhookSecret string
+	sourceRepo    string
 	store         *store.Store
 	llm           *llm.Client
 	github        *gh.Client
@@ -26,9 +27,11 @@ type Handler struct {
 }
 
 // New creates a new webhook Handler.
-func New(webhookSecret string, s *store.Store, l *llm.Client, g *gh.Client, logger *slog.Logger) *Handler {
+// sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
+func New(webhookSecret string, sourceRepo string, s *store.Store, l *llm.Client, g *gh.Client, logger *slog.Logger) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
+		sourceRepo:    sourceRepo,
 		store:         s,
 		llm:           l,
 		github:        g,
@@ -94,7 +97,7 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueDetail) {
 	h.logger.Info("processing new issue", "repo", repo, "issue", issue.Number)
 
-	// Update issue in database
+	// Update issue in database under the webhook repo
 	h.upsertIssue(ctx, repo, issue)
 
 	// Skip bot accounts
@@ -114,9 +117,17 @@ func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueD
 		return
 	}
 
+	// Use sourceRepo for data lookups (vector searches), falling back to webhook repo
+	dataRepo := repo
+	if h.sourceRepo != "" {
+		dataRepo = h.sourceRepo
+		h.logger.Info("using source repo for data lookups", "dataRepo", dataRepo, "webhookRepo", repo)
+	}
+
 	// Determine issue type
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
+	h.logger.Info("issue classification", "issue", issue.Number, "isBug", isBug, "isEnhancement", isEnhancement, "labelCount", len(issue.Labels))
 
 	// Run phases
 	var result comment.TriageResult
@@ -128,28 +139,31 @@ func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueD
 
 	// Phase 2: Solution suggestions (bugs only)
 	if isBug {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, repo, issue.Title, issue.Body)
+		p2, err := phases.Phase2(ctx, h.store, h.llm, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			h.logger.Error("phase 2 failed", "error", err)
 		}
+		h.logger.Info("phase 2 complete", "issue", issue.Number, "suggestions", len(p2))
 		result.Phase2 = p2
 	}
 
 	// Phase 3: Duplicate detection (bugs only)
 	if isBug {
-		p3, err := phases.Phase3(ctx, h.store, h.llm, repo, issue.Number, issue.Title, issue.Body)
+		p3, err := phases.Phase3(ctx, h.store, h.llm, dataRepo, issue.Number, issue.Title, issue.Body)
 		if err != nil {
 			h.logger.Error("phase 3 failed", "error", err)
 		}
+		h.logger.Info("phase 3 complete", "issue", issue.Number, "duplicates", len(p3))
 		result.Phase3 = p3
 	}
 
 	// Phase 4a: Enhancement context (enhancements only)
 	if isEnhancement {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, repo, issue.Title, issue.Body)
+		p4a, err := phases.Phase4a(ctx, h.store, h.llm, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			h.logger.Error("phase 4a failed", "error", err)
 		}
+		h.logger.Info("phase 4a complete", "issue", issue.Number, "matches", len(p4a))
 		result.Phase4a = p4a
 	}
 
@@ -162,6 +176,7 @@ func (h *Handler) handleOpened(ctx context.Context, repo string, issue gh.IssueD
 	if err != nil {
 		h.logger.Error("phase 4b failed", "error", err)
 	}
+	h.logger.Info("phase 4b complete", "issue", issue.Number, "result", p4b)
 	result.Phase4b = p4b
 
 	// Build comment

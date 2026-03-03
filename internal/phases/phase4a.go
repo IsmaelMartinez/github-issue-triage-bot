@@ -61,7 +61,7 @@ Format: [{"index": 0, "reason": "We've previously investigated this area...", "i
 If no items match, return: []
 Respond with ONLY valid JSON, no other text.`, strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.3, 1024)
+	raw, err := l.GenerateJSON(ctx, prompt, 0.3, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate context: %w", err)
 	}

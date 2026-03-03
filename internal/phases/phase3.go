@@ -56,11 +56,10 @@ Format: [{"number": 123, "reason": "This might be related because...", "similari
 If no issues are similar, return: []
 Respond with ONLY valid JSON, no other text.`, strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 
-	raw, err := l.GenerateJSON(ctx, prompt, 0.2, 400)
+	raw, err := l.GenerateJSON(ctx, prompt, 0.2, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("generate duplicates: %w", err)
 	}
-
 	// Parse and validate response
 	raw = extractJSONArray(raw)
 	var matches []struct {

@@ -79,6 +79,12 @@ variable "webhook_secret" {
   sensitive   = true
 }
 
+variable "source_repo" {
+  description = "Override repo for data lookups (vector searches). If empty, uses webhook repo."
+  type        = string
+  default     = ""
+}
+
 variable "image_tag" {
   description = "Docker image tag to deploy"
   type        = string
@@ -143,6 +149,10 @@ resource "google_cloud_run_v2_service" "triage_bot" {
       env {
         name  = "WEBHOOK_SECRET"
         value = var.webhook_secret
+      }
+      env {
+        name  = "SOURCE_REPO"
+        value = var.source_repo
       }
 
       resources {
