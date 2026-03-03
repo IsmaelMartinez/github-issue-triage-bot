@@ -71,7 +71,7 @@ func Build(r TriageResult) string {
 		if len(openDups) > 0 {
 			parts = append(parts, "*Potentially related open issues:*")
 			for _, d := range openDups {
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%d%% similar) \u2014 %s", d.Number, d.Title, d.Similarity, sanitizeLLMOutput(d.Reason)))
+				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%d%% similar) \u2014 %s", d.Number, sanitizeLLMOutput(d.Title), d.Similarity, sanitizeLLMOutput(d.Reason)))
 			}
 			parts = append(parts, "")
 		}
@@ -83,7 +83,7 @@ func Build(r TriageResult) string {
 				if d.Milestone != nil {
 					resolvedNote = fmt.Sprintf("Resolved in %s", *d.Milestone)
 				}
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%s) \u2014 %s", d.Number, d.Title, resolvedNote, sanitizeLLMOutput(d.Reason)))
+				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%s) \u2014 %s", d.Number, sanitizeLLMOutput(d.Title), resolvedNote, sanitizeLLMOutput(d.Reason)))
 			}
 			parts = append(parts, "")
 		}
@@ -125,7 +125,7 @@ func Build(r TriageResult) string {
 					sanitizeLLMOutput(ctx.Topic), sanitizeURL(ctx.DocURL), sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			} else {
 				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s, %s)%s \u2014 %s",
-					ctx.Topic, ctx.DocURL, sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+					sanitizeLLMOutput(ctx.Topic), sanitizeURL(ctx.DocURL), sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			}
 		}
 		parts = append(parts, "")
