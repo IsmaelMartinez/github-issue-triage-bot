@@ -17,7 +17,7 @@ go vet ./...
 go build -o server ./cmd/server
 go build -o seed ./cmd/seed
 
-# Run locally (requires DATABASE_URL, GEMINI_API_KEY, GITHUB_TOKEN, WEBHOOK_SECRET)
+# Run locally (requires DATABASE_URL, GEMINI_API_KEY, GITHUB_APP_ID, GITHUB_PRIVATE_KEY, WEBHOOK_SECRET)
 go run ./cmd/server
 
 # Docker build (linux/amd64 for Cloud Run)
@@ -88,7 +88,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/extractJSONObject helpers with fallback parsing.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_TOKEN (required), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080).
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080).
 
 ## Issue Template Headers
 
