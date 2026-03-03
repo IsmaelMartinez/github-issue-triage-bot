@@ -9,4 +9,4 @@ This directory records significant architecture decisions for the GitHub Issue T
 | [003](003-neon-postgresql-pgvector.md) | Neon PostgreSQL with pgvector for Vector Storage | Implemented |
 | [004](004-cloud-run-deployment.md) | Google Cloud Run for Hosting | Implemented |
 | [005](005-terraform-gcs-state.md) | Terraform with GCS State Backend | Implemented |
-| [006](006-github-app-integration.md) | GitHub App for Repository Integration | Proposed |
+| [006](006-github-app-integration.md) | GitHub App for Repository Integration | Implemented |
