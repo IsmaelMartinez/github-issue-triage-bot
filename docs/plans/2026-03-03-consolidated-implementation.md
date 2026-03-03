@@ -170,9 +170,9 @@ Run `go vet ./...` and `go test ./...` after all changes. Push the branch.
 
 ---
 
-## Batch 4: Webhook Replay Protection and CI Hardening [PR #4]
+## Batch 4: Webhook Replay Protection and CI Hardening [DONE]
 
-PR #4 open. Three commits: webhook_deliveries migration, replay protection in store/handler, GitHub Actions pinned to SHAs. Code review passed with no issues.
+Completed 2026-03-03. PR #4 merged. Migration 002 applied. Three commits: webhook_deliveries table, replay protection in store/handler, GitHub Actions pinned to SHAs.
 
 ### Codex prompt
 
@@ -245,9 +245,9 @@ DATABASE_URL=$(grep database_url terraform/terraform.tfvars | cut -d'"' -f2) \
 
 ---
 
-## Batch 5: Data Seeding [PR #5]
+## Batch 5: Data Seeding [DONE]
 
-PR #5 open. Four commits: issue export tool, rate limiting in seed CLI, ivfflat migration, and a fix to parse closed_at timestamps during seeding. Code review found the closed_at issue which was fixed.
+Completed 2026-03-03. PR #5 merged. All 1,356 issues from teams-for-linux exported and seeded with embeddings. Migrations 003 applied. Four commits: export tool, seed rate limiting, ivfflat migration, closed_at parsing fix.
 
 ### Codex prompt
 
