@@ -46,19 +46,27 @@ jobs:
 
       - name: Build and push Docker image
         env:
-          COMMIT_SHA: ${{ github.sha }}
+          IMAGE_TAG: sha-${{ github.sha }}
         run: |
-          SHORT_SHA=${COMMIT_SHA:0:7}
-          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/server:sha-${SHORT_SHA}"
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/server:${IMAGE_TAG}"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
 
-      - name: Deploy to Cloud Run
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: "1.5"
+
+      - name: Terraform Apply
         env:
-          COMMIT_SHA: ${{ github.sha }}
+          TF_VAR_database_url: ${{ secrets.TF_VAR_DATABASE_URL }}
+          TF_VAR_gemini_api_key: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+          TF_VAR_github_app_id: ${{ secrets.TF_VAR_GITHUB_APP_ID }}
+          TF_VAR_github_private_key: ${{ secrets.TF_VAR_GITHUB_PRIVATE_KEY }}
+          TF_VAR_webhook_secret: ${{ secrets.TF_VAR_WEBHOOK_SECRET }}
+          TF_VAR_billing_account_id: ${{ secrets.TF_VAR_BILLING_ACCOUNT_ID }}
+          TF_VAR_source_repo: "IsmaelMartinez/teams-for-linux"
+          TF_VAR_image_tag: sha-${{ github.sha }}
         run: |
-          SHORT_SHA=${COMMIT_SHA:0:7}
-          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/server:sha-${SHORT_SHA}"
-          gcloud run services update "$SERVICE_NAME" \
-            --region="$GCP_REGION" \
-            --image="$IMAGE"
+          cd terraform
+          terraform init
+          terraform apply -auto-approve
