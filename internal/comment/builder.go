@@ -56,7 +56,7 @@ func Build(r TriageResult) string {
 	if r.IsBug && len(r.Phase2) > 0 {
 		parts = append(parts, "**This might be related to a known issue:**\n")
 		for _, s := range r.Phase2 {
-			parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", s.Title, s.DocURL, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+			parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", sanitizeLLMOutput(s.Title), sanitizeURL(s.DocURL), sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
 		}
 		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")
 	}
@@ -122,7 +122,7 @@ func Build(r TriageResult) string {
 
 			if ctx.IsInfeasible {
 				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s) \u2014 We explored this and documented our findings.%s %s",
-					ctx.Topic, ctx.DocURL, sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+					sanitizeLLMOutput(ctx.Topic), sanitizeURL(ctx.DocURL), sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			} else {
 				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s, %s)%s \u2014 %s",
 					ctx.Topic, ctx.DocURL, sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))

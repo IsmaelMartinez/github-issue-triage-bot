@@ -49,3 +49,29 @@ func TestSanitizeLLMOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"https URL", "https://example.com", "https://example.com"},
+		{"http URL", "http://example.com", "http://example.com"},
+		{"javascript scheme", "javascript:alert(1)", ""},
+		{"JavaScript mixed case", "JavaScript:void(0)", ""},
+		{"data scheme", "data:text/html,<script>alert(1)</script>", ""},
+		{"vbscript scheme", "vbscript:MsgBox", ""},
+		{"empty string", "", ""},
+		{"whitespace padded", "  https://example.com  ", "https://example.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeURL(tt.in)
+			if got != tt.want {
+				t.Fatalf("sanitizeURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
