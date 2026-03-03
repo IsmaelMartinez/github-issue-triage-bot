@@ -54,3 +54,7 @@ type SimilarIssue struct {
 	Issue
 	Distance float64
 }
+
+// EnhancementDocTypes lists the document types that Phase 4a searches for
+// enhancement context. The seed command validates against this list.
+var EnhancementDocTypes = []string{"roadmap", "adr", "research"}
