@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
+
+// Pre-compiled regex for stripping code fences across phases.
+var reStripCodeFences = regexp.MustCompile("(?s)```[\\s\\S]*?```")
 
 // Phase2 searches for matching troubleshooting documentation using vector similarity
 // and then asks the LLM to pick the best matches with actionable suggestions.
@@ -89,35 +93,72 @@ Respond with ONLY valid JSON, no other text.`
 // Helper functions shared across phases
 
 func stripCodeFences(text string, maxLen int) string {
-	re := regexp.MustCompile("(?s)```[\\s\\S]*?```")
-	result := re.ReplaceAllString(text, "")
-	if len(result) > maxLen {
-		result = result[:maxLen]
-	}
-	return result
+	result := reStripCodeFences.ReplaceAllString(text, "")
+	return truncate(result, maxLen)
 }
 
+// truncate shortens s to at most maxLen bytes, backing up to a valid UTF-8
+// rune boundary so multi-byte sequences are never split.
 func truncate(s string, maxLen int) string {
-	if len(s) > maxLen {
-		return s[:maxLen]
+	if len(s) <= maxLen {
+		return s
 	}
-	return s
+	// Walk back from maxLen until we land on the start of a UTF-8 rune.
+	for maxLen > 0 && !utf8.RuneStart(s[maxLen]) {
+		maxLen--
+	}
+	return s[:maxLen]
 }
 
+// extractJSONArray finds the first top-level JSON array in raw by matching
+// balanced brackets, avoiding the greedy-regex problem of matching the first
+// '[' to the last ']'.
 func extractJSONArray(raw string) string {
-	re := regexp.MustCompile(`\[[\s\S]*\]`)
-	match := re.FindString(raw)
-	if match != "" {
-		return match
-	}
-	return "[]"
+	return extractBalanced(raw, '[', ']', "[]")
 }
 
+// extractJSONObject finds the first top-level JSON object in raw by matching
+// balanced braces.
 func extractJSONObject(raw string) string {
-	re := regexp.MustCompile(`\{[\s\S]*\}`)
-	match := re.FindString(raw)
-	if match != "" {
-		return match
+	return extractBalanced(raw, '{', '}', "{}")
+}
+
+// extractBalanced finds the first occurrence of open in raw, then walks forward
+// counting balanced open/close characters (skipping string literals) to find
+// the matching close. Returns fallback if no balanced match is found.
+func extractBalanced(raw string, open, close byte, fallback string) string {
+	start := strings.IndexByte(raw, open)
+	if start < 0 {
+		return fallback
 	}
-	return "{}"
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(raw); i++ {
+		ch := raw[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if ch == open {
+			depth++
+		} else if ch == close {
+			depth--
+			if depth == 0 {
+				return raw[start : i+1]
+			}
+		}
+	}
+	return fallback
 }

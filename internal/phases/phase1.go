@@ -5,6 +5,27 @@ import (
 	"strings"
 )
 
+// Pre-compiled regexes for known issue template section headers.
+var (
+	sectionReproSteps    = regexp.MustCompile(`### Reproduction steps\s*\n([\s\S]*?)(?:\n### |$)`)
+	sectionExpected      = regexp.MustCompile(`### Expected Behavior\s*\n([\s\S]*?)(?:\n### |$)`)
+	sectionDebug         = regexp.MustCompile(`### Debug\s*\n([\s\S]*?)(?:\n### |$)`)
+	sectionCanReproduce  = regexp.MustCompile(`### Can you reproduce this bug on the Microsoft Teams web app \(https://teams\.microsoft\.com\)\?\s*\n([\s\S]*?)(?:\n### |$)`)
+	reNumberedMarkers    = regexp.MustCompile(`(?m)^\s*\d+\.\s*`)
+	reDebugBash          = regexp.MustCompile(`(?m)^bash\s*$`)
+	reDebugMarkdown      = regexp.MustCompile(`(?m)^markdown\s*$`)
+	reDebugElectron      = regexp.MustCompile(`ELECTRON_ENABLE_LOGGING=true\s+teams-for-linux\s+--logConfig='[^']*'`)
+	reStripFences        = regexp.MustCompile("`{3,}[\\w]*\n?")
+)
+
+// sectionRegexes maps header names to their pre-compiled regex for getSection fallback.
+var sectionRegexes = map[string]*regexp.Regexp{
+	"Reproduction steps": sectionReproSteps,
+	"Expected Behavior":  sectionExpected,
+	"Debug":              sectionDebug,
+	"Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?": sectionCanReproduce,
+}
+
 // Phase1 analyzes a bug report body for missing information and PWA reproducibility.
 // This is pure string parsing with no external dependencies.
 func Phase1(body string) Phase1Result {
@@ -48,6 +69,14 @@ func Phase1(body string) Phase1Result {
 
 // getSection extracts the content under a ### header in a GitHub issue form body.
 func getSection(body, header string) string {
+	if re, ok := sectionRegexes[header]; ok {
+		match := re.FindStringSubmatch(body)
+		if len(match) < 2 {
+			return ""
+		}
+		return strings.TrimSpace(match[1])
+	}
+	// Fallback for unknown headers: compile on the fly.
 	escaped := regexp.QuoteMeta(header)
 	re := regexp.MustCompile(`### ` + escaped + `\s*\n([\s\S]*?)(?:\n### |$)`)
 	match := re.FindStringSubmatch(body)
@@ -67,7 +96,7 @@ func isDefaultStepsTemplate(content string) bool {
 		return true
 	}
 	// Remove numbered list markers and ellipsis, then check if anything remains
-	withoutMarkers := regexp.MustCompile(`(?m)^\s*\d+\.\s*`).ReplaceAllString(cleaned, "")
+	withoutMarkers := reNumberedMarkers.ReplaceAllString(cleaned, "")
 	withoutMarkers = strings.NewReplacer("...", "").Replace(withoutMarkers)
 	withoutMarkers = strings.TrimSpace(withoutMarkers)
 	return withoutMarkers == ""
@@ -84,17 +113,14 @@ func isDebugMissing(content string) bool {
 	}
 	// Remove known defaults from the template
 	withoutDefaults := cleaned
-	withoutDefaults = regexp.MustCompile(`(?m)^bash\s*$`).ReplaceAllString(withoutDefaults, "")
-	withoutDefaults = regexp.MustCompile(`(?m)^markdown\s*$`).ReplaceAllString(withoutDefaults, "")
-	withoutDefaults = regexp.MustCompile(
-		`ELECTRON_ENABLE_LOGGING=true\s+teams-for-linux\s+--logConfig='[^']*'`,
-	).ReplaceAllString(withoutDefaults, "")
+	withoutDefaults = reDebugBash.ReplaceAllString(withoutDefaults, "")
+	withoutDefaults = reDebugMarkdown.ReplaceAllString(withoutDefaults, "")
+	withoutDefaults = reDebugElectron.ReplaceAllString(withoutDefaults, "")
 	withoutDefaults = strings.TrimSpace(withoutDefaults)
 	return withoutDefaults == ""
 }
 
 // stripFences removes markdown code fence markers.
 func stripFences(text string) string {
-	re := regexp.MustCompile("`{3,}[\\w]*\n?")
-	return strings.TrimSpace(re.ReplaceAllString(text, ""))
+	return strings.TrimSpace(reStripFences.ReplaceAllString(text, ""))
 }
