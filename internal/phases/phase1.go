@@ -31,8 +31,19 @@ var sectionRegexes = map[string]*regexp.Regexp{
 func Phase1(body string) Phase1Result {
 	var result Phase1Result
 
-	// If the body has no form sections at all, there's nothing to analyze
+	// Empty or whitespace-only bodies have nothing to analyze.
+	if strings.TrimSpace(body) == "" {
+		return result
+	}
+
+	// If the body has content but no form sections, all template fields are missing.
 	if !strings.Contains(body, "### ") {
+		result.MissingItems = []MissingItem{
+			{Label: "Reproduction steps", Detail: "Step-by-step instructions to trigger the bug (the more specific, the faster we can investigate)"},
+			{Label: "Debug console output", Detail: "Log output from running the application with debug logging enabled"},
+			{Label: "Expected behavior", Detail: "A description of what you expected to happen instead"},
+			{Label: "PWA reproducibility", Detail: "Whether the issue also occurs on the Microsoft Teams web app"},
+		}
 		return result
 	}
 

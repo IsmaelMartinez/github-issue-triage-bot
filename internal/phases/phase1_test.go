@@ -118,6 +118,18 @@ func TestPhase1(t *testing.T) {
 			wantPWA:          false,
 		},
 		{
+			name:             "free-form text without template headers",
+			body:             "The app crashes when I try to open it. It just shows a white screen and nothing happens.",
+			wantMissingCount: 4,
+			wantPWA:          false,
+		},
+		{
+			name:             "single line issue without headers",
+			body:             "Screen sharing broken on Wayland",
+			wantMissingCount: 4,
+			wantPWA:          false,
+		},
+		{
 			name: "partial info",
 			body: "### Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?\n\nNo\n\n### Describe the bug\n\nCan't login\n\n### Reproduction steps\n\n1. Open app\n2. Enter credentials\n3. Click submit\n\n### Expected Behavior\n\n_No response_\n\n### Debug\n\n_No response_",
 			wantMissingCount: 2,
