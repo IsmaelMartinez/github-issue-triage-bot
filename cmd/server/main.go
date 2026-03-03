@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -69,6 +70,20 @@ func main() {
 		}
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
+	})
+	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		stats, err := s.GetDashboardStats(r.Context(), repo)
+		if err != nil {
+			http.Error(w, "failed to get stats", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		json.NewEncoder(w).Encode(stats)
 	})
 
 	server := &http.Server{
