@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -26,7 +28,18 @@ func main() {
 	if geminiAPIKey == "" {
 		logger.Warn("GEMINI_API_KEY not set, LLM features will be unavailable")
 	}
-	githubToken := requireEnv("GITHUB_TOKEN")
+	appIDStr := requireEnv("GITHUB_APP_ID")
+	appID, err := strconv.ParseInt(appIDStr, 10, 64)
+	if err != nil {
+		logger.Error("GITHUB_APP_ID must be a valid integer", "error", err)
+		os.Exit(1)
+	}
+	privateKeyRaw := requireEnv("GITHUB_PRIVATE_KEY")
+	privateKey, err := base64.StdEncoding.DecodeString(privateKeyRaw)
+	if err != nil {
+		// Not valid base64, treat as raw PEM
+		privateKey = []byte(privateKeyRaw)
+	}
 	webhookSecret := requireEnv("WEBHOOK_SECRET")
 
 	sourceRepo := os.Getenv("SOURCE_REPO")
@@ -56,7 +69,7 @@ func main() {
 
 	// Initialize clients
 	llmClient := llm.New(geminiAPIKey)
-	ghClient := gh.New(githubToken)
+	ghClient := gh.New(appID, privateKey)
 
 	// Set up HTTP server
 	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger)

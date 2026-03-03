@@ -11,28 +11,44 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/bradleyfalzon/ghinstallation/v2"
 )
 
-// Client wraps the GitHub API for issue operations.
+// Client wraps the GitHub API for issue operations using GitHub App authentication.
 type Client struct {
-	token      string
+	appID      int64
+	privateKey []byte
 	httpClient *http.Client
 	baseURL    string
 }
 
-// New creates a new GitHub API client.
-func New(token string) *Client {
+// New creates a new GitHub API client authenticated as a GitHub App.
+func New(appID int64, privateKey []byte) *Client {
 	return &Client{
-		token: token,
-		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
-		},
-		baseURL: "https://api.github.com",
+		appID:      appID,
+		privateKey: privateKey,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:    "https://api.github.com",
 	}
 }
 
+// installationClient returns an HTTP client scoped to a specific installation.
+func (c *Client) installationClient(installationID int64) (*http.Client, error) {
+	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("create installation transport: %w", err)
+	}
+	return &http.Client{Transport: itr, Timeout: 30 * time.Second}, nil
+}
+
 // CreateComment posts a comment on a GitHub issue and returns the comment ID.
-func (c *Client) CreateComment(ctx context.Context, repo string, issueNumber int, body string) (int64, error) {
+func (c *Client) CreateComment(ctx context.Context, installationID int64, repo string, issueNumber int, body string) (int64, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return 0, fmt.Errorf("installation client: %w", err)
+	}
+
 	payload := map[string]string{"body": body}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -45,10 +61,9 @@ func (c *Client) CreateComment(ctx context.Context, repo string, issueNumber int
 		return 0, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("send request: %w", err)
 	}
@@ -69,16 +84,20 @@ func (c *Client) CreateComment(ctx context.Context, repo string, issueNumber int
 }
 
 // ListComments returns all comments on a GitHub issue.
-func (c *Client) ListComments(ctx context.Context, repo string, issueNumber int) ([]Comment, error) {
+func (c *Client) ListComments(ctx context.Context, installationID int64, repo string, issueNumber int) ([]Comment, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
 	url := fmt.Sprintf("%s/repos/%s/issues/%d/comments", c.baseURL, repo, issueNumber)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
@@ -122,19 +141,25 @@ func VerifyWebhookSignature(payload []byte, signature string, secret string) boo
 
 // IssueEvent represents a GitHub issue webhook event payload.
 type IssueEvent struct {
-	Action string      `json:"action"`
-	Issue  IssueDetail `json:"issue"`
-	Repo   RepoDetail  `json:"repository"`
+	Action       string           `json:"action"`
+	Issue        IssueDetail      `json:"issue"`
+	Repo         RepoDetail       `json:"repository"`
+	Installation InstallationInfo `json:"installation"`
+}
+
+// InstallationInfo identifies the GitHub App installation that sent the event.
+type InstallationInfo struct {
+	ID int64 `json:"id"`
 }
 
 // IssueDetail is the issue portion of a webhook event.
 type IssueDetail struct {
-	Number int          `json:"number"`
-	Title  string       `json:"title"`
-	Body   string       `json:"body"`
-	State  string       `json:"state"`
-	Labels []LabelInfo  `json:"labels"`
-	User   IssueUser    `json:"user"`
+	Number int         `json:"number"`
+	Title  string      `json:"title"`
+	Body   string      `json:"body"`
+	State  string      `json:"state"`
+	Labels []LabelInfo `json:"labels"`
+	User   IssueUser   `json:"user"`
 }
 
 // IssueUser is the user who created the issue.

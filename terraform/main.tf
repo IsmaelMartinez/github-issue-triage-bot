@@ -71,8 +71,13 @@ variable "gemini_api_key" {
   sensitive   = true
 }
 
-variable "github_token" {
-  description = "GitHub token for posting comments"
+variable "github_app_id" {
+  description = "GitHub App ID for authentication"
+  type        = string
+}
+
+variable "github_private_key" {
+  description = "GitHub App private key (PEM, base64-encoded)"
   type        = string
   sensitive   = true
 }
@@ -177,8 +182,8 @@ resource "google_secret_manager_secret_iam_member" "gemini_api_key" {
   member    = "serviceAccount:${google_service_account.triage_bot.email}"
 }
 
-resource "google_secret_manager_secret" "github_token" {
-  secret_id = "triage-bot-github_token"
+resource "google_secret_manager_secret" "github_private_key" {
+  secret_id = "triage-bot-github_private_key"
 
   replication {
     auto {}
@@ -187,13 +192,13 @@ resource "google_secret_manager_secret" "github_token" {
   depends_on = [google_project_service.secretmanager]
 }
 
-resource "google_secret_manager_secret_version" "github_token" {
-  secret      = google_secret_manager_secret.github_token.id
-  secret_data = var.github_token
+resource "google_secret_manager_secret_version" "github_private_key" {
+  secret      = google_secret_manager_secret.github_private_key.id
+  secret_data = var.github_private_key
 }
 
-resource "google_secret_manager_secret_iam_member" "github_token" {
-  secret_id = google_secret_manager_secret.github_token.id
+resource "google_secret_manager_secret_iam_member" "github_private_key" {
+  secret_id = google_secret_manager_secret.github_private_key.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.triage_bot.email}"
 }
@@ -253,10 +258,14 @@ resource "google_cloud_run_v2_service" "triage_bot" {
         }
       }
       env {
-        name = "GITHUB_TOKEN"
+        name  = "GITHUB_APP_ID"
+        value = var.github_app_id
+      }
+      env {
+        name = "GITHUB_PRIVATE_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.github_token.secret_id
+            secret  = google_secret_manager_secret.github_private_key.secret_id
             version = "latest"
           }
         }

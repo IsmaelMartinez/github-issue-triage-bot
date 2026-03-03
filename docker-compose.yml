@@ -24,7 +24,8 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/triage_bot?sslmode=disable
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_PRIVATE_KEY: ${GITHUB_PRIVATE_KEY}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       PORT: "8080"
     ports:
