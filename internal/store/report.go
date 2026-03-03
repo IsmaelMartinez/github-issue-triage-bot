@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"time"
 )
 
 // DashboardStats holds aggregated statistics for the dashboard.
@@ -27,16 +27,12 @@ type RecentComment struct {
 	CreatedAt   string   `json:"created_at"`
 }
 
-// MarshalStatsJSON returns the DashboardStats as a JSON byte slice.
-func (d *DashboardStats) MarshalStatsJSON() (json.RawMessage, error) {
-	return json.Marshal(d)
-}
-
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
 func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardStats, error) {
 	stats := &DashboardStats{
 		PhaseBreakdown: make(map[string]int),
 		DocumentCounts: make(map[string]int),
+		RecentComments: []RecentComment{},
 	}
 
 	// Total comments, sum thumbs_up, sum thumbs_down
@@ -109,13 +105,11 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 	defer rows3.Close()
 	for rows3.Next() {
 		var rc RecentComment
-		var createdAt interface{}
+		var createdAt time.Time
 		if err := rows3.Scan(&rc.Repo, &rc.IssueNumber, &rc.CommentID, &rc.PhasesRun, &rc.ThumbsUp, &rc.ThumbsDown, &createdAt); err != nil {
 			return nil, err
 		}
-		if t, ok := createdAt.(interface{ Format(string) string }); ok {
-			rc.CreatedAt = t.Format("2006-01-02T15:04:05Z07:00")
-		}
+		rc.CreatedAt = createdAt.Format(time.RFC3339)
 		stats.RecentComments = append(stats.RecentComments, rc)
 	}
 	if err := rows3.Err(); err != nil {
