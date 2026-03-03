@@ -17,24 +17,28 @@ This document captures the concrete next steps to go from "code compiles and tes
 - [x] Validate on test repo: bot correctly posts triage comments with Phase 1 (missing info), Phase 2 (solution suggestions), Phase 3 (duplicate detection), Phase 4b (misclassification check)
 - [x] Fix maxOutputTokens for Gemini 2.5 Flash thinking model (500/400/1024 → 8192)
 - [x] Fix SOURCE_REPO override for testing against different repo's data
+- [x] Migrate Terraform state to GCS backend (gs://triage-bot-terraform-state)
+- [x] Set up Workload Identity Federation for GitHub Actions (keyless auth)
+- [x] Create CI/CD workflow (.github/workflows/deploy.yml) with SHA-based image tags
+- [x] Add README and project documentation
 
 ## Remaining steps
 
-### CI/CD
+### Data seeding
 
-Set up GitHub Actions workflow in `github-issue-triage-bot` that runs tests on PRs and builds/deploys on push to main.
+Seed all 1,356 issues (currently only 111 from static index) and the feature index into the database. See docs/plans/2026-03-03-next-phase-design.md for the data strategy.
 
-### Seed tool improvements
+### Public dashboard
 
-The seed CLI needs rate limiting for Gemini embedding API calls, progress reporting, idempotent operation (skip items with existing embeddings), and a --dry-run flag.
+Build a static dashboard showing bot activity, feedback metrics, and knowledge base stats. See docs/plans/ for details.
 
 ### Cut over to teams-for-linux
 
 Configure webhook on teams-for-linux, run both bots in parallel briefly, then remove old bot workflows and scripts. When cutting over, remove or clear SOURCE_REPO (it won't be needed since webhook repo = data repo).
 
-### Accuracy reporting
+### GitHub integration for teams-for-linux
 
-Implement a /report endpoint or CLI command that queries bot_comments table for reaction tallies.
+Design and implement a GitHub App or Action that teams-for-linux uses to connect to this service. Needs thorough testing on triage-bot-test-repo first.
 
 ## Infrastructure reference
 
@@ -47,5 +51,8 @@ Implement a /report endpoint or CLI command that queries bot_comments table for 
 | Neon region | aws-us-east-2 |
 | Billing budget | GBP 15/month |
 | Webhook secret | stored in terraform.tfvars (never committed) |
+| Terraform state | gs://triage-bot-terraform-state (GCS, versioned) |
+| CI/CD | GitHub Actions, image tags: sha-{7char} |
+| WIF pool | projects/62054333602/.../github-actions |
+| Deploy SA | triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com |
 | Test repo webhook | hook ID 598755550 |
-| Current image tag | v9 |
