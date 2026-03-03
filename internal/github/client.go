@@ -55,7 +55,7 @@ func (c *Client) CreateComment(ctx context.Context, repo string, issueNumber int
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return 0, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -85,7 +85,7 @@ func (c *Client) ListComments(ctx context.Context, repo string, issueNumber int)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 

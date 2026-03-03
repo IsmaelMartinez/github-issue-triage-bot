@@ -61,7 +61,7 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return "", fmt.Errorf("gemini API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -107,7 +107,7 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("embedding API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
