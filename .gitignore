@@ -17,3 +17,9 @@
 
 # Test
 coverage.out
+
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate*
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl

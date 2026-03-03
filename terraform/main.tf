@@ -7,6 +7,11 @@
 terraform {
   required_version = ">= 1.5"
 
+  backend "gcs" {
+    bucket = "triage-bot-terraform-state"
+    prefix = "default"
+  }
+
   required_providers {
     google = {
       source  = "hashicorp/google"
