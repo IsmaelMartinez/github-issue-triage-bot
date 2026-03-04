@@ -79,7 +79,7 @@ func main() {
 	ghClient := gh.New(appID, privateKey)
 
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, map[string]string{})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)
