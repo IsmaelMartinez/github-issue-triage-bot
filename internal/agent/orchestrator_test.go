@@ -10,6 +10,7 @@ func TestParseApprovalSignal(t *testing.T) {
 	}{
 		{"lgtm lowercase", "lgtm", SignalApproved},
 		{"lgtm uppercase", "LGTM", SignalApproved},
+		{"approve lowercase", "approve", SignalApproved},
 		{"approved lowercase", "approved", SignalApproved},
 		{"approved with punctuation", "Approved!", SignalApproved},
 		{"thumbs up emoji", "👍", SignalApproved},
