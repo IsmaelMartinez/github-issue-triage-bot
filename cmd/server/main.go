@@ -120,7 +120,9 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(stats)
+		if err := json.NewEncoder(w).Encode(stats); err != nil {
+			logger.Error("encoding stats response", "error", err)
+		}
 	})
 
 	server := &http.Server{

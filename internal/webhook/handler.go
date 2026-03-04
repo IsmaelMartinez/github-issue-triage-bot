@@ -21,6 +21,12 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
+const (
+	maxWebhookBodySize = 25 << 20 // 25 MB
+	maxCommentLength   = 65536
+	triageTimeout      = 5 * time.Minute
+)
+
 // Handler processes GitHub webhook events.
 type Handler struct {
 	webhookSecret string
@@ -41,7 +47,7 @@ type Handler struct {
 // shadowRepos maps source repos to their shadow repos for agent sessions.
 func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string) *Handler {
 	structural := safety.NewStructuralValidator(safety.StructuralConfig{
-		MaxCommentLength: 65536,
+		MaxCommentLength: maxCommentLength,
 		AllowedURLHosts:  []string{"github.com", "ismaelmartinez.github.io"},
 	})
 	llmSafety := safety.NewLLMValidator(l)
@@ -72,7 +78,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, 25<<20) // 25 MB
+	r.Body = http.MaxBytesReader(w, r.Body, maxWebhookBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
@@ -115,7 +121,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.wg.Add(1)
 		go func() {
 			defer h.wg.Done()
-			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
 			defer cancel()
 			h.processEvent(ctx, event)
 		}()
@@ -135,7 +141,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.wg.Add(1)
 		go func() {
 			defer h.wg.Done()
-			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
 			defer cancel()
 			h.processCommentEvent(ctx, event)
 		}()

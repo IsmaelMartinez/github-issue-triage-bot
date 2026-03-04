@@ -18,6 +18,15 @@ type Provider interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
+const (
+	defaultBaseURL       = "https://generativelanguage.googleapis.com/v1beta"
+	defaultHTTPTimeout   = 60 * time.Second
+	generationModel      = "gemini-2.5-flash"
+	embeddingModel       = "gemini-embedding-001"
+	embeddingDimensionality = 768
+	maxErrorBodyBytes    = 4096
+)
+
 // Client wraps the Gemini API for text generation and embeddings.
 type Client struct {
 	apiKey     string
@@ -31,9 +40,9 @@ func New(apiKey string, logger *slog.Logger) *Client {
 	return &Client{
 		apiKey: apiKey,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: defaultHTTPTimeout,
 		},
-		baseURL: "https://generativelanguage.googleapis.com/v1beta",
+		baseURL: defaultBaseURL,
 		logger:  logger,
 	}
 }
@@ -62,7 +71,7 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/models/gemini-2.5-flash:generateContent", c.baseURL)
+	url := fmt.Sprintf("%s/models/%s:generateContent", c.baseURL, generationModel)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
@@ -77,7 +86,7 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return "", fmt.Errorf("gemini API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -121,7 +130,7 @@ func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userC
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/models/gemini-2.5-flash:generateContent", c.baseURL)
+	url := fmt.Sprintf("%s/models/%s:generateContent", c.baseURL, generationModel)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
@@ -136,7 +145,7 @@ func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userC
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return "", fmt.Errorf("gemini API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -161,11 +170,11 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	}()
 
 	body := embeddingRequest{
-		Model: "models/gemini-embedding-001",
+		Model: "models/" + embeddingModel,
 		Content: content{
 			Parts: []part{{Text: text}},
 		},
-		OutputDimensionality: 768,
+		OutputDimensionality: embeddingDimensionality,
 	}
 
 	raw, err := json.Marshal(body)
@@ -173,7 +182,7 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/models/gemini-embedding-001:embedContent", c.baseURL)
+	url := fmt.Sprintf("%s/models/%s:embedContent", c.baseURL, embeddingModel)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -188,7 +197,7 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return nil, fmt.Errorf("embedding API returned %d: %s", resp.StatusCode, string(respBody))
 	}
 

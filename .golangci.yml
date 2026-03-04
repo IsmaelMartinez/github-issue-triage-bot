@@ -1,0 +1,26 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosimple
+    - gocritic
+
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprint
+      - fmt.Fprintf
+      - (net/http.ResponseWriter).Write
+  gocritic:
+    disabled-checks:
+      - exitAfterDefer  # os.Exit in main() is idiomatic Go
+
+issues:
+  exclude-dirs:
+    - terraform
+    - docs
+  max-issues-per-linter: 20
+  max-same-issues: 5
