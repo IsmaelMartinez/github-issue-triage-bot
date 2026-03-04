@@ -65,6 +65,7 @@ jobs:
           TF_VAR_webhook_secret: ${{ secrets.TF_VAR_WEBHOOK_SECRET }}
           TF_VAR_billing_account_id: ${{ secrets.TF_VAR_BILLING_ACCOUNT_ID }}
           TF_VAR_source_repo: "IsmaelMartinez/teams-for-linux"
+          TF_VAR_shadow_repos: "IsmaelMartinez/teams-for-linux:IsmaelMartinez/teams-for-linux-shadow"
           TF_VAR_image_tag: sha-${{ github.sha }}
         run: |
           cd terraform
