@@ -92,7 +92,7 @@ func (s *Store) UpdateSessionStage(ctx context.Context, id int64, stage string, 
 // CreateAuditEntry inserts a new audit log entry.
 func (s *Store) CreateAuditEntry(ctx context.Context, entry AuditEntry) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO audit_log (session_id, action_type, input_hash, output_summary, safety_check_passed, confidence_score)
+		INSERT INTO agent_audit_log (session_id, action_type, input_hash, output_summary, safety_check_passed, confidence_score)
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, entry.SessionID, entry.ActionType, entry.InputHash, entry.OutputSummary, entry.SafetyCheckPassed, entry.ConfidenceScore)
 	return err

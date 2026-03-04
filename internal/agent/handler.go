@@ -148,7 +148,12 @@ func (h *AgentHandler) askClarifyingQuestions(ctx context.Context, installationI
 	return nil
 }
 
-func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, title, body string, clarificationAnswers []string) error {
+func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, title, body string, clarificationAnswers []string, roundTrips ...int) error {
+	// Preserve round-trip count if provided (default 0 for initial research)
+	currentRoundTrips := 0
+	if len(roundTrips) > 0 {
+		currentRoundTrips = roundTrips[0]
+	}
 	log := h.logger.With("sessionID", sessionID, "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
 
 	// Embed title+body for vector search
@@ -231,10 +236,10 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 		}
 	}
 
-	// Update session to review pending
+	// Update session to review pending, storing full research markdown
 	if err := h.store.UpdateSessionStage(ctx, sessionID, store.StageReviewPending, map[string]any{
-		"title": title, "body": body, "research_title": doc.Title,
-	}, 0); err != nil {
+		"title": title, "body": body, "research_title": doc.Title, "research_md": researchMD,
+	}, currentRoundTrips); err != nil {
 		return fmt.Errorf("update session stage: %w", err)
 	}
 
@@ -281,6 +286,11 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 	signal := ParseApprovalSignal(commentBody)
 	log.Info("parsed approval signal", "signal", signal)
 
+	// Handle reject signal in any active stage
+	if signal == SignalReject {
+		return h.handleReject(ctx, installationID, sess, commentBody, commentUser, log)
+	}
+
 	switch sess.Stage {
 	case store.StageClarifying:
 		return h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
@@ -295,6 +305,29 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		log.Info("ignoring comment in current stage")
 	}
 
+	return nil
+}
+
+func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, commentUser string, log *slog.Logger) error {
+	// Resolve any pending gate
+	gate, err := h.store.GetPendingGate(ctx, sess.ID)
+	if err != nil {
+		return fmt.Errorf("get pending gate: %w", err)
+	}
+	if gate != nil {
+		_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRejected, commentUser)
+	}
+
+	// Move session to complete
+	if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
+		return fmt.Errorf("update session stage: %w", err)
+	}
+
+	// Post acknowledgment on shadow issue
+	ack := "Research session has been rejected and closed."
+	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
+
+	log.Info("session rejected")
 	return nil
 }
 
@@ -328,7 +361,7 @@ func (h *AgentHandler) handleClarifyingResponse(ctx context.Context, installatio
 	body, _ := sess.Context["body"].(string)
 	answers := []string{commentBody}
 
-	return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, answers)
+	return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, answers, sess.RoundTripCount)
 }
 
 func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID int64, sess *store.AgentSession, signal ApprovalSignal, commentBody string, commentUser string, log *slog.Logger) error {
@@ -349,13 +382,14 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 		if gate != nil {
 			_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRevisionRequested, commentUser)
 		}
-		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageRevision, sess.Context, sess.RoundTripCount+1); err != nil {
+		newRoundTrips := sess.RoundTripCount + 1
+		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageRevision, sess.Context, newRoundTrips); err != nil {
 			return fmt.Errorf("update session stage: %w", err)
 		}
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, newRoundTrips)
 
 	case SignalPromote:
 		if gate != nil {
@@ -367,11 +401,14 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 		return h.handlePromote(ctx, installationID, sess, log)
 
 	default:
-		// General feedback — re-research with additional context
+		// General feedback — resolve pending gate, re-research with additional context
+		if gate != nil {
+			_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRevisionRequested, commentUser)
+		}
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, sess.RoundTripCount+1)
 	}
 }
 
@@ -392,12 +429,16 @@ func (h *AgentHandler) createResearchPR(ctx context.Context, installationID int6
 		return fmt.Errorf("create branch: %w", err)
 	}
 
-	// Get research content from the stored document
-	body, _ := sess.Context["body"].(string)
-	researchContent := FormatResearchMarkdown(&ResearchDocument{
-		Title:   researchTitle,
-		Summary: truncate(body, 500),
-	}, sess.Repo, sess.IssueNumber)
+	// Use the full research markdown stored during startResearch
+	researchContent, _ := sess.Context["research_md"].(string)
+	if researchContent == "" {
+		// Fallback: generate a minimal document if stored markdown is missing
+		body, _ := sess.Context["body"].(string)
+		researchContent = FormatResearchMarkdown(&ResearchDocument{
+			Title:   researchTitle,
+			Summary: truncate(body, 500),
+		}, sess.Repo, sess.IssueNumber)
+	}
 
 	// Commit research file
 	commitMsg := fmt.Sprintf("docs: add research for %s#%d", sess.Repo, sess.IssueNumber)
