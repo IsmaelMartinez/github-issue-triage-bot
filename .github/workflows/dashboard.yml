@@ -30,7 +30,11 @@ jobs:
           for repo in "${REPO_LIST[@]}"; do
             repo=$(echo "$repo" | xargs)  # trim whitespace
             echo "Processing $repo..."
-            REPO="$repo" go run ./cmd/sync-reactions
+            if [ -n "$GITHUB_TOKEN" ]; then
+              REPO="$repo" go run ./cmd/sync-reactions || echo "sync-reactions failed, continuing"
+            else
+              echo "GITHUB_TOKEN not set, skipping reaction sync"
+            fi
             DASHBOARD_REPO="$repo" go run ./cmd/dashboard docs/dashboard/index.html
           done
       - name: Deploy to GitHub Pages
