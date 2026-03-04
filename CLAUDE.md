@@ -13,6 +13,10 @@ go test ./...
 # Run vet
 go vet ./...
 
+# Run linter (matches CI)
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+golangci-lint run ./...
+
 # Build server, seed, dashboard, and sync-reactions binaries
 go build -o server ./cmd/server
 go build -o seed ./cmd/seed
@@ -83,6 +87,8 @@ terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secre
 .github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages
 docs/decisions/               # Architecture decision records
 docs/plans/                   # Implementation plans
+.golangci.yml                 # Linter configuration
+CONTRIBUTING.md               # Developer setup and contribution guidelines
 ```
 
 ## Infrastructure
@@ -111,7 +117,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/extractJSONObject helpers with fallback parsing.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool currently hardcodes the repo to IsmaelMartinez/teams-for-linux; the naming difference with REPO is intentional since the dashboard is single-purpose while sync-reactions is more general.
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool uses DASHBOARD_REPO (optional, defaults to IsmaelMartinez/teams-for-linux).
 
 ## Issue Template Headers
 
@@ -120,3 +126,7 @@ Phase 1 parses these exact section headers from the teams-for-linux bug report f
 ## Key Decisions
 
 See docs/decisions/ for full records. Summary: chose Gemini for its free tier and embedding API, Neon for managed pgvector with connection pooling, Cloud Run for serverless Go with fast cold starts.
+
+## Linting
+
+The project uses golangci-lint v1.64.8 with errcheck, govet, staticcheck, gocritic, and other linters configured in `.golangci.yml`. CI runs linting on every PR. See CONTRIBUTING.md for full development setup and code style guidelines.
