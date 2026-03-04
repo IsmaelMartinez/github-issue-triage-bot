@@ -296,7 +296,8 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	body := comment.Build(result)
 	phasesRun := collectPhasesRun(result)
 
-	if h.silentMode {
+	switch {
+	case h.silentMode:
 		// Store draft without posting to GitHub
 		phaseDetails := buildPhaseDetails(result)
 		if err := h.store.RecordTriageResult(ctx, store.TriageResultRecord{
@@ -311,7 +312,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		} else {
 			issueLog.Info("triage result stored silently", "phases", phasesRun)
 		}
-	} else if body != "" {
+	case body != "":
 		commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
 		if err != nil {
 			issueLog.Error("posting comment", "error", err)
@@ -326,7 +327,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			}
 			issueLog.Info("comment posted", "phases", phasesRun)
 		}
-	} else {
+	default:
 		issueLog.Info("nothing to report in triage comment")
 	}
 
