@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,15 @@ func TestVerifyWebhookSignature_Valid(t *testing.T) {
 
 	if !VerifyWebhookSignature(payload, sig, secret) {
 		t.Error("VerifyWebhookSignature() should return true for valid signature")
+	}
+}
+
+func TestFormatShadowIssueBody(t *testing.T) {
+	body := FormatShadowIssueBody("IsmaelMartinez/teams-for-linux", 42, "Add dark mode support", "It would be great to have dark mode...")
+	if !strings.Contains(body, "IsmaelMartinez/teams-for-linux#42") {
+		t.Fatal("expected cross-repo issue reference")
+	}
+	if !strings.Contains(body, "Add dark mode support") {
+		t.Fatal("expected original title")
 	}
 }
