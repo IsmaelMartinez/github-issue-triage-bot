@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go 1.26, PostgreSQL + pgvector (Neon), Gemini 2.5 Flash, GitHub App API (ghinstallation/v2)
 
+**Status:** All 14 tasks implemented and committed. Operational steps (Task 13: GitHub App config, shadow repo setup) to be done manually before first deployment.
+
 ---
 
 ### Task 1: Database migration for agent tables
