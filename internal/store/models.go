@@ -86,6 +86,12 @@ const (
 	ApprovalRevisionRequested = "revision_requested"
 )
 
+// ApprovalMode controls how the agent handles the review gate.
+const (
+	ApprovalModeManual     = "manual"     // always require human approval (default)
+	ApprovalModeConfidence = "confidence" // auto-approve if quality score >= threshold
+)
+
 // AgentSession tracks an agentic issue-resolution session.
 type AgentSession struct {
 	ID                 int64
@@ -109,7 +115,20 @@ type AuditEntry struct {
 	OutputSummary     string
 	SafetyCheckPassed bool
 	ConfidenceScore   float32
+	QualityScore      *int // holdout judge score (0-100), nil if not evaluated
 	CreatedAt         time.Time
+}
+
+// TriageResultRecord stores a silent triage result (draft comment not posted to GitHub).
+type TriageResultRecord struct {
+	ID           int64
+	Repo         string
+	IssueNumber  int
+	IssueTitle   string
+	DraftComment string
+	PhasesRun    []string
+	PhaseDetails map[string]any
+	CreatedAt    time.Time
 }
 
 // ApprovalGate represents a human-in-the-loop checkpoint in the agent workflow.
