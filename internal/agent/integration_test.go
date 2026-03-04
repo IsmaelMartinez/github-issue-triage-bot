@@ -1,0 +1,166 @@
+package agent
+
+import (
+	"context"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// sequentialMockProvider returns responses in order, cycling through them.
+type sequentialMockProvider struct {
+	responses []string
+	callIndex int
+}
+
+func (m *sequentialMockProvider) GenerateJSON(_ context.Context, _ string, _ float64, _ int) (string, error) {
+	resp := m.responses[m.callIndex%len(m.responses)]
+	m.callIndex++
+	return resp, nil
+}
+
+func (m *sequentialMockProvider) GenerateJSONWithSystem(_ context.Context, _, _ string, _ float64, _ int) (string, error) {
+	resp := m.responses[m.callIndex%len(m.responses)]
+	m.callIndex++
+	return resp, nil
+}
+
+func (m *sequentialMockProvider) Embed(_ context.Context, _ string) ([]float32, error) {
+	return make([]float32, 768), nil
+}
+
+func TestEnhancementResearchFlow_SkipClarification(t *testing.T) {
+	// The mock returns two responses in sequence:
+	// 1. AnalyzeEnhancement: no clarification needed
+	// 2. SynthesizeResearch: a valid research document
+	mock := &sequentialMockProvider{
+		responses: []string{
+			`{
+				"needs_clarification": false,
+				"questions": [],
+				"confidence": 0.92
+			}`,
+			`{
+				"title": "Keyboard Shortcut Implementation",
+				"summary": "Analysis of approaches to add Ctrl+M mute toggle.",
+				"approaches": [
+					{
+						"name": "Electron globalShortcut API",
+						"description": "Register a global shortcut using Electron's globalShortcut module.",
+						"pros": ["Native OS integration", "Works when app is not focused"],
+						"cons": ["May conflict with other apps"]
+					},
+					{
+						"name": "DOM keydown listener",
+						"description": "Listen for keydown events on the renderer process.",
+						"pros": ["Simple implementation", "No conflicts"],
+						"cons": ["Only works when app is focused"]
+					}
+				],
+				"recommendation": "Use Electron globalShortcut for best UX.",
+				"open_questions": ["Should the shortcut be configurable?"]
+			}`,
+		},
+	}
+
+	ctx := context.Background()
+
+	// Phase 1: Analyze — should skip clarification
+	analysis, err := AnalyzeEnhancement(ctx, mock, "Add Ctrl+M mute toggle", "When in a call, pressing Ctrl+M should toggle mute.")
+	if err != nil {
+		t.Fatalf("AnalyzeEnhancement: %v", err)
+	}
+	if analysis.NeedsClarification {
+		t.Fatal("expected no clarification needed for detailed request")
+	}
+	if analysis.Confidence < 0.9 {
+		t.Errorf("expected high confidence, got %f", analysis.Confidence)
+	}
+
+	// Phase 2: Synthesize research (since clarification was skipped)
+	doc, err := SynthesizeResearch(ctx, mock, "Add Ctrl+M mute toggle", "When in a call, pressing Ctrl+M should toggle mute.", nil, nil)
+	if err != nil {
+		t.Fatalf("SynthesizeResearch: %v", err)
+	}
+	if doc.Title == "" {
+		t.Error("expected non-empty research title")
+	}
+	if len(doc.Approaches) < 2 {
+		t.Errorf("expected at least 2 approaches, got %d", len(doc.Approaches))
+	}
+
+	// Phase 3: Format as markdown and verify structure
+	md := FormatResearchMarkdown(doc, "owner/repo", 42)
+
+	if !strings.Contains(md, "owner/repo#42") {
+		t.Error("markdown should contain issue reference owner/repo#42")
+	}
+	if !strings.Contains(md, "# Keyboard Shortcut Implementation") {
+		t.Error("markdown should contain the research title")
+	}
+	if !strings.Contains(md, "## Summary") {
+		t.Error("markdown should contain Summary heading")
+	}
+	if !strings.Contains(md, "## Approaches") {
+		t.Error("markdown should contain Approaches heading")
+	}
+	if !strings.Contains(md, "## Recommendation") {
+		t.Error("markdown should contain Recommendation heading")
+	}
+}
+
+func TestApprovalSignalFlow(t *testing.T) {
+	tests := []struct {
+		name    string
+		comment string
+		want    ApprovalSignal
+	}{
+		{"lgtm approves", "lgtm", SignalApproved},
+		{"revise with feedback", "please revise the second approach", SignalRevise},
+		{"promote to public", "publish this to the public issue", SignalPromote},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseApprovalSignal(tt.comment)
+			if got != tt.want {
+				t.Errorf("ParseApprovalSignal(%q) = %d, want %d", tt.comment, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Add Dark Mode Support", "add-dark-mode-support"},
+		{"Fix bug #123!", "fix-bug-123"},
+		{"", ""},
+		{"  leading and trailing spaces  ", "leading-and-trailing-spaces"},
+		{"multiple---dashes", "multiple-dashes"},
+		{"UPPERCASE", "uppercase"},
+		{"special@chars&here", "special-chars-here"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := slugify(tt.input)
+			if got != tt.want {
+				t.Errorf("slugify(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTimeNowDate(t *testing.T) {
+	date := timeNowDate()
+	matched, err := regexp.MatchString(`^\d{4}-\d{2}-\d{2}$`, date)
+	if err != nil {
+		t.Fatalf("regex error: %v", err)
+	}
+	if !matched {
+		t.Errorf("timeNowDate() = %q, want YYYY-MM-DD format", date)
+	}
+}
