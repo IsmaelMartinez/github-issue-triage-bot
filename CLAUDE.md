@@ -45,11 +45,13 @@ cd terraform && terraform plan && terraform apply
 
 ## Architecture
 
-The service receives GitHub webhook events (issue opened/closed/reopened) and runs a multi-phase triage pipeline:
+The service receives GitHub webhook events (issue opened/closed/reopened, issue comments) and runs a multi-phase triage pipeline:
 
 Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches the troubleshooting/configuration document store for similar entries, sends top-5 to Gemini to generate solution suggestions. Phase 3 (pgvector + LLM): embeds the issue, searches the issue store for similar past issues, sends top-5 to Gemini to identify potential duplicates. Phase 4a (pgvector + LLM): for enhancement requests, searches roadmap/ADR/research documents for related context. Phase 4b (LLM only): checks if the issue might be misclassified (bug vs enhancement vs question).
 
 All phase results are consolidated into a single markdown comment by the comment builder.
+
+For enhancement issues with a configured shadow repo, the bot also starts an agent session. The Enhancement Researcher agent progresses through a state machine (NEW, CLARIFYING, RESEARCHING, REVIEW_PENDING, REVISION, APPROVED, COMPLETE) in a private shadow repository. It analyzes the enhancement, optionally asks clarifying questions, synthesizes a research document using pgvector context, and waits for maintainer approval. On approval, it commits the research document and opens a PR. On "publish"/"promote", it posts a curated summary on the original public issue. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
 
 ## Project Structure
 
@@ -63,11 +65,19 @@ internal/phases/              # Triage phases (phase1.go through phase4b.go)
 internal/comment/builder.go   # Consolidates phase results into markdown
 internal/comment/sanitize.go  # LLM output and URL sanitization
 internal/llm/client.go        # Gemini API client (generation + embeddings)
-internal/github/client.go     # GitHub App client (comments, webhook verification)
+internal/github/client.go     # GitHub App client (comments, issues, branches, PRs)
 internal/store/postgres.go    # PostgreSQL + pgvector queries
+internal/store/agent.go       # Agent session, audit log, and approval gate queries
 internal/store/report.go      # Dashboard stats queries
-internal/store/models.go      # Shared data types
-migrations/                   # Database migrations (001-003)
+internal/store/models.go      # Shared data types (includes agent stage/gate constants)
+internal/agent/handler.go     # Agent state machine and webhook comment handler
+internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
+internal/agent/research.go    # Enhancement analysis and research synthesis prompts
+internal/safety/structural.go # Deterministic safety validator (length, URLs, mentions)
+internal/safety/llm_validator.go # LLM-based safety reviewer (relevance, tone, injection)
+internal/runner/runner.go     # Runner interface for task execution abstraction
+internal/runner/inprocess.go  # In-process runner (goroutines with context timeout)
+migrations/                   # Database migrations (001-004)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
 .github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages
@@ -101,7 +111,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/extractJSONObject helpers with fallback parsing.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool currently hardcodes the repo to IsmaelMartinez/teams-for-linux; the naming difference with REPO is intentional since the dashboard is single-purpose while sync-reactions is more general.
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool currently hardcodes the repo to IsmaelMartinez/teams-for-linux; the naming difference with REPO is intentional since the dashboard is single-purpose while sync-reactions is more general.
 
 ## Issue Template Headers
 

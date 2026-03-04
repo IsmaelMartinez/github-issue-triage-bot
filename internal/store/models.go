@@ -58,3 +58,67 @@ type SimilarIssue struct {
 // EnhancementDocTypes lists the document types that Phase 4a searches for
 // enhancement context. The seed command validates against this list.
 var EnhancementDocTypes = []string{"roadmap", "adr", "research"}
+
+// Agent session stage constants.
+const (
+	StageNew           = "new"
+	StageClarifying    = "clarifying"
+	StageResearching   = "researching"
+	StageReviewPending = "review_pending"
+	StageRevision      = "revision"
+	StageApproved      = "approved"
+	StageComplete      = "complete"
+)
+
+// Approval gate type constants.
+const (
+	GateClarification  = "clarification_approval"
+	GateResearch       = "research_approval"
+	GatePR             = "pr_approval"
+	GatePromotePublic  = "promote_to_public"
+)
+
+// Approval status constants.
+const (
+	ApprovalPending           = "pending"
+	ApprovalApproved          = "approved"
+	ApprovalRejected          = "rejected"
+	ApprovalRevisionRequested = "revision_requested"
+)
+
+// AgentSession tracks an agentic issue-resolution session.
+type AgentSession struct {
+	ID                 int64
+	Repo               string
+	IssueNumber        int
+	ShadowRepo         string
+	ShadowIssueNumber  int
+	Stage              string
+	Context            map[string]any
+	RoundTripCount     int
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
+// AuditEntry records a single action taken by the agent for auditability.
+type AuditEntry struct {
+	ID                int64
+	SessionID         int64
+	ActionType        string
+	InputHash         string
+	OutputSummary     string
+	SafetyCheckPassed bool
+	ConfidenceScore   float32
+	CreatedAt         time.Time
+}
+
+// ApprovalGate represents a human-in-the-loop checkpoint in the agent workflow.
+type ApprovalGate struct {
+	ID         int64
+	SessionID  int64
+	GateType   string
+	Status     string
+	Approver   string
+	CreatedAt  time.Time
+	ResolvedAt *time.Time
+}

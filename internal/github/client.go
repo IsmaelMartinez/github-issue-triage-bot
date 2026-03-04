@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -115,6 +116,204 @@ func (c *Client) ListComments(ctx context.Context, installationID int64, repo st
 	return comments, nil
 }
 
+// CreateIssue creates a new issue in a repository and returns the issue number.
+func (c *Client) CreateIssue(ctx context.Context, installationID int64, repo, title, body string) (int, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return 0, fmt.Errorf("installation client: %w", err)
+	}
+
+	payload := map[string]string{"title": title, "body": body}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal issue: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/issues", c.baseURL, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return 0, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return 0, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Number int `json:"number"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+	return result.Number, nil
+}
+
+// CreateBranch creates a new branch from the main branch's HEAD.
+func (c *Client) CreateBranch(ctx context.Context, installationID int64, repo, branchName string) error {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return fmt.Errorf("installation client: %w", err)
+	}
+
+	// Get SHA of main branch
+	refURL := fmt.Sprintf("%s/repos/%s/git/ref/heads/main", c.baseURL, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, refURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var ref struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ref); err != nil {
+		return fmt.Errorf("decode ref response: %w", err)
+	}
+
+	// Create branch
+	payload := map[string]string{
+		"ref": "refs/heads/" + branchName,
+		"sha": ref.Object.SHA,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal ref: %w", err)
+	}
+
+	createURL := fmt.Sprintf("%s/repos/%s/git/refs", c.baseURL, repo)
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp2, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(io.LimitReader(resp2.Body, 4096))
+		return fmt.Errorf("github API returned %d: %s", resp2.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// CreateOrUpdateFile creates or updates a file in a repository.
+func (c *Client) CreateOrUpdateFile(ctx context.Context, installationID int64, repo, path, branch, message string, content []byte) error {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return fmt.Errorf("installation client: %w", err)
+	}
+
+	payload := map[string]string{
+		"message": message,
+		"content": base64.StdEncoding.EncodeToString(content),
+		"branch":  branch,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal file: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/contents/%s", c.baseURL, repo, path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// CreatePullRequest creates a pull request and returns the PR number.
+func (c *Client) CreatePullRequest(ctx context.Context, installationID int64, repo, title, body, head, base string) (int, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return 0, fmt.Errorf("installation client: %w", err)
+	}
+
+	payload := map[string]string{
+		"title": title,
+		"body":  body,
+		"head":  head,
+		"base":  base,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return 0, fmt.Errorf("marshal pull request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/pulls", c.baseURL, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return 0, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return 0, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Number int `json:"number"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+	return result.Number, nil
+}
+
+// FormatShadowIssueBody formats an issue body for a shadow repo mirror issue.
+func FormatShadowIssueBody(sourceRepo string, issueNumber int, title, body string) string {
+	return fmt.Sprintf("**Mirror of %s#%d**\n\n**Original title:** %s\n\n---\n\n%s", sourceRepo, issueNumber, title, body)
+}
+
 // Comment represents a GitHub issue comment.
 type Comment struct {
 	ID   int64       `json:"id"`
@@ -137,6 +336,22 @@ func VerifyWebhookSignature(payload []byte, signature string, secret string) boo
 	mac.Write(payload)
 	expected := hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(signature[7:]), []byte(expected))
+}
+
+// IssueCommentEvent represents a GitHub issue_comment webhook event payload.
+type IssueCommentEvent struct {
+	Action       string           `json:"action"`
+	Issue        IssueDetail      `json:"issue"`
+	Comment      CommentDetail    `json:"comment"`
+	Repo         RepoDetail       `json:"repository"`
+	Installation InstallationInfo `json:"installation"`
+}
+
+// CommentDetail is the comment portion of an issue_comment event.
+type CommentDetail struct {
+	ID   int64       `json:"id"`
+	Body string      `json:"body"`
+	User CommentUser `json:"user"`
 }
 
 // IssueEvent represents a GitHub issue webhook event payload.

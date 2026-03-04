@@ -12,10 +12,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/agent"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
+	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/safety"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
@@ -29,12 +31,22 @@ type Handler struct {
 	logger        *slog.Logger
 	wg            sync.WaitGroup
 	ctx           context.Context
+	agentHandler  *agent.AgentHandler
+	shadowRepos   map[string]string
 }
 
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
 // ctx is used as the parent context for background triage goroutines.
-func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context) *Handler {
+// shadowRepos maps source repos to their shadow repos for agent sessions.
+func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string) *Handler {
+	structural := safety.NewStructuralValidator(safety.StructuralConfig{
+		MaxCommentLength: 65536,
+		AllowedURLHosts:  []string{"github.com", "ismaelmartinez.github.io"},
+	})
+	llmSafety := safety.NewLLMValidator(l)
+	agentHandler := agent.NewAgentHandler(s, l, g, structural, llmSafety, logger)
+
 	return &Handler{
 		webhookSecret: webhookSecret,
 		sourceRepo:    sourceRepo,
@@ -43,6 +55,8 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		github:        g,
 		logger:        logger,
 		ctx:           ctx,
+		agentHandler:  agentHandler,
+		shadowRepos:   shadowRepos,
 	}
 }
 
@@ -89,31 +103,72 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Only handle issue events
 	eventType := r.Header.Get("X-GitHub-Event")
-	if eventType != "issues" {
+
+	switch eventType {
+	case "issues":
+		var event gh.IssueEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		h.wg.Add(1)
+		go func() {
+			defer h.wg.Done()
+			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			defer cancel()
+			h.processEvent(ctx, event)
+		}()
+
+	case "issue_comment":
+		var event gh.IssueCommentEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		// Only handle new comments, not edits or deletions
+		if event.Action != "created" {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ignored comment action")
+			return
+		}
+		h.wg.Add(1)
+		go func() {
+			defer h.wg.Done()
+			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			defer cancel()
+			h.processCommentEvent(ctx, event)
+		}()
+
+	default:
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ignored event type")
 		return
 	}
 
-	var event gh.IssueEvent
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+	w.WriteHeader(http.StatusAccepted)
+	fmt.Fprint(w, "accepted")
+}
+
+func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueCommentEvent) {
+	repo := event.Repo.FullName
+	commentUser := event.Comment.User.Login
+	commentBody := event.Comment.Body
+	issueNumber := event.Issue.Number
+	installationID := event.Installation.ID
+
+	// Skip bot's own comments
+	if event.Comment.User.Type == "Bot" {
 		return
 	}
 
-	// Handle asynchronously so we respond to GitHub quickly
-	h.wg.Add(1)
-	go func() {
-		defer h.wg.Done()
-		ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
-		defer cancel()
-		h.processEvent(ctx, event)
-	}()
+	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
+	log.Info("processing comment event")
 
-	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprint(w, "accepted")
+	// Check if there's an active agent session for this issue (as shadow repo)
+	if err := h.agentHandler.HandleComment(ctx, installationID, repo, issueNumber, commentBody, commentUser); err != nil {
+		log.Error("handling agent comment", "error", err)
+	}
 }
 
 func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
@@ -243,6 +298,16 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	}
 
 	issueLog.Info("comment posted", "phases", phasesRun)
+
+	// Start agent session for enhancements with shadow repo
+	if isEnhancement {
+		if shadowRepo, ok := h.shadowRepos[repo]; ok {
+			issueLog.Info("starting agent session", "shadowRepo", shadowRepo)
+			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body); err != nil {
+				issueLog.Error("starting agent session", "error", err)
+			}
+		}
+	}
 }
 
 func (h *Handler) handleStateChange(ctx context.Context, repo string, issue gh.IssueDetail) {
