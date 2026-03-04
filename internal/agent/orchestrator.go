@@ -27,7 +27,7 @@ func ParseApprovalSignal(comment string) ApprovalSignal {
 	if strings.Contains(normalized, "reject") || strings.Contains(normalized, "close this") || strings.Contains(normalized, "cancel") {
 		return SignalReject
 	}
-	if strings.Contains(normalized, "lgtm") || strings.Contains(normalized, "approved") || strings.Contains(normalized, "👍") || strings.Contains(normalized, "looks good") {
+	if strings.Contains(normalized, "lgtm") || strings.Contains(normalized, "approve") || strings.Contains(normalized, "👍") || strings.Contains(normalized, "looks good") {
 		return SignalApproved
 	}
 	return SignalNone

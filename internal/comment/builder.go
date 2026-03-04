@@ -21,8 +21,8 @@ type TriageResult struct {
 // Build constructs the consolidated markdown comment from all phase results.
 // Returns empty string if there is nothing to report.
 func Build(r TriageResult) string {
-	hasContent := len(r.Phase1.MissingItems) > 0 ||
-		r.Phase1.IsPwaReproducible ||
+	hasContent := (r.IsBug && len(r.Phase1.MissingItems) > 0) ||
+		(r.IsBug && r.Phase1.IsPwaReproducible) ||
 		len(r.Phase2) > 0 ||
 		len(r.Phase3) > 0 ||
 		len(r.Phase4a) > 0 ||
@@ -134,8 +134,8 @@ func Build(r TriageResult) string {
 
 	// --- Common sections ---
 
-	// Missing information checklist (bugs only for now)
-	if len(r.Phase1.MissingItems) > 0 {
+	// Missing information checklist (bugs only — Phase 1 checks bug template fields)
+	if r.IsBug && len(r.Phase1.MissingItems) > 0 {
 		parts = append(parts, "To help us investigate, could you provide some additional details?\n")
 		parts = append(parts, "**Missing information:**")
 		for _, item := range r.Phase1.MissingItems {
