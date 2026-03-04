@@ -272,32 +272,27 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	issueLog.Info("phase 4b complete", "result", p4b)
 	result.Phase4b = p4b
 
-	// Build comment
+	// Build and post triage comment (if there's content to report)
 	body := comment.Build(result)
-	if body == "" {
-		issueLog.Info("nothing to report")
-		return
+	if body != "" {
+		commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
+		if err != nil {
+			issueLog.Error("posting comment", "error", err)
+		} else {
+			phasesRun := collectPhasesRun(result)
+			if err := h.store.RecordBotComment(ctx, store.BotComment{
+				Repo:        repo,
+				IssueNumber: issue.Number,
+				CommentID:   commentID,
+				PhasesRun:   phasesRun,
+			}); err != nil {
+				issueLog.Error("recording bot comment", "error", err)
+			}
+			issueLog.Info("comment posted", "phases", phasesRun)
+		}
+	} else {
+		issueLog.Info("nothing to report in triage comment")
 	}
-
-	// Post comment
-	commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
-	if err != nil {
-		issueLog.Error("posting comment", "error", err)
-		return
-	}
-
-	// Record bot comment
-	phasesRun := collectPhasesRun(result)
-	if err := h.store.RecordBotComment(ctx, store.BotComment{
-		Repo:        repo,
-		IssueNumber: issue.Number,
-		CommentID:   commentID,
-		PhasesRun:   phasesRun,
-	}); err != nil {
-		issueLog.Error("recording bot comment", "error", err)
-	}
-
-	issueLog.Info("comment posted", "phases", phasesRun)
 
 	// Start agent session for enhancements with shadow repo
 	if isEnhancement {

@@ -24,7 +24,10 @@ func main() {
 		outPath = os.Args[1]
 	}
 
-	repo := "IsmaelMartinez/teams-for-linux"
+	repo := os.Getenv("DASHBOARD_REPO")
+	if repo == "" {
+		repo = "IsmaelMartinez/teams-for-linux"
+	}
 
 	ctx := context.Background()
 
