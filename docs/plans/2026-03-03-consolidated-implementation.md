@@ -557,3 +557,96 @@ git commit -m "docs: mark production cutover complete"
 git push -u origin batch8-cutover
 gh pr create --title "docs: production cutover" --body "Marks all remaining work as complete after cutover to teams-for-linux."
 ```
+
+---
+
+## Dark AI Factory Improvements [DONE]
+
+Completed 2026-03-04. Branch `ci/terraform-in-pipeline`. Implemented Tier 1 and Tier 2 improvements from the dark AI factories survey.
+
+### Task 1: Holdout quality scoring [DONE]
+
+Created `internal/agent/judge.go` with a quality judge that scores research on 5 dimensions (actionability, specificity, trade-offs, completeness, relevance) using a holdout rubric the generating LLM never sees. Scores 0-100. Integrated into `startResearch` in handler.go after safety checks. Added `QualityScore *int` to AuditEntry, migration `005_quality_score.sql`.
+
+### Task 2: Inspiration repos tracking [DONE]
+
+Created `docs/research/inspiration-repos.md` tracking repos and patterns from the dark AI factories survey.
+
+### Task 3: Declarative workflow definitions [DONE]
+
+Created `internal/agent/workflow.go` with Workflow, Transition, and StageConfig types. EnhancementResearchWorkflow captures all 7 stages and 6 transitions as data. Refactored HandleComment to use workflow routing.
+
+### Task 4: Confidence-based approval [DONE]
+
+Added ApprovalModeManual/ApprovalModeConfidence constants, AutoApprovalThreshold = 85, SetApprovalMode(). When in confidence mode, high-quality first-round research auto-approves. Default is manual mode (unchanged behavior).
+
+### Zero-human companies research [DONE]
+
+Created `docs/research/2026-03-04-zero-human-companies.md` surveying the ZHC concept and extracting adoptable patterns. Updated inspiration-repos.md with new entries.
+
+---
+
+## Silent Mode [DONE]
+
+Completed 2026-03-04. Branch `ci/terraform-in-pipeline`. ADR: `docs/decisions/002-silent-mode.md`.
+
+The triage bot was receiving negative reactions on teams-for-linux even for non-AI Phase 1 output. To break the negative perception cycle, the bot now defaults to silent observation mode: all phases still run, results are stored in a `triage_results` table, but no comments are posted to GitHub. The maintainer reviews drafts via the dashboard.
+
+### Changes
+
+- Migration `006_triage_results.sql`: new table with repo, issue_number, issue_title, draft_comment, phases_run, phase_details (JSONB), unique on `(repo, issue_number)`.
+- `internal/store/models.go`: added `TriageResultRecord` struct.
+- `internal/store/postgres.go`: added `RecordTriageResult` (upsert), `HasTriageResult` (dedup), `GetRecentTriageResults` (dashboard).
+- `internal/store/report.go`: added `TotalDrafts` and `RecentDrafts` to `DashboardStats` with queries against `triage_results`.
+- `internal/webhook/handler.go`: added `silentMode` field, updated `New()` signature, modified `handleOpened()` to store drafts instead of posting when silent. Added `buildPhaseDetails` for structured JSONB metadata per phase. Dedup check queries both `bot_comments` and `triage_results` in silent mode.
+- `cmd/server/main.go`: reads `SILENT_MODE` env var (default `"true"`, only `"false"` enables posting).
+- `cmd/dashboard/template.html`: added "Silent Triage Results" section showing issue link, title, phases, phase summary, and date. Hidden when no drafts exist. Added "Silent Drafts" card to stats row.
+- `CLAUDE.md`: documented `SILENT_MODE` env var.
+
+Agent sessions in shadow repos are unaffected. The `bot_comments` table is unchanged. Setting `SILENT_MODE=false` restores the original posting behavior.
+
+---
+
+## Future Improvements (from ZHC Research)
+
+Tier 2.5 items identified from the zero-human companies research. Do when the prerequisite conditions are met.
+
+### Task 8: Evaluator-optimizer feedback loop
+
+Feed quality judge feedback back to the research generator for one automatic revision attempt before escalating to humans. If judge scores < 70, re-synthesize with the judge's dimension-level feedback as additional context, capped at one retry.
+
+Prerequisites: Task 1 (quality scoring, done). Trigger: when human reviewers frequently request revisions that the judge could have caught.
+
+Files:
+- Modify: `internal/agent/handler.go` — add revision loop in startResearch between judge and comment posting
+- Modify: `internal/agent/judge.go` — add per-dimension feedback strings to QualityScore
+
+### Task 9: Reflective supervisor / health monitor
+
+Lightweight scheduled endpoint that queries dashboard stats and quality score distributions, alerting if average quality drops below a threshold or error rate spikes.
+
+Prerequisites: Dashboard (done), quality scoring (done). Trigger: when we want proactive alerting beyond manual dashboard checks.
+
+Files:
+- Create: `cmd/health-monitor/main.go` or add `/health-check` endpoint to server
+- Modify: `internal/store/report.go` — add quality score aggregation query
+
+### Task 10: Retrospective compliance auditing
+
+Periodic job that reviews past agent outputs using the current safety validators and quality judge, flagging any that would fail today's checks. Catches drift in safety standards.
+
+Prerequisites: Sufficient audit log data. Trigger: after 50+ agent sessions.
+
+Files:
+- Create: `cmd/audit/main.go` — retrospective audit tool
+- Modify: `internal/store/agent.go` — add query for completed sessions with outputs
+
+### Task 11: Metric-driven threshold adjustment
+
+Track per-repo quality metrics over time (average quality score, human override rate, revision request rate). Recommend threshold adjustments when a category consistently exceeds quality targets.
+
+Prerequisites: Task 4 (confidence-based approval, done), sufficient production data. Trigger: after 100+ scored research documents.
+
+Files:
+- Modify: `internal/store/report.go` — add quality metric aggregation queries
+- Modify: `cmd/dashboard/main.go` — display quality trends in dashboard

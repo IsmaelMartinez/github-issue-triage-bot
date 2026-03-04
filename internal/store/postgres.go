@@ -221,6 +221,59 @@ func (s *Store) CleanupOldDeliveries(ctx context.Context, olderThan time.Duratio
 	return tag.RowsAffected(), nil
 }
 
+// RecordTriageResult upserts a silent triage result into the triage_results table.
+func (s *Store) RecordTriageResult(ctx context.Context, rec TriageResultRecord) error {
+	details, err := json.Marshal(rec.PhaseDetails)
+	if err != nil {
+		return fmt.Errorf("marshal phase_details: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO triage_results (repo, issue_number, issue_title, draft_comment, phases_run, phase_details)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (repo, issue_number) DO UPDATE SET
+			issue_title   = EXCLUDED.issue_title,
+			draft_comment = EXCLUDED.draft_comment,
+			phases_run    = EXCLUDED.phases_run,
+			phase_details = EXCLUDED.phase_details,
+			created_at    = now()
+	`, rec.Repo, rec.IssueNumber, rec.IssueTitle, rec.DraftComment, rec.PhasesRun, details)
+	return err
+}
+
+// HasTriageResult checks if a silent triage result already exists for the given issue.
+func (s *Store) HasTriageResult(ctx context.Context, repo string, issueNumber int) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM triage_results WHERE repo = $1 AND issue_number = $2)
+	`, repo, issueNumber).Scan(&exists)
+	return exists, err
+}
+
+// GetRecentTriageResults returns the most recent silent triage results for a repo.
+func (s *Store) GetRecentTriageResults(ctx context.Context, repo string, limit int) ([]TriageResultRecord, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, repo, issue_number, issue_title, draft_comment, phases_run, phase_details, created_at
+		FROM triage_results WHERE repo = $1
+		ORDER BY created_at DESC LIMIT $2
+	`, repo, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []TriageResultRecord
+	for rows.Next() {
+		var rec TriageResultRecord
+		var details []byte
+		if err := rows.Scan(&rec.ID, &rec.Repo, &rec.IssueNumber, &rec.IssueTitle, &rec.DraftComment, &rec.PhasesRun, &details, &rec.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(details, &rec.PhaseDetails)
+		results = append(results, rec)
+	}
+	return results, rows.Err()
+}
+
 // ConnectPool creates a new pgxpool connection pool from a database URL.
 func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
