@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	pgxvector "github.com/pgvector/pgvector-go/pgx"
@@ -80,7 +79,7 @@ func (s *Store) FindSimilarDocuments(ctx context.Context, repo string, docTypes 
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 
 	if _, err := tx.Exec(ctx, "SET LOCAL ivfflat.probes = 5"); err != nil {
 		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
@@ -129,7 +128,7 @@ func (s *Store) FindSimilarIssues(ctx context.Context, repo string, embedding []
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 
 	if _, err := tx.Exec(ctx, "SET LOCAL ivfflat.probes = 6"); err != nil {
 		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
@@ -228,8 +227,6 @@ func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)
 	if err != nil {
 		return nil, fmt.Errorf("parse database URL: %w", err)
 	}
-	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		return pgxvector.RegisterTypes(ctx, conn)
-	}
+	config.AfterConnect = pgxvector.RegisterTypes
 	return pgxpool.NewWithConfig(ctx, config)
 }
