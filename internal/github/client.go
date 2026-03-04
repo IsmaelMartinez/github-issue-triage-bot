@@ -338,6 +338,22 @@ func VerifyWebhookSignature(payload []byte, signature string, secret string) boo
 	return hmac.Equal([]byte(signature[7:]), []byte(expected))
 }
 
+// IssueCommentEvent represents a GitHub issue_comment webhook event payload.
+type IssueCommentEvent struct {
+	Action       string           `json:"action"`
+	Issue        IssueDetail      `json:"issue"`
+	Comment      CommentDetail    `json:"comment"`
+	Repo         RepoDetail       `json:"repository"`
+	Installation InstallationInfo `json:"installation"`
+}
+
+// CommentDetail is the comment portion of an issue_comment event.
+type CommentDetail struct {
+	ID   int64       `json:"id"`
+	Body string      `json:"body"`
+	User CommentUser `json:"user"`
+}
+
 // IssueEvent represents a GitHub issue webhook event payload.
 type IssueEvent struct {
 	Action       string           `json:"action"`

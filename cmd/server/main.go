@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -78,8 +79,14 @@ func main() {
 	llmClient := llm.New(geminiAPIKey, logger)
 	ghClient := gh.New(appID, privateKey)
 
+	// Parse shadow repos configuration
+	shadowRepos := parseShadowRepos(os.Getenv("SHADOW_REPOS"))
+	if len(shadowRepos) > 0 {
+		logger.Info("shadow repos configured", "count", len(shadowRepos))
+	}
+
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, map[string]string{})
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, shadowRepos)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)
@@ -94,6 +101,9 @@ func main() {
 	allowedRepos := map[string]bool{"IsmaelMartinez/teams-for-linux": true}
 	if sourceRepo != "" {
 		allowedRepos[sourceRepo] = true
+	}
+	for _, shadow := range shadowRepos {
+		allowedRepos[shadow] = true
 	}
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
@@ -151,4 +161,18 @@ func requireEnv(key string) string {
 		os.Exit(1)
 	}
 	return val
+}
+
+func parseShadowRepos(s string) map[string]string {
+	result := make(map[string]string)
+	if s == "" {
+		return result
+	}
+	for _, pair := range strings.Split(s, ",") {
+		parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+	return result
 }

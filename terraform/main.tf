@@ -95,6 +95,12 @@ variable "source_repo" {
   default     = ""
 }
 
+variable "shadow_repos" {
+  description = "Comma-separated mapping of public repos to shadow repos (e.g. owner/repo:owner/shadow)"
+  type        = string
+  default     = ""
+}
+
 variable "image_tag" {
   description = "Docker image tag to deploy"
   type        = string
@@ -316,6 +322,10 @@ resource "google_cloud_run_v2_service" "triage_bot" {
       env {
         name  = "SOURCE_REPO"
         value = var.source_repo
+      }
+      env {
+        name  = "SHADOW_REPOS"
+        value = var.shadow_repos
       }
 
       resources {

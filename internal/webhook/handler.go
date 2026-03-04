@@ -103,31 +103,72 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Only handle issue events
 	eventType := r.Header.Get("X-GitHub-Event")
-	if eventType != "issues" {
+
+	switch eventType {
+	case "issues":
+		var event gh.IssueEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		h.wg.Add(1)
+		go func() {
+			defer h.wg.Done()
+			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			defer cancel()
+			h.processEvent(ctx, event)
+		}()
+
+	case "issue_comment":
+		var event gh.IssueCommentEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		// Only handle new comments, not edits or deletions
+		if event.Action != "created" {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ignored comment action")
+			return
+		}
+		h.wg.Add(1)
+		go func() {
+			defer h.wg.Done()
+			ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
+			defer cancel()
+			h.processCommentEvent(ctx, event)
+		}()
+
+	default:
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ignored event type")
 		return
 	}
 
-	var event gh.IssueEvent
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+	w.WriteHeader(http.StatusAccepted)
+	fmt.Fprint(w, "accepted")
+}
+
+func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueCommentEvent) {
+	repo := event.Repo.FullName
+	commentUser := event.Comment.User.Login
+	commentBody := event.Comment.Body
+	issueNumber := event.Issue.Number
+	installationID := event.Installation.ID
+
+	// Skip bot's own comments
+	if event.Comment.User.Type == "Bot" {
 		return
 	}
 
-	// Handle asynchronously so we respond to GitHub quickly
-	h.wg.Add(1)
-	go func() {
-		defer h.wg.Done()
-		ctx, cancel := context.WithTimeout(h.ctx, 5*time.Minute)
-		defer cancel()
-		h.processEvent(ctx, event)
-	}()
+	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
+	log.Info("processing comment event")
 
-	w.WriteHeader(http.StatusAccepted)
-	fmt.Fprint(w, "accepted")
+	// Check if there's an active agent session for this issue (as shadow repo)
+	if err := h.agentHandler.HandleComment(ctx, installationID, repo, issueNumber, commentBody, commentUser); err != nil {
+		log.Error("handling agent comment", "error", err)
+	}
 }
 
 func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
