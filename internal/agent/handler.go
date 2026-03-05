@@ -350,6 +350,8 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		return h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
 	case store.StageReviewPending:
 		return h.handleReviewResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
+	case store.StageContextBrief:
+		return h.handleContextBriefResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
 	case store.StageApproved:
 		if signal == SignalPromote {
 			return h.handlePromote(ctx, installationID, sess, log)
@@ -383,6 +385,39 @@ func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, s
 
 	log.Info("session rejected")
 	return nil
+}
+
+func (h *AgentHandler) handleContextBriefResponse(ctx context.Context, installationID int64, sess *store.AgentSession, signal ApprovalSignal, commentBody string, commentUser string, log *slog.Logger) error {
+	switch signal {
+	case SignalResearch:
+		log.Info("research requested, starting full research pipeline")
+		title, _ := sess.Context["title"].(string)
+		body, _ := sess.Context["body"].(string)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, nil)
+
+	case SignalUseAsContext:
+		log.Info("context brief acknowledged, closing session")
+		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
+			return fmt.Errorf("update session stage: %w", err)
+		}
+		ack := "Context brief acknowledged. Session closed."
+		_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
+		if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
+			SessionID:         sess.ID,
+			ActionType:        "context_acknowledged",
+			InputHash:         hashString(commentBody),
+			OutputSummary:     "Session closed after context brief acknowledged",
+			SafetyCheckPassed: true,
+			ConfidenceScore:   1.0,
+		}); err != nil {
+			log.Error("create audit entry", "error", err)
+		}
+		return nil
+
+	default:
+		log.Info("ignoring non-signal comment on context brief")
+		return nil
+	}
 }
 
 func (h *AgentHandler) handleClarifyingResponse(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, log *slog.Logger) error {
