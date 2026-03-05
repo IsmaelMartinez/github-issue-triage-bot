@@ -391,3 +391,37 @@ type LabelInfo struct {
 type RepoDetail struct {
 	FullName string `json:"full_name"`
 }
+
+// CloseIssue closes a GitHub issue by setting its state to "closed".
+func (c *Client) CloseIssue(ctx context.Context, installationID int64, repo string, issueNumber int) error {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return fmt.Errorf("installation client: %w", err)
+	}
+
+	payload := map[string]string{"state": "closed"}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.baseURL, repo, issueNumber)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(raw))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
