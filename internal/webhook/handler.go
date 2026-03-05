@@ -213,16 +213,17 @@ func (h *Handler) handleTriageComment(ctx context.Context, installationID int64,
 		}
 		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
 		log.Info("triage comment promoted to public issue")
+		return true, nil
 
 	case agent.SignalReject:
 		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
 		log.Info("triage session rejected")
+		return true, nil
 
 	default:
 		log.Info("ignoring non-signal comment on triage shadow issue")
+		return false, nil
 	}
-
-	return true, nil
 }
 
 func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
@@ -351,18 +352,19 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			_, err = h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, body+instructions)
 			if err != nil {
 				issueLog.Error("posting triage comment on shadow issue", "error", err)
+			} else {
+				if err := h.store.CreateTriageSession(ctx, store.TriageSession{
+					Repo:              repo,
+					IssueNumber:       issue.Number,
+					ShadowRepo:        shadowRepo,
+					ShadowIssueNumber: shadowNumber,
+					TriageComment:     body,
+					PhasesRun:         phasesRun,
+				}); err != nil {
+					issueLog.Error("recording triage session", "error", err)
+				}
+				issueLog.Info("triage comment posted to shadow repo", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
 			}
-			if err := h.store.CreateTriageSession(ctx, store.TriageSession{
-				Repo:              repo,
-				IssueNumber:       issue.Number,
-				ShadowRepo:        shadowRepo,
-				ShadowIssueNumber: shadowNumber,
-				TriageComment:     body,
-				PhasesRun:         phasesRun,
-			}); err != nil {
-				issueLog.Error("recording triage session", "error", err)
-			}
-			issueLog.Info("triage comment posted to shadow repo", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
 		}
 	} else if body != "" {
 		commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
