@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the GitHub Issue Triage Bot.
 
 ## Development Setup
 
-You need Go 1.22+ and a PostgreSQL instance with pgvector. The easiest way to get a local database is Docker Compose:
+You need Go 1.26+ and a PostgreSQL instance with pgvector. The easiest way to get a local database is Docker Compose:
 
 ```bash
 docker-compose up -d
@@ -18,6 +18,8 @@ export GEMINI_API_KEY="..."
 export GITHUB_APP_ID="..."
 export GITHUB_PRIVATE_KEY="..."   # base64-encoded PEM
 export WEBHOOK_SECRET="..."
+export SILENT_MODE="false"          # optional, default "true" (observer mode)
+export SHADOW_REPOS="owner/repo:owner/shadow"  # optional, comma-separated mappings
 ```
 
 Build and run:
@@ -57,7 +59,7 @@ The triage pipeline runs in phases when a new GitHub issue is opened:
 - Phase 4a (vector search + LLM): For enhancements, finds related roadmap/ADR/research context.
 - Phase 4b (LLM): Checks for misclassification (bug vs enhancement vs question).
 
-For enhancement issues with a configured shadow repo, an agent session is started that creates a mirror issue in the private shadow repo, generates a research document, and awaits maintainer review before publishing results back to the public issue.
+For enhancement issues with a configured shadow repo, the bot also starts an Enhancement Researcher agent session. The agent creates a mirror issue in a private shadow repository, synthesizes a research document using vector search context, and progresses through a state machine (clarifying questions, research, review). A maintainer controls the flow via comment signals: `lgtm` to approve, `revise` for changes, `reject` to discard, and `publish` to post a curated summary on the original public issue. All agent outputs pass through two safety layers — a structural validator and an LLM reviewer — and the agent escalates to a human after 4 round-trips without reaching review. See `internal/agent/` for the implementation and `docs/decisions/` for the relevant ADRs.
 
 All phase results are consolidated into a single comment by `internal/comment/builder.go`.
 
