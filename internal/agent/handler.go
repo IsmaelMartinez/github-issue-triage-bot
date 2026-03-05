@@ -37,10 +37,9 @@ func NewAgentHandler(s *store.Store, l llm.Provider, g *gh.Client, structural *s
 	}
 }
 
-// StartSession creates a mirror issue in the shadow repo and begins the
-// enhancement analysis pipeline. If the LLM determines clarification is
-// needed, it posts questions on the shadow issue; otherwise it proceeds
-// directly to research.
+// StartSession creates a mirror issue in the shadow repo and posts a context
+// brief summarising related documents and issues. Maintainers can then reply
+// with "research" to trigger full synthesis, or "reject" to close the session.
 func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, title, body string) error {
 	log := h.logger.With("sourceRepo", sourceRepo, "issue", issueNumber, "shadowRepo", shadowRepo)
 
@@ -67,17 +66,72 @@ func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, s
 	}
 	log = log.With("sessionID", sessionID)
 
-	// Analyze enhancement to check if clarification is needed
-	analysis, err := AnalyzeEnhancement(ctx, h.llm, title, body)
+	// Embed title+body for vector search
+	embedding, err := h.llm.Embed(ctx, fmt.Sprintf("%s\n%s", title, body))
 	if err != nil {
-		return fmt.Errorf("analyze enhancement: %w", err)
+		return fmt.Errorf("embed issue: %w", err)
 	}
-	log.Info("enhancement analyzed", "needsClarification", analysis.NeedsClarification, "confidence", analysis.Confidence)
 
-	if analysis.NeedsClarification {
-		return h.askClarifyingQuestions(ctx, installationID, sessionID, shadowRepo, shadowNumber, sourceRepo, issueNumber, analysis, title)
+	// Search for similar documents (non-fatal)
+	similarDocs, err := h.store.FindSimilarDocuments(ctx, sourceRepo, store.EnhancementDocTypes, embedding, 5)
+	if err != nil {
+		log.Error("find similar documents", "error", err)
 	}
-	return h.startResearch(ctx, installationID, sessionID, shadowRepo, shadowNumber, sourceRepo, issueNumber, title, body, nil)
+
+	// Search for similar issues (non-fatal)
+	similarIssues, err := h.store.FindSimilarIssues(ctx, sourceRepo, embedding, issueNumber, 5)
+	if err != nil {
+		log.Error("find similar issues", "error", err)
+	}
+
+	// Build context brief
+	brief, err := BuildContextBrief(ctx, h.llm, title, body, similarDocs, similarIssues, sourceRepo, issueNumber)
+	if err != nil {
+		return fmt.Errorf("build context brief: %w", err)
+	}
+
+	// Format as markdown
+	briefMD := FormatContextBriefMarkdown(brief)
+
+	// Run structural safety check
+	structResult := h.structural.Validate(briefMD)
+	if !structResult.Passed {
+		log.Error("structural safety check failed for context brief", "reason", structResult.Reason)
+		return fmt.Errorf("structural safety check failed: %s", structResult.Reason)
+	}
+
+	// Run LLM safety check
+	issueContext := fmt.Sprintf("Enhancement: %s\n\n%s", title, body)
+	llmResult := h.llmSafety.ValidateWithContext(ctx, briefMD, issueContext)
+	if !llmResult.Passed {
+		log.Error("LLM safety check failed for context brief", "reason", llmResult.Reason)
+		return fmt.Errorf("LLM safety check failed: %s", llmResult.Reason)
+	}
+
+	// Post context brief on shadow issue
+	if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, briefMD); err != nil {
+		return fmt.Errorf("post context brief: %w", err)
+	}
+
+	// Update session to context_brief stage
+	if err := h.store.UpdateSessionStage(ctx, sessionID, store.StageContextBrief, map[string]any{"title": title, "body": body}, 0); err != nil {
+		return fmt.Errorf("update session stage: %w", err)
+	}
+
+	// Create audit entry
+	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
+		SessionID:         sessionID,
+		ActionType:        "posted_context_brief",
+		InputHash:         hashString(title + body),
+		OutputSummary:     truncate(briefMD, 200),
+		SafetyCheckPassed: true,
+		ConfidenceScore:   llmResult.Confidence,
+	}); err != nil {
+		log.Error("create audit entry", "error", err)
+	}
+
+	log.Info("posted context brief", "docs", len(similarDocs), "issues", len(similarIssues))
+	return nil
 }
 
 func (h *AgentHandler) askClarifyingQuestions(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, analysis *EnhancementAnalysis, title string) error {
