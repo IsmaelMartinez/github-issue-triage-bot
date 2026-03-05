@@ -68,6 +68,7 @@ const (
 	StageRevision      = "revision"
 	StageApproved      = "approved"
 	StageComplete      = "complete"
+	StageContextBrief  = "context_brief"
 )
 
 // Approval gate type constants.

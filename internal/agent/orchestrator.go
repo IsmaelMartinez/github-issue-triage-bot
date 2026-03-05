@@ -10,6 +10,8 @@ const (
 	SignalRevise
 	SignalReject
 	SignalPromote
+	SignalResearch
+	SignalUseAsContext
 )
 
 const MaxRoundTrips = 4
@@ -20,6 +22,12 @@ func ParseApprovalSignal(comment string) ApprovalSignal {
 	// Check promote first (more specific)
 	if strings.Contains(normalized, "publish") || strings.Contains(normalized, "promote") {
 		return SignalPromote
+	}
+	if strings.Contains(normalized, "use as context") {
+		return SignalUseAsContext
+	}
+	if strings.Contains(normalized, "research") {
+		return SignalResearch
 	}
 	if strings.Contains(normalized, "revise") || strings.Contains(normalized, "needs changes") || strings.Contains(normalized, "request changes") {
 		return SignalRevise
