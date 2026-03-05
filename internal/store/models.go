@@ -119,16 +119,15 @@ type AuditEntry struct {
 	CreatedAt         time.Time
 }
 
-// TriageResultRecord stores a silent triage result (draft comment not posted to GitHub).
-type TriageResultRecord struct {
-	ID           int64
-	Repo         string
-	IssueNumber  int
-	IssueTitle   string
-	DraftComment string
-	PhasesRun    []string
-	PhaseDetails map[string]any
-	CreatedAt    time.Time
+// TriageSession tracks a shadow issue created for triage review.
+type TriageSession struct {
+	ID                int64
+	Repo              string
+	IssueNumber       int
+	ShadowRepo        string
+	ShadowIssueNumber int
+	TriageComment     string
+	PhasesRun         []string
 }
 
 // ApprovalGate represents a human-in-the-loop checkpoint in the agent workflow.
