@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
 type EnhancementAnalysis struct {
@@ -152,6 +153,107 @@ func FormatResearchMarkdown(doc *ResearchDocument, sourceRepo string, issueNumbe
 	for _, q := range doc.OpenQuestions {
 		fmt.Fprintf(&sb, "- %s\n", q)
 	}
+
+	return sb.String()
+}
+
+// ContextBrief holds raw vector search results partitioned by type,
+// along with a short LLM-generated summary.
+type ContextBrief struct {
+	Summary    string
+	SourceRepo string
+	IssueNum   int
+	Title      string
+	ADRs       []store.SimilarDocument
+	Roadmap    []store.SimilarDocument
+	Research   []store.SimilarDocument
+	Issues     []store.SimilarIssue
+}
+
+const contextBriefSummaryPrompt = `You are a technical analyst. Given an enhancement request title and body, write a 2-3 sentence summary of what is being requested and why it matters. Be concise and factual. Do not suggest solutions.
+
+Respond with JSON: {"summary": "string"}`
+
+// BuildContextBrief assembles vector search results into a structured brief
+// with an LLM-generated summary, partitioning documents by type.
+func BuildContextBrief(ctx context.Context, provider llm.Provider, title, body string, docs []store.SimilarDocument, issues []store.SimilarIssue, sourceRepo string, issueNumber int) (*ContextBrief, error) {
+	userContent := fmt.Sprintf("Enhancement title: %s\n\nEnhancement body:\n%s", title, body)
+
+	raw, err := provider.GenerateJSONWithSystem(ctx, contextBriefSummaryPrompt, userContent, 0.3, 1024)
+	if err != nil {
+		return nil, fmt.Errorf("generate context brief summary: %w", err)
+	}
+
+	var parsed struct {
+		Summary string `json:"summary"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("parse context brief summary: %w", err)
+	}
+
+	brief := &ContextBrief{
+		Summary:    parsed.Summary,
+		SourceRepo: sourceRepo,
+		IssueNum:   issueNumber,
+		Title:      title,
+	}
+
+	for _, doc := range docs {
+		switch doc.DocType {
+		case "adr":
+			brief.ADRs = append(brief.ADRs, doc)
+		case "roadmap":
+			brief.Roadmap = append(brief.Roadmap, doc)
+		case "research":
+			brief.Research = append(brief.Research, doc)
+		}
+	}
+
+	brief.Issues = issues
+
+	return brief, nil
+}
+
+// FormatContextBriefMarkdown renders a ContextBrief as markdown suitable
+// for posting as a GitHub comment.
+func FormatContextBriefMarkdown(brief *ContextBrief) string {
+	var sb strings.Builder
+
+	fmt.Fprintf(&sb, "## Context Brief: %s\n\n", brief.Title)
+	fmt.Fprintf(&sb, "> Context for %s#%d\n\n", brief.SourceRepo, brief.IssueNum)
+	sb.WriteString(brief.Summary)
+	sb.WriteString("\n\n")
+
+	if len(brief.ADRs) > 0 {
+		sb.WriteString("### Architecture Decisions\n\n")
+		for _, doc := range brief.ADRs {
+			fmt.Fprintf(&sb, "**%s**\n\n%s\n\n", doc.Title, truncate(doc.Content, 500))
+		}
+	}
+
+	if len(brief.Roadmap) > 0 {
+		sb.WriteString("### Roadmap\n\n")
+		for _, doc := range brief.Roadmap {
+			fmt.Fprintf(&sb, "**%s**\n\n%s\n\n", doc.Title, truncate(doc.Content, 500))
+		}
+	}
+
+	if len(brief.Research) > 0 {
+		sb.WriteString("### Prior Research\n\n")
+		for _, doc := range brief.Research {
+			fmt.Fprintf(&sb, "**%s**\n\n%s\n\n", doc.Title, truncate(doc.Content, 500))
+		}
+	}
+
+	if len(brief.Issues) > 0 {
+		sb.WriteString("### Related Issues\n\n")
+		for _, iss := range brief.Issues {
+			fmt.Fprintf(&sb, "- #%d **%s** (%s) — %s\n", iss.Number, iss.Title, iss.State, iss.Summary)
+		}
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("Reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge, or `reject` to close.")
 
 	return sb.String()
 }
