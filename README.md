@@ -14,26 +14,50 @@ The bot runs as a Go service on Google Cloud Run, receiving GitHub webhook event
 
 All phase results are consolidated into a single markdown comment. The bot identifies itself as automated and notes that a maintainer will review.
 
+### Enhancement Researcher Agent
+
+For enhancement issues with a configured shadow repo, the bot starts an agent session that runs alongside the triage pipeline. The agent creates a mirror issue in a private shadow repository and synthesizes a research document drawing on roadmap items, ADRs, and past issues via vector search. It progresses through a state machine: optionally asking clarifying questions, generating research, and waiting for maintainer review.
+
+A maintainer controls the agent via comment signals on the shadow issue: `lgtm` to approve, `revise` to request changes, `reject` to discard, and `publish` or `promote` to post a curated summary back on the original public issue. All agent outputs pass through two safety layers before being posted — a structural validator (length limits, URL allowlists, mention blocking, control character detection) and an LLM reviewer (relevance, tone, prompt injection detection). If the agent reaches 4 round-trips without progressing to review, it escalates to a human.
+
+### Silent Mode
+
+The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` environment variable (default: `"true"`). In silent mode, triage results are stored in the database for dashboard review but no comments are posted on GitHub issues. Set `SILENT_MODE=false` to enable public commenting. Agent sessions in shadow repos are unaffected by this setting. See `docs/decisions/002-silent-mode.md` for the full rationale.
+
+### Dashboard
+
+A daily-generated dashboard at https://ismaelmartinez.github.io/github-issue-triage-bot/ shows triage activity, phase hit rates, reaction metrics, and agent session status. It is built by `cmd/dashboard` and deployed to GitHub Pages via `.github/workflows/dashboard.yml`.
+
 ## Architecture
 
 ```
-GitHub Webhook (issue events)
+GitHub Webhook (issue + comment events)
         |
         v
 Cloud Run (Go binary)
         |
-        +-- Phase 1: Template parsing (no LLM)
-        +-- Phase 2: pgvector search + Gemini (bugs)
-        +-- Phase 3: pgvector search + Gemini (bugs)
-        +-- Phase 4a: pgvector search + Gemini (enhancements)
-        +-- Phase 4b: Gemini classification (all)
+        +-- Triage Pipeline
+        |       +-- Phase 1: Template parsing (no LLM)
+        |       +-- Phase 2: pgvector search + Gemini (bugs)
+        |       +-- Phase 3: pgvector search + Gemini (bugs)
+        |       +-- Phase 4a: pgvector search + Gemini (enhancements)
+        |       +-- Phase 4b: Gemini classification (all)
+        |       |
+        |       v
+        |   Post comment / store for dashboard (silent mode)
+        |
+        +-- Enhancement Researcher Agent (if shadow repo configured)
+                |
+                +-- Create mirror issue in shadow repo
+                +-- Research synthesis (pgvector + Gemini)
+                +-- Safety layers (structural + LLM)
+                +-- Maintainer approval (lgtm/revise/reject/publish)
+                +-- Publish summary to public issue
         |
         v
-Post consolidated comment via GitHub API
-        |
-        v
-Neon PostgreSQL + pgvector
-(documents, issues, bot_comments)
+Neon PostgreSQL + pgvector             GitHub Pages Dashboard
+(documents, issues, bot_comments,      (daily via cmd/dashboard)
+ agent_sessions, agent_audit_log)
 ```
 
 ## Development
@@ -57,7 +81,9 @@ DATABASE_URL="..." GEMINI_API_KEY="..." GITHUB_APP_ID="..." GITHUB_PRIVATE_KEY="
 
 ### Environment variables
 
-The server requires `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, and `WEBHOOK_SECRET`. `GEMINI_API_KEY` is optional (the bot logs a warning and skips LLM phases if unset). `GITHUB_PRIVATE_KEY` should contain the PEM content either as raw PEM text or base64-encoded PEM. Two optional variables control runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks), and `PORT` sets the HTTP listen port (defaults to 8080).
+The server requires `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, and `WEBHOOK_SECRET`. `GEMINI_API_KEY` is optional (the bot logs a warning and skips LLM phases if unset). `GITHUB_PRIVATE_KEY` should contain the PEM content either as raw PEM text or base64-encoded PEM.
+
+Optional variables controlling runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks). `SILENT_MODE` (default `"true"`) controls whether triage comments are posted publicly or stored silently for dashboard review — set to `"false"` to enable posting. `SHADOW_REPOS` defines shadow repo mappings for the Enhancement Researcher agent as comma-separated `owner/repo:owner/shadow` pairs (e.g., `IsmaelMartinez/teams-for-linux:IsmaelMartinez/triage-bot-shadow`). `PORT` sets the HTTP listen port (defaults to 8080).
 
 ### Deployment
 
@@ -97,8 +123,8 @@ See `docs/decisions/` for architecture decision records and `docs/plans/` for im
 
 To use this bot on your own repository:
 
-1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write). Subscribe to the "Issues" webhook event. Set the webhook URL to your Cloud Run service URL + `/webhook`.
+1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write), Contents (read & write), Pull requests (read & write). Subscribe to "Issues" and "Issue comments" webhook events. Set the webhook URL to your Cloud Run service URL + `/webhook`.
 2. Generate and download a private key PEM file from the App settings.
-3. Install the App on the target repository.
+3. Install the App on the target repository. If using the Enhancement Researcher agent, also install it on the shadow repository so the bot can create mirror issues and respond to approval signals there.
 4. Set the environment variables: `GITHUB_APP_ID` (numeric App ID from settings), `GITHUB_PRIVATE_KEY` (base64-encoded PEM or raw PEM content), and `WEBHOOK_SECRET` (the secret you configured when creating the App).
 5. Deploy via `terraform apply` or set the secrets in your CI/CD environment.
