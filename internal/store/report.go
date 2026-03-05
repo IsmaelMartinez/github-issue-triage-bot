@@ -2,21 +2,18 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 )
 
 // DashboardStats holds aggregated statistics for the dashboard.
 type DashboardStats struct {
-	TotalComments   int               `json:"total_comments"`
-	TotalThumbsUp   int               `json:"total_thumbs_up"`
-	TotalThumbsDown int               `json:"total_thumbs_down"`
-	PhaseBreakdown  map[string]int    `json:"phase_breakdown"`
-	DocumentCounts  map[string]int    `json:"document_counts"`
-	IssueCount      int               `json:"issue_count"`
-	RecentComments  []RecentComment   `json:"recent_comments"`
-	TotalDrafts     int               `json:"total_drafts"`
-	RecentDrafts    []RecentDraft     `json:"recent_drafts"`
+	TotalComments   int             `json:"total_comments"`
+	TotalThumbsUp   int             `json:"total_thumbs_up"`
+	TotalThumbsDown int             `json:"total_thumbs_down"`
+	PhaseBreakdown  map[string]int  `json:"phase_breakdown"`
+	DocumentCounts  map[string]int  `json:"document_counts"`
+	IssueCount      int             `json:"issue_count"`
+	RecentComments  []RecentComment `json:"recent_comments"`
 }
 
 // RecentComment represents a recent bot comment for the dashboard.
@@ -30,23 +27,12 @@ type RecentComment struct {
 	CreatedAt   string   `json:"created_at"`
 }
 
-// RecentDraft represents a silent triage result for the dashboard.
-type RecentDraft struct {
-	Repo         string         `json:"repo"`
-	IssueNumber  int            `json:"issue_number"`
-	IssueTitle   string         `json:"issue_title"`
-	PhasesRun    []string       `json:"phases_run"`
-	PhaseDetails map[string]any `json:"phase_details"`
-	CreatedAt    string         `json:"created_at"`
-}
-
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
 func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardStats, error) {
 	stats := &DashboardStats{
 		PhaseBreakdown: make(map[string]int),
 		DocumentCounts: make(map[string]int),
 		RecentComments: []RecentComment{},
-		RecentDrafts:   []RecentDraft{},
 	}
 
 	// Total comments, sum thumbs_up, sum thumbs_down
@@ -127,39 +113,6 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		stats.RecentComments = append(stats.RecentComments, rc)
 	}
 	if err := rows3.Err(); err != nil {
-		return nil, err
-	}
-
-	// Total silent triage drafts
-	err = s.pool.QueryRow(ctx, `
-		SELECT COALESCE(COUNT(*), 0) FROM triage_results WHERE repo = $1
-	`, repo).Scan(&stats.TotalDrafts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Recent 20 triage drafts
-	rows4, err := s.pool.Query(ctx, `
-		SELECT repo, issue_number, issue_title, phases_run, phase_details, created_at
-		FROM triage_results WHERE repo = $1
-		ORDER BY created_at DESC LIMIT 20
-	`, repo)
-	if err != nil {
-		return nil, err
-	}
-	defer rows4.Close()
-	for rows4.Next() {
-		var rd RecentDraft
-		var createdAt time.Time
-		var details []byte
-		if err := rows4.Scan(&rd.Repo, &rd.IssueNumber, &rd.IssueTitle, &rd.PhasesRun, &details, &createdAt); err != nil {
-			return nil, err
-		}
-		_ = json.Unmarshal(details, &rd.PhaseDetails)
-		rd.CreatedAt = createdAt.Format(time.RFC3339)
-		stats.RecentDrafts = append(stats.RecentDrafts, rd)
-	}
-	if err := rows4.Err(); err != nil {
 		return nil, err
 	}
 

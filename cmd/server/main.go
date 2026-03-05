@@ -85,12 +85,8 @@ func main() {
 		logger.Info("shadow repos configured", "count", len(shadowRepos))
 	}
 
-	// Silent mode: store triage results without posting comments (default: true)
-	silentMode := os.Getenv("SILENT_MODE") != "false"
-	logger.Info("silent mode", "enabled", silentMode)
-
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, silentMode, s, llmClient, ghClient, logger, ctx, shadowRepos)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, shadowRepos)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)

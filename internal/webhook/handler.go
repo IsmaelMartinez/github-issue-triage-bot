@@ -31,7 +31,6 @@ const (
 type Handler struct {
 	webhookSecret string
 	sourceRepo    string
-	silentMode    bool
 	store         *store.Store
 	llm           llm.Provider
 	github        *gh.Client
@@ -44,10 +43,9 @@ type Handler struct {
 
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
-// silentMode stores triage results without posting comments to GitHub.
 // ctx is used as the parent context for background triage goroutines.
-// shadowRepos maps source repos to their shadow repos for agent sessions.
-func New(webhookSecret string, sourceRepo string, silentMode bool, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string) *Handler {
+// shadowRepos maps source repos to their shadow repos for triage review and agent sessions.
+func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string) *Handler {
 	structural := safety.NewStructuralValidator(safety.StructuralConfig{
 		MaxCommentLength: maxCommentLength,
 		AllowedURLHosts:  []string{"github.com", "ismaelmartinez.github.io"},
@@ -58,7 +56,6 @@ func New(webhookSecret string, sourceRepo string, silentMode bool, s *store.Stor
 	return &Handler{
 		webhookSecret: webhookSecret,
 		sourceRepo:    sourceRepo,
-		silentMode:    silentMode,
 		store:         s,
 		llm:           l,
 		github:        g,
@@ -166,7 +163,6 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 	issueNumber := event.Issue.Number
 	installationID := event.Installation.ID
 
-	// Skip bot's own comments
 	if event.Comment.User.Type == "Bot" {
 		return
 	}
@@ -174,9 +170,59 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
 	log.Info("processing comment event")
 
-	// Check if there's an active agent session for this issue (as shadow repo)
+	// Check triage session first
+	handled, err := h.handleTriageComment(ctx, installationID, repo, issueNumber, commentBody)
+	if err != nil {
+		log.Error("handling triage comment", "error", err)
+	}
+	if handled {
+		return
+	}
+
+	// Fall through to agent session handler
 	if err := h.agentHandler.HandleComment(ctx, installationID, repo, issueNumber, commentBody, commentUser); err != nil {
 		log.Error("handling agent comment", "error", err)
+	}
+}
+
+func (h *Handler) handleTriageComment(ctx context.Context, installationID int64, shadowRepo string, shadowIssueNumber int, commentBody string) (bool, error) {
+	ts, err := h.store.GetTriageSessionByShadow(ctx, shadowRepo, shadowIssueNumber)
+	if err != nil {
+		return false, err
+	}
+	if ts == nil {
+		return false, nil
+	}
+
+	log := h.logger.With("repo", ts.Repo, "issue", ts.IssueNumber, "shadowRepo", shadowRepo, "shadowIssue", shadowIssueNumber)
+	signal := agent.ParseApprovalSignal(commentBody)
+
+	switch signal {
+	case agent.SignalApproved:
+		commentID, err := h.github.CreateComment(ctx, installationID, ts.Repo, ts.IssueNumber, ts.TriageComment)
+		if err != nil {
+			return true, fmt.Errorf("post triage comment publicly: %w", err)
+		}
+		if err := h.store.RecordBotComment(ctx, store.BotComment{
+			Repo:        ts.Repo,
+			IssueNumber: ts.IssueNumber,
+			CommentID:   commentID,
+			PhasesRun:   ts.PhasesRun,
+		}); err != nil {
+			log.Error("recording bot comment after promotion", "error", err)
+		}
+		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
+		log.Info("triage comment promoted to public issue")
+		return true, nil
+
+	case agent.SignalReject:
+		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
+		log.Info("triage session rejected")
+		return true, nil
+
+	default:
+		log.Info("ignoring non-signal comment on triage shadow issue")
+		return false, nil
 	}
 }
 
@@ -205,7 +251,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Check if already processed (bot comment or silent triage result)
+	// Check if already processed (bot comment or shadow triage session)
 	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
 	if err != nil {
 		issueLog.Error("checking bot comment", "error", err)
@@ -215,16 +261,14 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		issueLog.Info("bot already commented")
 		return
 	}
-	if h.silentMode {
-		triaged, err := h.store.HasTriageResult(ctx, repo, issue.Number)
-		if err != nil {
-			issueLog.Error("checking triage result", "error", err)
-			return
-		}
-		if triaged {
-			issueLog.Info("already triaged silently")
-			return
-		}
+	triaged, err := h.store.HasTriageSession(ctx, repo, issue.Number)
+	if err != nil {
+		issueLog.Error("checking triage session", "error", err)
+		return
+	}
+	if triaged {
+		issueLog.Info("already triaged via shadow repo")
+		return
 	}
 
 	// Update issue in database under the webhook repo (after bot/duplicate checks to avoid wasting an embedding call)
@@ -296,23 +340,33 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	body := comment.Build(result)
 	phasesRun := collectPhasesRun(result)
 
-	switch {
-	case h.silentMode:
-		// Store draft without posting to GitHub
-		phaseDetails := buildPhaseDetails(result)
-		if err := h.store.RecordTriageResult(ctx, store.TriageResultRecord{
-			Repo:         repo,
-			IssueNumber:  issue.Number,
-			IssueTitle:   issue.Title,
-			DraftComment: body,
-			PhasesRun:    phasesRun,
-			PhaseDetails: phaseDetails,
-		}); err != nil {
-			issueLog.Error("recording triage result", "error", err)
+	if shadowRepo, ok := h.shadowRepos[repo]; ok && body != "" {
+		// Post to shadow repo for review
+		shadowTitle := fmt.Sprintf("[Triage] #%d: %s", issue.Number, issue.Title)
+		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
+		shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
+		if err != nil {
+			issueLog.Error("creating shadow triage issue", "error", err)
 		} else {
-			issueLog.Info("triage result stored silently", "phases", phasesRun)
+			instructions := "\n\n---\n\nReply `lgtm` to post this comment publicly, or `reject` to discard."
+			_, err = h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, body+instructions)
+			if err != nil {
+				issueLog.Error("posting triage comment on shadow issue", "error", err)
+			} else {
+				if err := h.store.CreateTriageSession(ctx, store.TriageSession{
+					Repo:              repo,
+					IssueNumber:       issue.Number,
+					ShadowRepo:        shadowRepo,
+					ShadowIssueNumber: shadowNumber,
+					TriageComment:     body,
+					PhasesRun:         phasesRun,
+				}); err != nil {
+					issueLog.Error("recording triage session", "error", err)
+				}
+				issueLog.Info("triage comment posted to shadow repo", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
+			}
 		}
-	case body != "":
+	} else if body != "" {
 		commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
 		if err != nil {
 			issueLog.Error("posting comment", "error", err)
@@ -327,7 +381,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			}
 			issueLog.Info("comment posted", "phases", phasesRun)
 		}
-	default:
+	} else {
 		issueLog.Info("nothing to report in triage comment")
 	}
 
@@ -422,30 +476,6 @@ func sanitizeBody(body string, maxLen int) string {
 		result = result[:maxLen]
 	}
 	return result
-}
-
-func buildPhaseDetails(r comment.TriageResult) map[string]any {
-	details := map[string]any{}
-	details["phase1"] = map[string]any{
-		"missing_items":      len(r.Phase1.MissingItems),
-		"pwa_reproducible":   r.Phase1.IsPwaReproducible,
-	}
-	if r.Phase2 != nil {
-		details["phase2"] = map[string]any{"suggestion_count": len(r.Phase2)}
-	}
-	if r.Phase3 != nil {
-		details["phase3"] = map[string]any{"duplicate_count": len(r.Phase3)}
-	}
-	if r.Phase4a != nil {
-		details["phase4a"] = map[string]any{"context_match_count": len(r.Phase4a)}
-	}
-	if r.Phase4b != nil {
-		details["phase4b"] = map[string]any{
-			"suggested_label": r.Phase4b.SuggestedLabel,
-			"reason":          r.Phase4b.Reason,
-		}
-	}
-	return details
 }
 
 func collectPhasesRun(r comment.TriageResult) []string {
