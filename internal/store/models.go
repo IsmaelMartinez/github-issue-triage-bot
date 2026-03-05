@@ -128,6 +128,7 @@ type TriageSession struct {
 	ShadowIssueNumber int
 	TriageComment     string
 	PhasesRun         []string
+	CreatedAt         time.Time
 }
 
 // ApprovalGate represents a human-in-the-loop checkpoint in the agent workflow.

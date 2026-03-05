@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -25,13 +24,13 @@ func (s *Store) CreateTriageSession(ctx context.Context, ts TriageSession) error
 func (s *Store) GetTriageSessionByShadow(ctx context.Context, shadowRepo string, shadowIssueNumber int) (*TriageSession, error) {
 	var ts TriageSession
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, repo, issue_number, shadow_repo, shadow_issue_number, triage_comment, phases_run
+		SELECT id, repo, issue_number, shadow_repo, shadow_issue_number, triage_comment, phases_run, created_at
 		FROM triage_sessions WHERE shadow_repo = $1 AND shadow_issue_number = $2
 	`, shadowRepo, shadowIssueNumber).Scan(
-		&ts.ID, &ts.Repo, &ts.IssueNumber, &ts.ShadowRepo, &ts.ShadowIssueNumber, &ts.TriageComment, &ts.PhasesRun,
+		&ts.ID, &ts.Repo, &ts.IssueNumber, &ts.ShadowRepo, &ts.ShadowIssueNumber, &ts.TriageComment, &ts.PhasesRun, &ts.CreatedAt,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if err == pgx.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
@@ -41,9 +40,9 @@ func (s *Store) GetTriageSessionByShadow(ctx context.Context, shadowRepo string,
 
 // HasTriageSession returns true if a triage session already exists for the given issue.
 func (s *Store) HasTriageSession(ctx context.Context, repo string, issueNumber int) (bool, error) {
-	var count int
+	var exists bool
 	err := s.pool.QueryRow(ctx, `
-		SELECT COUNT(*) FROM triage_sessions WHERE repo = $1 AND issue_number = $2
-	`, repo, issueNumber).Scan(&count)
-	return count > 0, err
+		SELECT EXISTS(SELECT 1 FROM triage_sessions WHERE repo = $1 AND issue_number = $2)
+	`, repo, issueNumber).Scan(&exists)
+	return exists, err
 }
