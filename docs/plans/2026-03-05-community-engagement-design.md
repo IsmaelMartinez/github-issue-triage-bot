@@ -1,7 +1,19 @@
 # Community Engagement Design: Maintainer-First Triage
 
 Date: 2026-03-05
-Status: Approved
+Status: Implemented (Stage A active)
+
+## Current State (2026-03-06)
+
+The bot is deployed and running in Stage A (invisible helper) on both teams-for-linux and the test repo. Silent mode has been removed (PR #30). Shadow repos handle all gating: `IsmaelMartinez/teams-for-linux` → `IsmaelMartinez/teams-for-linux-shadow`, `IsmaelMartinez/triage-bot-test-repo` → `IsmaelMartinez/triage-bot-test-repo-shadow`.
+
+Track 1 (bug triage via shadow repo) is live. New bug issues get a `[Triage]` shadow issue with the full triage comment. `lgtm` promotes to the public issue; `reject` closes the session. Verified end-to-end on test repo (shadow issues #6, #11).
+
+Track 2 (enhancement context brief) is live after PR #32 (context brief flow) and PR #33 (skip LLM safety check for briefs). New enhancement issues get a `[Research]` shadow issue with a context brief. `research` triggers full Gemini synthesis, `use as context` acknowledges and closes, `reject` closes. Verified end-to-end on test repo (shadow issues #8, #9, #10).
+
+One real issue has been processed on teams-for-linux: enhancement #2304 (spellcheck) arrived before the context brief code was deployed, so it went through the old full-research flow. Bug issues #2300, #2296, #2293, #2292 were processed while silent mode was still active, so no shadow issues were created for them.
+
+Dashboard gap: the dashboard does not yet surface agent session outcomes (lgtm/reject/research/use-as-context rates). The data is in `agent_sessions` and `agent_audit_log` tables but needs queries and UI. This is needed before Stage B graduation decisions can be data-driven.
 
 ## Problem
 
@@ -57,25 +69,25 @@ Re-enable direct public posting for phases with high lgtm rates. Add the feedbac
 
 ## Implementation Scope
 
-### Changes required
+### Completed (PRs #30, #32, #33)
 
-`internal/agent/handler.go`: modify StartSession to post a context brief instead of entering the clarifying/research flow by default. New function to assemble the context brief using existing vector search helpers.
+`internal/agent/handler.go`: StartSession rewritten to post a context brief instead of entering the clarifying/research flow. `handleContextBriefResponse` handles research/use-as-context/reject signals. `askClarifyingQuestions` removed (unused after rewrite). LLM safety check skipped for context briefs (structural check only) because briefs intentionally include diverse vector search results.
 
-`internal/agent/research.go`: new function to build the context brief template (request summary + related context sections). Reuses existing vector search calls.
+`internal/agent/research.go`: `BuildContextBrief` assembles vector search results with an LLM-generated summary, partitioning documents by type (ADR/roadmap/research). `FormatContextBriefMarkdown` renders conditional sections with action signal footer.
 
-`internal/store/models.go`: new stage constant StageContextBrief.
+`internal/store/models.go`: `StageContextBrief` constant added.
 
-`internal/agent/orchestrator.go`: recognize `research` signal to branch from StageContextBrief into the existing research flow. Recognize `use as context` to complete the session.
+`internal/agent/orchestrator.go`: `SignalResearch` and `SignalUseAsContext` signals added with parsing logic.
 
-Deployment config: set SILENT_MODE=false (or remove the silent mode check entirely since shadow repos handle the gating).
+Deployment: silent mode removed (PR #30), shadow repos configured for both teams-for-linux and test repo.
 
-### What stays the same
+### What stayed the same
 
-The triage pipeline (all phases), comment builder, safety layers, shadow repo infrastructure, dashboard, reaction sync, the full research/revision/PR/publish flow (accessible via research signal), and all approval signal parsing. The bug triage path has zero code changes.
+The triage pipeline (all phases), comment builder, safety layers, shadow repo infrastructure, dashboard, reaction sync, the full research/revision/PR/publish flow (accessible via research signal), and all approval signal parsing. The bug triage path had zero code changes.
 
-### What gets removed
+### Outstanding
 
-Nothing. The existing research pipeline becomes opt-in rather than default, but no code is deleted.
+The dashboard does not surface agent session metrics. Adding lgtm/reject/research/use-as-context rates to the dashboard is needed for data-driven Stage B graduation.
 
 ## Measuring Success
 

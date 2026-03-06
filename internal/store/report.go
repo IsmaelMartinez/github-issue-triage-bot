@@ -14,6 +14,42 @@ type DashboardStats struct {
 	DocumentCounts  map[string]int  `json:"document_counts"`
 	IssueCount      int             `json:"issue_count"`
 	RecentComments  []RecentComment `json:"recent_comments"`
+	TriageStats     *TriageStats    `json:"triage_stats"`
+	AgentStats      *AgentStats     `json:"agent_stats"`
+}
+
+// TriageStats tracks shadow repo triage outcomes.
+type TriageStats struct {
+	Total    int              `json:"total"`
+	Promoted int              `json:"promoted"`
+	Pending  int              `json:"pending"`
+	Recent   []RecentTriage   `json:"recent"`
+}
+
+// RecentTriage represents a recent triage session for the dashboard.
+type RecentTriage struct {
+	Repo        string `json:"repo"`
+	IssueNumber int    `json:"issue_number"`
+	ShadowIssue int    `json:"shadow_issue"`
+	Promoted    bool   `json:"promoted"`
+	CreatedAt   string `json:"created_at"`
+}
+
+// AgentStats tracks enhancement agent session outcomes.
+type AgentStats struct {
+	Total          int            `json:"total"`
+	StageBreakdown map[string]int `json:"stage_breakdown"`
+	ActionBreakdown map[string]int `json:"action_breakdown"`
+	Recent         []RecentAgent  `json:"recent"`
+}
+
+// RecentAgent represents a recent agent session for the dashboard.
+type RecentAgent struct {
+	Repo        string `json:"repo"`
+	IssueNumber int    `json:"issue_number"`
+	ShadowIssue int    `json:"shadow_issue"`
+	Stage       string `json:"stage"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // RecentComment represents a recent bot comment for the dashboard.
@@ -116,7 +152,155 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 
+	// Triage session stats
+	triageStats, err := s.getTriageStats(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.TriageStats = triageStats
+
+	// Agent session stats
+	agentStats, err := s.getAgentStats(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.AgentStats = agentStats
+
 	return stats, nil
+}
+
+func (s *Store) getTriageStats(ctx context.Context, repo string) (*TriageStats, error) {
+	ts := &TriageStats{Recent: []RecentTriage{}}
+
+	// Total triage sessions
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(COUNT(*), 0) FROM triage_sessions WHERE repo = $1
+	`, repo).Scan(&ts.Total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Promoted = triage sessions that have a matching bot_comment (lgtm was used)
+	err = s.pool.QueryRow(ctx, `
+		SELECT COALESCE(COUNT(*), 0) FROM triage_sessions t
+		INNER JOIN bot_comments b ON t.repo = b.repo AND t.issue_number = b.issue_number
+		WHERE t.repo = $1
+	`, repo).Scan(&ts.Promoted)
+	if err != nil {
+		return nil, err
+	}
+
+	ts.Pending = ts.Total - ts.Promoted
+
+	// Recent 10 triage sessions
+	rows, err := s.pool.Query(ctx, `
+		SELECT t.repo, t.issue_number, t.shadow_issue_number,
+			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
+			t.created_at
+		FROM triage_sessions t WHERE t.repo = $1
+		ORDER BY t.created_at DESC LIMIT 10
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rt RecentTriage
+		var createdAt time.Time
+		if err := rows.Scan(&rt.Repo, &rt.IssueNumber, &rt.ShadowIssue, &rt.Promoted, &createdAt); err != nil {
+			return nil, err
+		}
+		rt.CreatedAt = createdAt.Format(time.RFC3339)
+		ts.Recent = append(ts.Recent, rt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ts, nil
+}
+
+func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, error) {
+	as := &AgentStats{
+		StageBreakdown:  make(map[string]int),
+		ActionBreakdown: make(map[string]int),
+		Recent:          []RecentAgent{},
+	}
+
+	// Total agent sessions
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(COUNT(*), 0) FROM agent_sessions WHERE repo = $1
+	`, repo).Scan(&as.Total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Stage breakdown
+	rows, err := s.pool.Query(ctx, `
+		SELECT stage, COUNT(*) FROM agent_sessions WHERE repo = $1 GROUP BY stage
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var stage string
+		var count int
+		if err := rows.Scan(&stage, &count); err != nil {
+			return nil, err
+		}
+		as.StageBreakdown[stage] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Action breakdown from audit log
+	rows2, err := s.pool.Query(ctx, `
+		SELECT a.action_type, COUNT(*) FROM agent_audit_log a
+		INNER JOIN agent_sessions s ON a.session_id = s.id
+		WHERE s.repo = $1 GROUP BY a.action_type
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var action string
+		var count int
+		if err := rows2.Scan(&action, &count); err != nil {
+			return nil, err
+		}
+		as.ActionBreakdown[action] = count
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, err
+	}
+
+	// Recent 10 agent sessions
+	rows3, err := s.pool.Query(ctx, `
+		SELECT repo, issue_number, shadow_issue_number, stage, created_at
+		FROM agent_sessions WHERE repo = $1
+		ORDER BY created_at DESC LIMIT 10
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows3.Close()
+	for rows3.Next() {
+		var ra RecentAgent
+		var createdAt time.Time
+		if err := rows3.Scan(&ra.Repo, &ra.IssueNumber, &ra.ShadowIssue, &ra.Stage, &createdAt); err != nil {
+			return nil, err
+		}
+		ra.CreatedAt = createdAt.Format(time.RFC3339)
+		as.Recent = append(as.Recent, ra)
+	}
+	if err := rows3.Err(); err != nil {
+		return nil, err
+	}
+
+	return as, nil
 }
 
 // UpdateReactions updates the thumbs up/down counts for a bot comment.

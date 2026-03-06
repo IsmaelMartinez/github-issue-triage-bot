@@ -81,7 +81,7 @@ internal/safety/structural.go # Deterministic safety validator (length, URLs, me
 internal/safety/llm_validator.go # LLM-based safety reviewer (relevance, tone, injection)
 internal/runner/runner.go     # Runner interface for task execution abstraction
 internal/runner/inprocess.go  # In-process runner (goroutines with context timeout)
-migrations/                   # Database migrations (001-004)
+migrations/                   # Database migrations (001-008)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
 .github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages
