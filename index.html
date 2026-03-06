@@ -33,7 +33,7 @@
     <header>
         <div class="container">
             <h1>Triage Bot Dashboard</h1>
-            <div class="meta">IsmaelMartinez/teams-for-linux &middot; Generated 2026-03-05T06:17:43Z</div>
+            <div class="meta">IsmaelMartinez/teams-for-linux &middot; Generated 2026-03-06T06:16:07Z</div>
         </div>
     </header>
     <div class="container">
@@ -52,17 +52,9 @@
                 <tbody></tbody>
             </table>
         </section>
-        <section id="drafts-section" style="display:none">
-            <h2>Silent Triage Results</h2>
-            <p style="font-size:0.85rem;color:#666;margin-bottom:12px">Issues processed silently &mdash; draft comments stored but not posted to GitHub.</p>
-            <table id="drafts-table">
-                <thead><tr><th>Issue</th><th>Title</th><th>Phases</th><th>Summary</th><th>Date</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
     </div>
     <script>
-        const stats = {"total_comments":1,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":1,"phase2":1,"phase3":1},"document_counts":{"configuration":4,"troubleshooting":14},"issue_count":1357,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}],"total_drafts":0,"recent_drafts":[]};
+        const stats = {"total_comments":1,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":1,"phase2":1,"phase3":1},"document_counts":{"configuration":4,"troubleshooting":14},"issue_count":1358,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}]};
 
         const docTotal = Object.values(stats.document_counts || {}).reduce((a, b) => a + b, 0);
         const thumbsRatio = stats.total_comments > 0
@@ -71,7 +63,6 @@
 
         const cards = [
             { label: 'Total Comments', value: stats.total_comments },
-            { label: 'Silent Drafts', value: stats.total_drafts || 0 },
             { label: 'Thumbs Up Rate', value: thumbsRatio, cls: 'green' },
             { label: 'Documents Indexed', value: docTotal },
             { label: 'Issues Indexed', value: stats.issue_count },
@@ -140,54 +131,6 @@
             commentsBody.appendChild(tr);
         });
 
-        var drafts = stats.recent_drafts || [];
-        if (drafts.length > 0) {
-            document.getElementById('drafts-section').style.display = '';
-            var draftsBody = document.querySelector('#drafts-table tbody');
-            drafts.forEach(function(d) {
-                var tr = document.createElement('tr');
-
-                var tdIssue = document.createElement('td');
-                var link = document.createElement('a');
-                link.href = 'https://github.com/' + d.repo + '/issues/' + d.issue_number;
-                link.textContent = '#' + d.issue_number;
-                tdIssue.appendChild(link);
-
-                var tdTitle = document.createElement('td');
-                tdTitle.textContent = d.issue_title || '';
-
-                var tdPhases = document.createElement('td');
-                var phasesDiv = document.createElement('div');
-                phasesDiv.className = 'phases';
-                (d.phases_run || []).forEach(function(p) {
-                    var span = document.createElement('span');
-                    span.className = 'phase-tag';
-                    span.textContent = p;
-                    phasesDiv.appendChild(span);
-                });
-                tdPhases.appendChild(phasesDiv);
-
-                var tdSummary = document.createElement('td');
-                var summaryParts = [];
-                var pd = d.phase_details || {};
-                if (pd.phase1 && pd.phase1.missing_items > 0) summaryParts.push(pd.phase1.missing_items + ' missing fields');
-                if (pd.phase2 && pd.phase2.suggestion_count > 0) summaryParts.push(pd.phase2.suggestion_count + ' suggestions');
-                if (pd.phase3 && pd.phase3.duplicate_count > 0) summaryParts.push(pd.phase3.duplicate_count + ' duplicates');
-                if (pd.phase4a && pd.phase4a.context_match_count > 0) summaryParts.push(pd.phase4a.context_match_count + ' context matches');
-                if (pd.phase4b && pd.phase4b.suggested_label) summaryParts.push('reclassify \u2192 ' + pd.phase4b.suggested_label);
-                tdSummary.textContent = summaryParts.join(', ') || 'no findings';
-
-                var tdDate = document.createElement('td');
-                tdDate.textContent = d.created_at ? d.created_at.substring(0, 10) : '';
-
-                tr.appendChild(tdIssue);
-                tr.appendChild(tdTitle);
-                tr.appendChild(tdPhases);
-                tr.appendChild(tdSummary);
-                tr.appendChild(tdDate);
-                draftsBody.appendChild(tr);
-            });
-        }
     </script>
 </body>
 </html>
