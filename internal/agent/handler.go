@@ -37,10 +37,9 @@ func NewAgentHandler(s *store.Store, l llm.Provider, g *gh.Client, structural *s
 	}
 }
 
-// StartSession creates a mirror issue in the shadow repo and begins the
-// enhancement analysis pipeline. If the LLM determines clarification is
-// needed, it posts questions on the shadow issue; otherwise it proceeds
-// directly to research.
+// StartSession creates a mirror issue in the shadow repo and posts a context
+// brief summarising related documents and issues. Maintainers can then reply
+// with "research" to trigger full synthesis, or "reject" to close the session.
 func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, title, body string) error {
 	log := h.logger.With("sourceRepo", sourceRepo, "issue", issueNumber, "shadowRepo", shadowRepo)
 
@@ -67,84 +66,71 @@ func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, s
 	}
 	log = log.With("sessionID", sessionID)
 
-	// Analyze enhancement to check if clarification is needed
-	analysis, err := AnalyzeEnhancement(ctx, h.llm, title, body)
+	// Embed title+body for vector search
+	embedding, err := h.llm.Embed(ctx, fmt.Sprintf("%s\n%s", title, body))
 	if err != nil {
-		return fmt.Errorf("analyze enhancement: %w", err)
+		return fmt.Errorf("embed issue: %w", err)
 	}
-	log.Info("enhancement analyzed", "needsClarification", analysis.NeedsClarification, "confidence", analysis.Confidence)
 
-	if analysis.NeedsClarification {
-		return h.askClarifyingQuestions(ctx, installationID, sessionID, shadowRepo, shadowNumber, sourceRepo, issueNumber, analysis, title)
+	// Search for similar documents (non-fatal)
+	similarDocs, err := h.store.FindSimilarDocuments(ctx, sourceRepo, store.EnhancementDocTypes, embedding, 5)
+	if err != nil {
+		log.Error("find similar documents", "error", err)
 	}
-	return h.startResearch(ctx, installationID, sessionID, shadowRepo, shadowNumber, sourceRepo, issueNumber, title, body, nil)
-}
 
-func (h *AgentHandler) askClarifyingQuestions(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, analysis *EnhancementAnalysis, title string) error {
-	log := h.logger.With("sessionID", sessionID, "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
-
-	// Build comment with numbered questions
-	var sb strings.Builder
-	sb.WriteString("## Clarifying Questions\n\n")
-	sb.WriteString("Before researching this enhancement, I'd like to clarify a few things:\n\n")
-	for i, q := range analysis.Questions {
-		fmt.Fprintf(&sb, "%d. %s\n", i+1, q.Question)
-		for _, opt := range q.Options {
-			fmt.Fprintf(&sb, "   - %s\n", opt)
-		}
-		sb.WriteString("\n")
+	// Search for similar issues (non-fatal)
+	similarIssues, err := h.store.FindSimilarIssues(ctx, sourceRepo, embedding, issueNumber, 5)
+	if err != nil {
+		log.Error("find similar issues", "error", err)
 	}
-	sb.WriteString("Please reply with your answers and I'll proceed with the research.")
-	comment := sb.String()
+
+	// Build context brief
+	brief, err := BuildContextBrief(ctx, h.llm, title, body, similarDocs, similarIssues, sourceRepo, issueNumber)
+	if err != nil {
+		return fmt.Errorf("build context brief: %w", err)
+	}
+
+	// Format as markdown
+	briefMD := FormatContextBriefMarkdown(brief)
 
 	// Run structural safety check
-	structResult := h.structural.Validate(comment)
+	structResult := h.structural.Validate(briefMD)
 	if !structResult.Passed {
-		log.Error("structural safety check failed for clarifying questions", "reason", structResult.Reason)
+		log.Error("structural safety check failed for context brief", "reason", structResult.Reason)
 		return fmt.Errorf("structural safety check failed: %s", structResult.Reason)
 	}
 
 	// Run LLM safety check
-	issueContext := fmt.Sprintf("Enhancement: %s", title)
-	llmResult := h.llmSafety.ValidateWithContext(ctx, comment, issueContext)
+	issueContext := fmt.Sprintf("Enhancement: %s\n\n%s", title, body)
+	llmResult := h.llmSafety.ValidateWithContext(ctx, briefMD, issueContext)
 	if !llmResult.Passed {
-		log.Error("LLM safety check failed for clarifying questions", "reason", llmResult.Reason)
+		log.Error("LLM safety check failed for context brief", "reason", llmResult.Reason)
 		return fmt.Errorf("LLM safety check failed: %s", llmResult.Reason)
 	}
 
-	// Post on shadow issue
-	_, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, comment)
-	if err != nil {
-		return fmt.Errorf("post clarifying questions: %w", err)
+	// Post context brief on shadow issue
+	if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, briefMD); err != nil {
+		return fmt.Errorf("post context brief: %w", err)
 	}
 
-	// Update session to clarifying stage
-	if err := h.store.UpdateSessionStage(ctx, sessionID, store.StageClarifying, map[string]any{"analysis": analysis}, 1); err != nil {
+	// Update session to context_brief stage
+	if err := h.store.UpdateSessionStage(ctx, sessionID, store.StageContextBrief, map[string]any{"title": title, "body": body}, 0); err != nil {
 		return fmt.Errorf("update session stage: %w", err)
 	}
 
 	// Create audit entry
 	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
 		SessionID:         sessionID,
-		ActionType:        "asked_question",
-		InputHash:         hashString(title),
-		OutputSummary:     truncate(comment, 200),
+		ActionType:        "posted_context_brief",
+		InputHash:         hashString(title + body),
+		OutputSummary:     truncate(briefMD, 200),
 		SafetyCheckPassed: true,
 		ConfidenceScore:   llmResult.Confidence,
 	}); err != nil {
 		log.Error("create audit entry", "error", err)
 	}
 
-	// Create approval gate
-	if _, err := h.store.CreateApprovalGate(ctx, store.ApprovalGate{
-		SessionID: sessionID,
-		GateType:  store.GateClarification,
-		Status:    store.ApprovalPending,
-	}); err != nil {
-		log.Error("create approval gate", "error", err)
-	}
-
-	log.Info("posted clarifying questions")
+	log.Info("posted context brief", "docs", len(similarDocs), "issues", len(similarIssues))
 	return nil
 }
 
@@ -296,6 +282,8 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		return h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
 	case store.StageReviewPending:
 		return h.handleReviewResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
+	case store.StageContextBrief:
+		return h.handleContextBriefResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
 	case store.StageApproved:
 		if signal == SignalPromote {
 			return h.handlePromote(ctx, installationID, sess, log)
@@ -329,6 +317,39 @@ func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, s
 
 	log.Info("session rejected")
 	return nil
+}
+
+func (h *AgentHandler) handleContextBriefResponse(ctx context.Context, installationID int64, sess *store.AgentSession, signal ApprovalSignal, commentBody string, commentUser string, log *slog.Logger) error {
+	switch signal {
+	case SignalResearch:
+		log.Info("research requested, starting full research pipeline")
+		title, _ := sess.Context["title"].(string)
+		body, _ := sess.Context["body"].(string)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, nil)
+
+	case SignalUseAsContext:
+		log.Info("context brief acknowledged, closing session")
+		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
+			return fmt.Errorf("update session stage: %w", err)
+		}
+		ack := "Context brief acknowledged. Session closed."
+		_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
+		if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
+			SessionID:         sess.ID,
+			ActionType:        "context_acknowledged",
+			InputHash:         hashString(commentBody),
+			OutputSummary:     "Session closed after context brief acknowledged",
+			SafetyCheckPassed: true,
+			ConfidenceScore:   1.0,
+		}); err != nil {
+			log.Error("create audit entry", "error", err)
+		}
+		return nil
+
+	default:
+		log.Info("ignoring non-signal comment on context brief")
+		return nil
+	}
 }
 
 func (h *AgentHandler) handleClarifyingResponse(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, log *slog.Logger) error {

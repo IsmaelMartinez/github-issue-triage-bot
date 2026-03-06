@@ -29,6 +29,11 @@ func TestParseApprovalSignal(t *testing.T) {
 		{"promote", "promote", SignalPromote},
 		{"publish in sentence", "publish this to the public issue", SignalPromote},
 
+		{"research", "research", SignalResearch},
+		{"research in sentence", "please start the research", SignalResearch},
+		{"use as context", "use as context", SignalUseAsContext},
+		{"using as context", "I'll use as context", SignalUseAsContext},
+
 		{"general feedback", "I think we should also consider performance", SignalNone},
 		{"question", "What about accessibility?", SignalNone},
 		{"elaboration request", "Can you elaborate on the second approach?", SignalNone},

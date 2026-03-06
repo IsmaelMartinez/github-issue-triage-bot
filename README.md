@@ -16,9 +16,9 @@ All phase results are consolidated into a single markdown comment. The bot ident
 
 ### Enhancement Researcher Agent
 
-For enhancement issues with a configured shadow repo, the bot starts an agent session that runs alongside the triage pipeline. The agent creates a mirror issue in a private shadow repository and synthesizes a research document drawing on roadmap items, ADRs, and past issues via vector search. It progresses through a state machine: optionally asking clarifying questions, generating research, and waiting for maintainer review.
+For enhancement issues with a configured shadow repo, the bot starts an agent session that runs alongside the triage pipeline. It creates a mirror issue in a private shadow repository and posts a context brief: a short summary of the enhancement request plus relevant ADRs, roadmap items, and similar past issues surfaced via vector search. The maintainer can reply `research` to trigger full Gemini-powered research synthesis (with multiple approaches, trade-offs, and recommendations), `use as context` to acknowledge the brief, or `reject` to discard. The full research pipeline supports revision cycles, PR creation, and promotion to the public issue.
 
-A maintainer controls the agent via comment signals on the shadow issue: `lgtm` to approve, `revise` to request changes, `reject` to discard, and `publish` or `promote` to post a curated summary back on the original public issue. All agent outputs pass through two safety layers before being posted — a structural validator (length limits, URL allowlists, mention blocking, control character detection) and an LLM reviewer (relevance, tone, prompt injection detection). If the agent reaches 4 round-trips without progressing to review, it escalates to a human.
+All agent outputs pass through two safety layers before being posted — a structural validator (length limits, URL allowlists, mention blocking, control character detection) and an LLM reviewer (relevance, tone, prompt injection detection). If the agent reaches 4 round-trips without progressing to review, it escalates to a human.
 
 ### Silent Mode
 
@@ -49,9 +49,10 @@ Cloud Run (Go binary)
         +-- Enhancement Researcher Agent (if shadow repo configured)
                 |
                 +-- Create mirror issue in shadow repo
-                +-- Research synthesis (pgvector + Gemini)
+                +-- Post context brief (pgvector + Gemini summary)
+                +-- Maintainer signals: research / use as context / reject
+                +-- Full research pipeline (if research signal)
                 +-- Safety layers (structural + LLM)
-                +-- Maintainer approval (lgtm/revise/reject/publish)
                 +-- Publish summary to public issue
         |
         v

@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
 // sequentialMockProvider returns responses in order, cycling through them.
@@ -118,6 +120,91 @@ func TestApprovalSignalFlow(t *testing.T) {
 		{"lgtm approves", "lgtm", SignalApproved},
 		{"revise with feedback", "please revise the second approach", SignalRevise},
 		{"promote to public", "publish this to the public issue", SignalPromote},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ParseApprovalSignal(tt.comment)
+			if got != tt.want {
+				t.Errorf("ParseApprovalSignal(%q) = %d, want %d", tt.comment, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContextBriefFlow(t *testing.T) {
+	mock := &mockProvider{
+		response: `{"summary": "This enhancement requests adding keyboard shortcuts for common call actions."}`,
+	}
+
+	docs := []store.SimilarDocument{
+		{Document: store.Document{DocType: "adr", Title: "ADR-003: Keyboard Handling", Content: "Decided to use Electron globalShortcut API for app-level shortcuts."}, Distance: 0.1},
+		{Document: store.Document{DocType: "roadmap", Title: "UX Improvements Q2", Content: "Planned keyboard shortcuts and accessibility improvements."}, Distance: 0.2},
+		{Document: store.Document{DocType: "research", Title: "Shortcut Conflicts Study", Content: "Research into OS-level shortcut conflicts across Linux desktop environments."}, Distance: 0.3},
+	}
+	issues := []store.SimilarIssue{
+		{Issue: store.Issue{Number: 15, Title: "Global mute shortcut", State: "open", Summary: "User wants Ctrl+M for mute"}, Distance: 0.1},
+		{Issue: store.Issue{Number: 88, Title: "Keyboard nav in chat", State: "closed", Summary: "Added arrow key navigation in chat list"}, Distance: 0.3},
+	}
+
+	ctx := context.Background()
+	brief, err := BuildContextBrief(ctx, mock, "Add Ctrl+M mute toggle", "When in a call, pressing Ctrl+M should toggle mute.", docs, issues, "owner/repo", 42)
+	if err != nil {
+		t.Fatalf("BuildContextBrief: %v", err)
+	}
+
+	if brief.Summary == "" {
+		t.Error("expected non-empty summary")
+	}
+	if len(brief.ADRs) != 1 {
+		t.Errorf("expected 1 ADR, got %d", len(brief.ADRs))
+	}
+	if len(brief.Roadmap) != 1 {
+		t.Errorf("expected 1 roadmap item, got %d", len(brief.Roadmap))
+	}
+	if len(brief.Research) != 1 {
+		t.Errorf("expected 1 research doc, got %d", len(brief.Research))
+	}
+	if len(brief.Issues) != 2 {
+		t.Errorf("expected 2 issues, got %d", len(brief.Issues))
+	}
+
+	md := FormatContextBriefMarkdown(brief)
+
+	checks := []string{
+		"## Context Brief:",
+		"owner/repo#42",
+		"### Architecture Decisions",
+		"ADR-003: Keyboard Handling",
+		"### Roadmap",
+		"UX Improvements Q2",
+		"### Prior Research",
+		"Shortcut Conflicts Study",
+		"### Related Issues",
+		"#15",
+		"#88",
+		"`research`",
+		"`use as context`",
+		"`reject`",
+	}
+
+	for _, want := range checks {
+		if !strings.Contains(md, want) {
+			t.Errorf("markdown should contain %q", want)
+		}
+	}
+}
+
+func TestContextBriefSignalRouting(t *testing.T) {
+	tests := []struct {
+		name    string
+		comment string
+		want    ApprovalSignal
+	}{
+		{"research triggers full pipeline", "research", SignalResearch},
+		{"use as context acknowledges", "use as context", SignalUseAsContext},
+		{"reject closes session", "reject", SignalReject},
+		{"random comment ignored", "what about performance?", SignalNone},
 	}
 
 	for _, tt := range tests {

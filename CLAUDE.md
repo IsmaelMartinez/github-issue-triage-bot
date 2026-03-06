@@ -55,7 +55,7 @@ Phase 1 (pure parsing, no LLM): detects missing information in bug reports by ch
 
 All phase results are consolidated into a single markdown comment by the comment builder. When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue.
 
-For enhancement issues with a configured shadow repo, the bot also starts an agent session. The Enhancement Researcher agent progresses through a state machine (NEW, CLARIFYING, RESEARCHING, REVIEW_PENDING, REVISION, APPROVED, COMPLETE) in a private shadow repository. It analyzes the enhancement, optionally asks clarifying questions, synthesizes a research document using pgvector context, and waits for maintainer approval. On approval, it commits the research document and opens a PR. On "publish"/"promote", it posts a curated summary on the original public issue. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
+For enhancement issues with a configured shadow repo, the bot also starts an agent session. The agent creates a mirror issue and posts a context brief with relevant ADRs, roadmap items, and similar past issues from vector search, plus a short LLM-generated summary. The maintainer can reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge and close the session, or `reject` to discard. The full research pipeline (clarifying questions, synthesis, revision, PR creation, publish) remains available via the `research` signal. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
 
 ## Project Structure
 
@@ -74,7 +74,7 @@ internal/store/postgres.go    # PostgreSQL + pgvector queries
 internal/store/agent.go       # Agent session, audit log, and approval gate queries
 internal/store/report.go      # Dashboard stats queries
 internal/store/models.go      # Shared data types (includes agent stage/gate constants)
-internal/agent/handler.go     # Agent state machine and webhook comment handler
+internal/agent/handler.go     # Agent handler: context brief (default) and research flows
 internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
 internal/agent/research.go    # Enhancement analysis and research synthesis prompts
 internal/safety/structural.go # Deterministic safety validator (length, URLs, mentions)
