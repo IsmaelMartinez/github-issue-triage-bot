@@ -105,6 +105,56 @@ func main() {
 	for _, shadow := range shadowRepos {
 		allowedRepos[shadow] = true
 	}
+	mux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		staleDuration := 14 * 24 * time.Hour
+		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
+		if err != nil {
+			logger.Error("failed to list stale sessions", "error", err)
+			http.Error(w, "failed to list stale sessions", http.StatusInternalServerError)
+			return
+		}
+
+		if len(stale) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"closed":0}`)
+			return
+		}
+
+		// Get installation ID for closing issues
+		installations, err := ghClient.ListInstallations(r.Context())
+		if err != nil || len(installations) == 0 {
+			logger.Error("failed to get installations for cleanup", "error", err)
+			http.Error(w, "failed to get installations", http.StatusInternalServerError)
+			return
+		}
+		installID := installations[0]
+
+		closed := 0
+		for _, ss := range stale {
+			note := "This shadow issue has been automatically closed after 14 days without a response."
+			if _, err := ghClient.CreateComment(r.Context(), installID, ss.ShadowRepo, ss.ShadowIssueNumber, note); err != nil {
+				logger.Error("failed to comment on stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
+				continue
+			}
+			if err := ghClient.CloseIssue(r.Context(), installID, ss.ShadowRepo, ss.ShadowIssueNumber); err != nil {
+				logger.Error("failed to close stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
+				continue
+			}
+			if ss.SessionType == "agent" {
+				_ = s.MarkSessionComplete(r.Context(), ss.ID)
+			}
+			closed++
+			logger.Info("closed stale shadow issue", "type", ss.SessionType, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
+	})
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {

@@ -140,7 +140,14 @@
             link.textContent = '#' + t.issue_number;
             tdIssue.appendChild(link);
             var tdShadow = document.createElement('td');
-            tdShadow.textContent = '#' + t.shadow_issue;
+            if (t.shadow_repo) {
+                var shadowLink = document.createElement('a');
+                shadowLink.href = 'https://github.com/' + t.shadow_repo + '/issues/' + t.shadow_issue;
+                shadowLink.textContent = '#' + t.shadow_issue;
+                tdShadow.appendChild(shadowLink);
+            } else {
+                tdShadow.textContent = '#' + t.shadow_issue;
+            }
             var tdStatus = document.createElement('td');
             var statusSpan = document.createElement('span');
             statusSpan.className = 'phase-tag';
@@ -212,7 +219,14 @@
             link.textContent = '#' + a.issue_number;
             tdIssue.appendChild(link);
             var tdShadow = document.createElement('td');
-            tdShadow.textContent = '#' + a.shadow_issue;
+            if (a.shadow_repo) {
+                var shadowLink = document.createElement('a');
+                shadowLink.href = 'https://github.com/' + a.shadow_repo + '/issues/' + a.shadow_issue;
+                shadowLink.textContent = '#' + a.shadow_issue;
+                tdShadow.appendChild(shadowLink);
+            } else {
+                tdShadow.textContent = '#' + a.shadow_issue;
+            }
             var tdStage = document.createElement('td');
             var stageSpan = document.createElement('span');
             stageSpan.className = 'phase-tag';
@@ -247,7 +261,11 @@
 
             var tdIssue = document.createElement('td');
             var link = document.createElement('a');
-            link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number;
+            if (c.comment_id) {
+                link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number + '#issuecomment-' + c.comment_id;
+            } else {
+                link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number;
+            }
             link.textContent = '#' + c.issue_number;
             tdIssue.appendChild(link);
 

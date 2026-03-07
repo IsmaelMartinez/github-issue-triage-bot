@@ -30,6 +30,7 @@ type TriageStats struct {
 type RecentTriage struct {
 	Repo        string `json:"repo"`
 	IssueNumber int    `json:"issue_number"`
+	ShadowRepo  string `json:"shadow_repo"`
 	ShadowIssue int    `json:"shadow_issue"`
 	Promoted    bool   `json:"promoted"`
 	CreatedAt   string `json:"created_at"`
@@ -47,6 +48,7 @@ type AgentStats struct {
 type RecentAgent struct {
 	Repo        string `json:"repo"`
 	IssueNumber int    `json:"issue_number"`
+	ShadowRepo  string `json:"shadow_repo"`
 	ShadowIssue int    `json:"shadow_issue"`
 	Stage       string `json:"stage"`
 	CreatedAt   string `json:"created_at"`
@@ -194,7 +196,7 @@ func (s *Store) getTriageStats(ctx context.Context, repo string) (*TriageStats, 
 
 	// Recent 10 triage sessions
 	rows, err := s.pool.Query(ctx, `
-		SELECT t.repo, t.issue_number, t.shadow_issue_number,
+		SELECT t.repo, t.issue_number, t.shadow_repo, t.shadow_issue_number,
 			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
 			t.created_at
 		FROM triage_sessions t WHERE t.repo = $1
@@ -207,7 +209,7 @@ func (s *Store) getTriageStats(ctx context.Context, repo string) (*TriageStats, 
 	for rows.Next() {
 		var rt RecentTriage
 		var createdAt time.Time
-		if err := rows.Scan(&rt.Repo, &rt.IssueNumber, &rt.ShadowIssue, &rt.Promoted, &createdAt); err != nil {
+		if err := rows.Scan(&rt.Repo, &rt.IssueNumber, &rt.ShadowRepo, &rt.ShadowIssue, &rt.Promoted, &createdAt); err != nil {
 			return nil, err
 		}
 		rt.CreatedAt = createdAt.Format(time.RFC3339)
@@ -279,7 +281,7 @@ func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, er
 
 	// Recent 10 agent sessions
 	rows3, err := s.pool.Query(ctx, `
-		SELECT repo, issue_number, shadow_issue_number, stage, created_at
+		SELECT repo, issue_number, shadow_repo, shadow_issue_number, stage, created_at
 		FROM agent_sessions WHERE repo = $1
 		ORDER BY created_at DESC LIMIT 10
 	`, repo)
@@ -290,7 +292,7 @@ func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, er
 	for rows3.Next() {
 		var ra RecentAgent
 		var createdAt time.Time
-		if err := rows3.Scan(&ra.Repo, &ra.IssueNumber, &ra.ShadowIssue, &ra.Stage, &createdAt); err != nil {
+		if err := rows3.Scan(&ra.Repo, &ra.IssueNumber, &ra.ShadowRepo, &ra.ShadowIssue, &ra.Stage, &createdAt); err != nil {
 			return nil, err
 		}
 		ra.CreatedAt = createdAt.Format(time.RFC3339)

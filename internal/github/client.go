@@ -309,6 +309,46 @@ func (c *Client) CreatePullRequest(ctx context.Context, installationID int64, re
 	return result.Number, nil
 }
 
+// ListInstallations returns all installation IDs for this GitHub App.
+func (c *Client) ListInstallations(ctx context.Context) ([]int64, error) {
+	appTransport, err := ghinstallation.NewAppsTransport(http.DefaultTransport, c.appID, c.privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("create app transport: %w", err)
+	}
+	client := &http.Client{Transport: appTransport, Timeout: 30 * time.Second}
+
+	url := fmt.Sprintf("%s/app/installations", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var installations []struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&installations); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	ids := make([]int64, len(installations))
+	for i, inst := range installations {
+		ids[i] = inst.ID
+	}
+	return ids, nil
+}
+
 // FormatShadowIssueBody formats an issue body for a shadow repo mirror issue.
 func FormatShadowIssueBody(sourceRepo string, issueNumber int, title, body string) string {
 	return fmt.Sprintf("**Mirror of %s#%d**\n\n**Original title:** %s\n\n---\n\n%s", sourceRepo, issueNumber, title, body)

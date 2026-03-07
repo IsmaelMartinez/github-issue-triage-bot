@@ -89,6 +89,76 @@ func (s *Store) UpdateSessionStage(ctx context.Context, id int64, stage string, 
 	return err
 }
 
+// StaleSession holds the minimum info needed to close a stale shadow issue.
+type StaleSession struct {
+	ID                int64
+	ShadowRepo        string
+	ShadowIssueNumber int
+	SessionType       string // "agent" or "triage"
+}
+
+// ListStaleSessions returns agent and triage sessions with open shadow issues
+// that haven't been acted on within the given duration.
+func (s *Store) ListStaleSessions(ctx context.Context, staleDuration time.Duration) ([]StaleSession, error) {
+	cutoff := time.Now().Add(-staleDuration)
+	var results []StaleSession
+
+	// Stale agent sessions (not in a terminal stage)
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, shadow_repo, shadow_issue_number
+		FROM agent_sessions
+		WHERE stage NOT IN ('complete') AND created_at < $1
+	`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list stale agent sessions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ss StaleSession
+		if err := rows.Scan(&ss.ID, &ss.ShadowRepo, &ss.ShadowIssueNumber); err != nil {
+			return nil, err
+		}
+		ss.SessionType = "agent"
+		results = append(results, ss)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Stale triage sessions (no corresponding bot_comment = not promoted)
+	rows2, err := s.pool.Query(ctx, `
+		SELECT t.id, t.shadow_repo, t.shadow_issue_number
+		FROM triage_sessions t
+		LEFT JOIN bot_comments b ON t.repo = b.repo AND t.issue_number = b.issue_number
+		WHERE b.id IS NULL AND t.created_at < $1
+	`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list stale triage sessions: %w", err)
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var ss StaleSession
+		if err := rows2.Scan(&ss.ID, &ss.ShadowRepo, &ss.ShadowIssueNumber); err != nil {
+			return nil, err
+		}
+		ss.SessionType = "triage"
+		results = append(results, ss)
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+// MarkSessionComplete sets an agent session's stage to "complete".
+func (s *Store) MarkSessionComplete(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE agent_sessions SET stage = $1, updated_at = now() WHERE id = $2
+	`, StageComplete, id)
+	return err
+}
+
 // CreateAuditEntry inserts a new audit log entry.
 func (s *Store) CreateAuditEntry(ctx context.Context, entry AuditEntry) error {
 	_, err := s.pool.Exec(ctx, `
