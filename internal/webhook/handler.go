@@ -170,6 +170,15 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
 	log.Info("processing comment event")
 
+	// Handle /retriage command on source repo issues
+	if strings.TrimSpace(commentBody) == "/retriage" {
+		if _, ok := h.shadowRepos[repo]; ok {
+			log.Info("retriage requested")
+			h.handleRetriage(ctx, installationID, repo, event.Issue)
+			return
+		}
+	}
+
 	// Check triage session first
 	handled, err := h.handleTriageComment(ctx, installationID, repo, issueNumber, commentBody)
 	if err != nil {
@@ -394,6 +403,99 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			}
 		}
 	}
+}
+
+// handleRetriage re-runs the triage pipeline for an existing issue and posts
+// the result to a new shadow issue. Called when a maintainer comments /retriage.
+func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {
+	issueLog := h.logger.With("repo", repo, "issue", issue.Number)
+
+	// Re-upsert the issue in case the body was edited
+	h.upsertIssue(ctx, repo, issue)
+
+	dataRepo := repo
+	if h.sourceRepo != "" {
+		dataRepo = h.sourceRepo
+	}
+
+	isBug := hasLabel(issue.Labels, "bug")
+	isEnhancement := hasLabel(issue.Labels, "enhancement")
+
+	var result comment.TriageResult
+	result.IsBug = isBug
+	result.IsEnhancement = isEnhancement
+
+	result.Phase1 = phases.Phase1(issue.Body)
+
+	if isBug {
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
+		if err != nil {
+			issueLog.Error("retriage phase 2 failed", "error", err)
+		}
+		result.Phase2 = p2
+
+		p3, err := phases.Phase3(ctx, h.store, h.llm, issueLog, dataRepo, issue.Number, issue.Title, issue.Body)
+		if err != nil {
+			issueLog.Error("retriage phase 3 failed", "error", err)
+		}
+		result.Phase3 = p3
+	}
+
+	if isEnhancement {
+		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
+		if err != nil {
+			issueLog.Error("retriage phase 4a failed", "error", err)
+		}
+		result.Phase4a = p4a
+	}
+
+	currentLabel := "bug"
+	if isEnhancement {
+		currentLabel = "enhancement"
+	}
+	p4b, err := phases.Phase4b(ctx, h.llm, issueLog, issue.Title, issue.Body, currentLabel)
+	if err != nil {
+		issueLog.Error("retriage phase 4b failed", "error", err)
+	}
+	result.Phase4b = p4b
+
+	body := comment.Build(result)
+	phasesRun := collectPhasesRun(result)
+
+	shadowRepo, ok := h.shadowRepos[repo]
+	if !ok || body == "" {
+		issueLog.Info("retriage produced no output or no shadow repo configured")
+		return
+	}
+
+	shadowTitle := fmt.Sprintf("[Retriage] #%d: %s", issue.Number, issue.Title)
+	shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
+	shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
+	if err != nil {
+		issueLog.Error("creating retriage shadow issue", "error", err)
+		return
+	}
+
+	instructions := "\n\n---\n\nReply `lgtm` to post this comment publicly, or `reject` to discard."
+	_, err = h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, body+instructions)
+	if err != nil {
+		issueLog.Error("posting retriage comment on shadow issue", "error", err)
+		return
+	}
+
+	// Upsert the triage session so lgtm/reject still work
+	if err := h.store.CreateTriageSession(ctx, store.TriageSession{
+		Repo:              repo,
+		IssueNumber:       issue.Number,
+		ShadowRepo:        shadowRepo,
+		ShadowIssueNumber: shadowNumber,
+		TriageComment:     body,
+		PhasesRun:         phasesRun,
+	}); err != nil {
+		issueLog.Error("recording retriage session", "error", err)
+	}
+
+	issueLog.Info("retriage complete, posted to shadow repo", "shadowIssue", shadowNumber)
 }
 
 func (h *Handler) handleStateChange(ctx context.Context, repo string, issue gh.IssueDetail) {
