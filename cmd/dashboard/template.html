@@ -27,6 +27,11 @@
         a:hover { text-decoration: underline; }
         .phases { display: flex; gap: 4px; flex-wrap: wrap; }
         .phase-tag { background: #e1e4e8; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; }
+        nav { background: #1b1f23; padding: 0; }
+        nav .container { display: flex; gap: 0; padding: 0; }
+        nav a { color: #8b949e; padding: 10px 16px; font-size: 0.85rem; text-decoration: none; border-bottom: 2px solid transparent; }
+        nav a:hover { color: #fff; text-decoration: none; }
+        nav a.active { color: #fff; border-bottom-color: #f78166; }
     </style>
 </head>
 <body>
@@ -36,6 +41,11 @@
             <div class="meta">{{.Repo}} &middot; Generated {{.Generated}}</div>
         </div>
     </header>
+    <nav>
+        <div class="container">
+            {{range .Repos}}<a href="{{.Href}}"{{if .Active}} class="active"{{end}}>{{.Label}}</a>{{end}}
+        </div>
+    </nav>
     <div class="container">
         <div class="cards" id="cards"></div>
         <section>
