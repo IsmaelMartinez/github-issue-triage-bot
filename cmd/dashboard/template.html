@@ -87,9 +87,18 @@
             ? ((stats.total_thumbs_up / (stats.total_thumbs_up + stats.total_thumbs_down)) * 100 || 0).toFixed(0) + '%'
             : 'N/A';
 
+        var responseTime = 'N/A';
+        if (stats.avg_response_seconds != null) {
+            var secs = Math.round(stats.avg_response_seconds);
+            if (secs < 60) responseTime = secs + 's';
+            else if (secs < 3600) responseTime = Math.round(secs / 60) + 'm';
+            else responseTime = (secs / 3600).toFixed(1) + 'h';
+        }
+
         const cards = [
             { label: 'Total Comments', value: stats.total_comments },
             { label: 'Thumbs Up Rate', value: thumbsRatio, cls: 'green' },
+            { label: 'Avg Response Time', value: responseTime, cls: 'green' },
             { label: 'Documents Indexed', value: docTotal },
             { label: 'Issues Indexed', value: stats.issue_count },
         ];

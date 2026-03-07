@@ -156,6 +156,13 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			closedAt = &t
 		}
 
+		var createdAt time.Time
+		if e.CreatedAt != "" {
+			if t, err := time.Parse(time.RFC3339, e.CreatedAt); err == nil {
+				createdAt = t
+			}
+		}
+
 		issue := store.Issue{
 			Repo:      repo,
 			Number:    e.Number,
@@ -165,6 +172,7 @@ func seedIssues(ctx context.Context, s *store.Store, l *llm.Client, repo string,
 			Labels:    e.Labels,
 			Milestone: e.Milestone,
 			ClosedAt:  closedAt,
+			CreatedAt: createdAt,
 			Embedding: embedding,
 		}
 		if err := s.UpsertIssue(ctx, issue); err != nil {
