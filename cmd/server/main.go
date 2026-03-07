@@ -102,7 +102,8 @@ func main() {
 	if sourceRepo != "" {
 		allowedRepos[sourceRepo] = true
 	}
-	for _, shadow := range shadowRepos {
+	for source, shadow := range shadowRepos {
+		allowedRepos[source] = true
 		allowedRepos[shadow] = true
 	}
 	mux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
