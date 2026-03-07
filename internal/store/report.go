@@ -7,15 +7,16 @@ import (
 
 // DashboardStats holds aggregated statistics for the dashboard.
 type DashboardStats struct {
-	TotalComments   int             `json:"total_comments"`
-	TotalThumbsUp   int             `json:"total_thumbs_up"`
-	TotalThumbsDown int             `json:"total_thumbs_down"`
-	PhaseBreakdown  map[string]int  `json:"phase_breakdown"`
-	DocumentCounts  map[string]int  `json:"document_counts"`
-	IssueCount      int             `json:"issue_count"`
-	RecentComments  []RecentComment `json:"recent_comments"`
-	TriageStats     *TriageStats    `json:"triage_stats"`
-	AgentStats      *AgentStats     `json:"agent_stats"`
+	TotalComments        int             `json:"total_comments"`
+	TotalThumbsUp        int             `json:"total_thumbs_up"`
+	TotalThumbsDown      int             `json:"total_thumbs_down"`
+	PhaseBreakdown       map[string]int  `json:"phase_breakdown"`
+	DocumentCounts       map[string]int  `json:"document_counts"`
+	IssueCount           int             `json:"issue_count"`
+	RecentComments       []RecentComment `json:"recent_comments"`
+	TriageStats          *TriageStats    `json:"triage_stats"`
+	AgentStats           *AgentStats     `json:"agent_stats"`
+	AvgResponseSeconds   *float64        `json:"avg_response_seconds,omitempty"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -167,6 +168,19 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 	stats.AgentStats = agentStats
+
+	// Average time-to-first-response: seconds between issue creation and triage session creation
+	var avgSeconds *float64
+	err = s.pool.QueryRow(ctx, `
+		SELECT AVG(EXTRACT(EPOCH FROM (t.created_at - i.created_at)))
+		FROM triage_sessions t
+		INNER JOIN issues i ON t.repo = i.repo AND t.issue_number = i.number
+		WHERE t.repo = $1 AND t.created_at > i.created_at
+	`, repo).Scan(&avgSeconds)
+	if err != nil {
+		return nil, err
+	}
+	stats.AvgResponseSeconds = avgSeconds
 
 	return stats, nil
 }

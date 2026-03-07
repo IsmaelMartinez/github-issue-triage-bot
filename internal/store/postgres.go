@@ -52,9 +52,28 @@ func (s *Store) UpsertDocument(ctx context.Context, doc Document) error {
 }
 
 // UpsertIssue inserts or updates an issue and its embedding.
+// If issue.CreatedAt is set (non-zero), it is used as the issue creation timestamp;
+// otherwise the database default (now()) applies. On conflict, created_at is never overwritten.
 func (s *Store) UpsertIssue(ctx context.Context, issue Issue) error {
 	if len(issue.Embedding) != EmbeddingDim {
 		return fmt.Errorf("embedding dimension mismatch: got %d, want %d", len(issue.Embedding), EmbeddingDim)
+	}
+	if !issue.CreatedAt.IsZero() {
+		_, err := s.pool.Exec(ctx, `
+			INSERT INTO issues (repo, number, title, summary, state, labels, milestone, embedding, closed_at, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (repo, number) DO UPDATE SET
+				title = EXCLUDED.title,
+				summary = EXCLUDED.summary,
+				state = EXCLUDED.state,
+				labels = EXCLUDED.labels,
+				milestone = EXCLUDED.milestone,
+				embedding = EXCLUDED.embedding,
+				closed_at = EXCLUDED.closed_at,
+				updated_at = now()
+		`, issue.Repo, issue.Number, issue.Title, issue.Summary, issue.State,
+			issue.Labels, issue.Milestone, pgvector.NewVector(issue.Embedding), issue.ClosedAt, issue.CreatedAt)
+		return err
 	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO issues (repo, number, title, summary, state, labels, milestone, embedding, closed_at)

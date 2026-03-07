@@ -351,7 +351,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 
 	if shadowRepo, ok := h.shadowRepos[repo]; ok && body != "" {
 		// Post to shadow repo for review
-		shadowTitle := fmt.Sprintf("[Triage] #%d: %s", issue.Number, issue.Title)
+		const totalSections = 4
+		filled := totalSections - len(result.Phase1.MissingItems)
+		shadowTitle := fmt.Sprintf("[Triage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
 		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
 		shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
 		if err != nil {
@@ -468,7 +470,9 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		return
 	}
 
-	shadowTitle := fmt.Sprintf("[Retriage] #%d: %s", issue.Number, issue.Title)
+	const totalSections = 4
+	filled := totalSections - len(result.Phase1.MissingItems)
+	shadowTitle := fmt.Sprintf("[Retriage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
 	shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
 	shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
 	if err != nil {
