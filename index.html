@@ -33,11 +33,37 @@
     <header>
         <div class="container">
             <h1>Triage Bot Dashboard</h1>
-            <div class="meta">IsmaelMartinez/teams-for-linux &middot; Generated 2026-03-06T06:16:07Z</div>
+            <div class="meta">IsmaelMartinez/teams-for-linux &middot; Generated 2026-03-07T06:11:11Z</div>
         </div>
     </header>
     <div class="container">
         <div class="cards" id="cards"></div>
+        <section>
+            <h2>Shadow Repo: Bug Triage</h2>
+            <div class="cards" id="triage-cards" style="margin-bottom: 16px;"></div>
+            <table id="triage-table">
+                <thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
+            <h2>Shadow Repo: Enhancement Agent</h2>
+            <div class="cards" id="agent-cards" style="margin-bottom: 16px;"></div>
+            <table id="agent-stage-table">
+                <thead><tr><th>Stage</th><th>Count</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 0.95rem;">Action Signals</h3>
+            <table id="agent-action-table">
+                <thead><tr><th>Action</th><th>Count</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 0.95rem;">Recent Sessions</h3>
+            <table id="agent-recent-table">
+                <thead><tr><th>Issue</th><th>Shadow</th><th>Stage</th><th>Date</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
         <section>
             <h2>Phase Breakdown</h2>
             <table id="phase-table">
@@ -54,7 +80,7 @@
         </section>
     </div>
     <script>
-        const stats = {"total_comments":1,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":1,"phase2":1,"phase3":1},"document_counts":{"configuration":4,"troubleshooting":14},"issue_count":1358,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}]};
+        const stats = {"total_comments":1,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":1,"phase2":1,"phase3":1},"document_counts":{"configuration":4,"troubleshooting":14},"issue_count":1358,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}],"triage_stats":{"total":0,"promoted":0,"pending":0,"recent":[]},"agent_stats":{"total":1,"stage_breakdown":{"review_pending":1},"action_breakdown":{"posted_research":1},"recent":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2304,"shadow_issue":1,"stage":"review_pending","created_at":"2026-03-05T08:27:53Z"}]}};
 
         const docTotal = Object.values(stats.document_counts || {}).reduce((a, b) => a + b, 0);
         const thumbsRatio = stats.total_comments > 0
@@ -81,6 +107,126 @@
             div.appendChild(lbl);
             div.appendChild(val);
             cardsEl.appendChild(div);
+        });
+
+        
+        var ts = stats.triage_stats || { total: 0, promoted: 0, pending: 0, recent: [] };
+        var triageCards = [
+            { label: 'Total Triage Sessions', value: ts.total },
+            { label: 'Promoted (lgtm)', value: ts.promoted, cls: 'green' },
+            { label: 'Pending / Rejected', value: ts.pending },
+        ];
+        var triageCardsEl = document.getElementById('triage-cards');
+        triageCards.forEach(function(c) {
+            var div = document.createElement('div');
+            div.className = 'card';
+            var lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = c.label;
+            var val = document.createElement('div');
+            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
+            val.textContent = c.value;
+            div.appendChild(lbl);
+            div.appendChild(val);
+            triageCardsEl.appendChild(div);
+        });
+
+        var triageBody = document.querySelector('#triage-table tbody');
+        (ts.recent || []).forEach(function(t) {
+            var tr = document.createElement('tr');
+            var tdIssue = document.createElement('td');
+            var link = document.createElement('a');
+            link.href = 'https://github.com/' + t.repo + '/issues/' + t.issue_number;
+            link.textContent = '#' + t.issue_number;
+            tdIssue.appendChild(link);
+            var tdShadow = document.createElement('td');
+            tdShadow.textContent = '#' + t.shadow_issue;
+            var tdStatus = document.createElement('td');
+            var statusSpan = document.createElement('span');
+            statusSpan.className = 'phase-tag';
+            statusSpan.style.background = t.promoted ? '#dcffe4' : '#fff3cd';
+            statusSpan.textContent = t.promoted ? 'promoted' : 'pending';
+            tdStatus.appendChild(statusSpan);
+            var tdDate = document.createElement('td');
+            tdDate.textContent = t.created_at ? t.created_at.substring(0, 10) : '';
+            tr.appendChild(tdIssue);
+            tr.appendChild(tdShadow);
+            tr.appendChild(tdStatus);
+            tr.appendChild(tdDate);
+            triageBody.appendChild(tr);
+        });
+
+        
+        var ag = stats.agent_stats || { total: 0, stage_breakdown: {}, action_breakdown: {}, recent: [] };
+        var agentCards = [
+            { label: 'Total Agent Sessions', value: ag.total },
+            { label: 'Context Briefs', value: ag.action_breakdown['posted_context_brief'] || 0 },
+            { label: 'Research Requested', value: ag.action_breakdown['posted_research'] || 0 },
+            { label: 'Acknowledged', value: ag.action_breakdown['context_acknowledged'] || 0 },
+        ];
+        var agentCardsEl = document.getElementById('agent-cards');
+        agentCards.forEach(function(c) {
+            var div = document.createElement('div');
+            div.className = 'card';
+            var lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = c.label;
+            var val = document.createElement('div');
+            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
+            val.textContent = c.value;
+            div.appendChild(lbl);
+            div.appendChild(val);
+            agentCardsEl.appendChild(div);
+        });
+
+        var stageBody = document.querySelector('#agent-stage-table tbody');
+        Object.entries(ag.stage_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
+            var tr = document.createElement('tr');
+            var tdStage = document.createElement('td');
+            tdStage.textContent = entry[0];
+            var tdCount = document.createElement('td');
+            tdCount.textContent = entry[1];
+            tr.appendChild(tdStage);
+            tr.appendChild(tdCount);
+            stageBody.appendChild(tr);
+        });
+
+        var actionBody = document.querySelector('#agent-action-table tbody');
+        Object.entries(ag.action_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
+            var tr = document.createElement('tr');
+            var tdAction = document.createElement('td');
+            tdAction.textContent = entry[0];
+            var tdCount = document.createElement('td');
+            tdCount.textContent = entry[1];
+            tr.appendChild(tdAction);
+            tr.appendChild(tdCount);
+            actionBody.appendChild(tr);
+        });
+
+        var agentRecentBody = document.querySelector('#agent-recent-table tbody');
+        (ag.recent || []).forEach(function(a) {
+            var tr = document.createElement('tr');
+            var tdIssue = document.createElement('td');
+            var link = document.createElement('a');
+            link.href = 'https://github.com/' + a.repo + '/issues/' + a.issue_number;
+            link.textContent = '#' + a.issue_number;
+            tdIssue.appendChild(link);
+            var tdShadow = document.createElement('td');
+            tdShadow.textContent = '#' + a.shadow_issue;
+            var tdStage = document.createElement('td');
+            var stageSpan = document.createElement('span');
+            stageSpan.className = 'phase-tag';
+            var stageColors = { complete: '#dcffe4', context_brief: '#fff3cd', researching: '#cfe2ff', review_pending: '#cfe2ff' };
+            stageSpan.style.background = stageColors[a.stage] || '#e1e4e8';
+            stageSpan.textContent = a.stage;
+            tdStage.appendChild(stageSpan);
+            var tdDate = document.createElement('td');
+            tdDate.textContent = a.created_at ? a.created_at.substring(0, 10) : '';
+            tr.appendChild(tdIssue);
+            tr.appendChild(tdShadow);
+            tr.appendChild(tdStage);
+            tr.appendChild(tdDate);
+            agentRecentBody.appendChild(tr);
         });
 
         var phaseBody = document.querySelector('#phase-table tbody');
