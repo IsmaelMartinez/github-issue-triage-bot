@@ -6,7 +6,7 @@ on:
     inputs:
       repos:
         description: 'Comma-separated list of repos to generate dashboards for'
-        default: 'IsmaelMartinez/teams-for-linux'
+        default: 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo'
         required: false
 permissions:
   contents: write
@@ -23,20 +23,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-          REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux' }}
+          DASHBOARD_REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo' }}
         run: |
-          mkdir -p docs/dashboard
-          IFS=',' read -ra REPO_LIST <<< "$REPOS"
+          IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
           for repo in "${REPO_LIST[@]}"; do
-            repo=$(echo "$repo" | xargs)  # trim whitespace
-            echo "Processing $repo..."
+            repo=$(echo "$repo" | xargs)
             if [ -n "$GITHUB_TOKEN" ]; then
-              REPO="$repo" go run ./cmd/sync-reactions || echo "sync-reactions failed, continuing"
-            else
-              echo "GITHUB_TOKEN not set, skipping reaction sync"
+              REPO="$repo" go run ./cmd/sync-reactions || echo "sync-reactions failed for $repo, continuing"
             fi
-            DASHBOARD_REPO="$repo" go run ./cmd/dashboard docs/dashboard/index.html
           done
+          go run ./cmd/dashboard docs/dashboard
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e  # v4
         with:
