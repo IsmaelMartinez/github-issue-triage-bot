@@ -52,6 +52,19 @@ func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, s
 	log = log.With("shadowIssue", shadowNumber)
 	log.Info("created shadow issue")
 
+	// Run the rest of the session setup, posting error feedback on the shadow
+	// issue if anything fails after issue creation.
+	if err := h.startSessionAfterCreate(ctx, installationID, sourceRepo, issueNumber, shadowRepo, shadowNumber, title, body, log); err != nil {
+		errMsg := fmt.Sprintf("Something went wrong setting up the context brief. A maintainer can trigger a retry with `/retriage`.\n\n<details><summary>Error details</summary>\n\n```\n%s\n```\n</details>", err.Error())
+		if _, postErr := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errMsg); postErr != nil {
+			log.Error("failed to post error feedback on shadow issue", "error", postErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (h *AgentHandler) startSessionAfterCreate(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, shadowNumber int, title, body string, log *slog.Logger) error {
 	// Create session
 	sessionID, err := h.store.CreateSession(ctx, store.AgentSession{
 		Repo:              sourceRepo,
@@ -273,20 +286,30 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		return h.handleReject(ctx, installationID, sess, commentBody, commentUser, log)
 	}
 
+	var actionErr error
 	switch sess.Stage {
 	case store.StageClarifying:
-		return h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
+		actionErr = h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
 	case store.StageReviewPending:
-		return h.handleReviewResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
+		actionErr = h.handleReviewResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
 	case store.StageContextBrief:
-		return h.handleContextBriefResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
+		actionErr = h.handleContextBriefResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
 	case store.StageApproved:
 		if signal == SignalPromote {
-			return h.handlePromote(ctx, installationID, sess, log)
+			actionErr = h.handlePromote(ctx, installationID, sess, log)
+		} else {
+			log.Info("session already approved, ignoring non-promote signal")
 		}
-		log.Info("session already approved, ignoring non-promote signal")
 	default:
 		log.Info("ignoring comment in current stage")
+	}
+
+	if actionErr != nil {
+		errMsg := fmt.Sprintf("Something went wrong processing your `%s` signal. Please try again.\n\n<details><summary>Error details</summary>\n\n```\n%s\n```\n</details>", commentBody, actionErr.Error())
+		if _, postErr := h.github.CreateComment(ctx, installationID, shadowRepo, shadowIssueNumber, errMsg); postErr != nil {
+			log.Error("failed to post error feedback", "error", postErr)
+		}
+		return actionErr
 	}
 
 	return nil
