@@ -64,6 +64,11 @@ func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, s
 	return nil
 }
 
+// retryContextBrief retries posting a context brief for a session stuck in StageNew.
+func (h *AgentHandler) retryContextBrief(ctx context.Context, installationID int64, sess *store.AgentSession, title, body string, log *slog.Logger) error {
+	return h.buildAndPostContextBrief(ctx, installationID, sess.ID, sess.Repo, sess.IssueNumber, sess.ShadowRepo, sess.ShadowIssueNumber, title, body, log)
+}
+
 func (h *AgentHandler) startSessionAfterCreate(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, shadowNumber int, title, body string, log *slog.Logger) error {
 	// Create session
 	sessionID, err := h.store.CreateSession(ctx, store.AgentSession{
@@ -77,6 +82,10 @@ func (h *AgentHandler) startSessionAfterCreate(ctx context.Context, installation
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
+	return h.buildAndPostContextBrief(ctx, installationID, sessionID, sourceRepo, issueNumber, shadowRepo, shadowNumber, title, body, log)
+}
+
+func (h *AgentHandler) buildAndPostContextBrief(ctx context.Context, installationID, sessionID int64, sourceRepo string, issueNumber int, shadowRepo string, shadowNumber int, title, body string, log *slog.Logger) error {
 	log = log.With("sessionID", sessionID)
 
 	// Embed title+body for vector search
@@ -288,6 +297,12 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 
 	var actionErr error
 	switch sess.Stage {
+	case store.StageNew:
+		// Session stuck in "new" — context brief was never posted. Retry.
+		log.Info("retrying context brief for stuck session")
+		title, _ := sess.Context["title"].(string)
+		body, _ := sess.Context["body"].(string)
+		actionErr = h.retryContextBrief(ctx, installationID, sess, title, body, log)
 	case store.StageClarifying:
 		actionErr = h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
 	case store.StageReviewPending:
