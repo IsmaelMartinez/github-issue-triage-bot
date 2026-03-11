@@ -253,7 +253,7 @@ func FormatContextBriefMarkdown(brief *ContextBrief) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("Reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge, or `reject` to close.")
+	sb.WriteString("Reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge, `reject` to close, or reply with corrections/additional context to refine the analysis.")
 
 	return sb.String()
 }

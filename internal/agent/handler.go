@@ -381,8 +381,13 @@ func (h *AgentHandler) handleContextBriefResponse(ctx context.Context, installat
 		return nil
 
 	default:
-		log.Info("ignoring non-signal comment on context brief")
-		return nil
+		// Treat any other comment as additional context/corrections and
+		// start the research pipeline with the feedback incorporated.
+		log.Info("feedback on context brief, starting research with additional context")
+		title, _ := sess.Context["title"].(string)
+		body, _ := sess.Context["body"].(string)
+		feedback := []string{commentBody}
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback)
 	}
 }
 
