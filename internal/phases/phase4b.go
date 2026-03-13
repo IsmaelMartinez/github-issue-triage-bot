@@ -39,7 +39,7 @@ Respond with ONLY valid JSON, no other text.`
 		return nil, fmt.Errorf("generate classification: %w", err)
 	}
 
-	raw = extractJSONObject(raw)
+	raw = ExtractJSONObject(raw)
 	var result struct {
 		Classification string `json:"classification"`
 		Confidence     int    `json:"confidence"`

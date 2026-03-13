@@ -122,9 +122,9 @@ func extractJSONArray(raw string) string {
 	return extractBalanced(raw, '[', ']', "[]")
 }
 
-// extractJSONObject finds the first top-level JSON object in raw by matching
+// ExtractJSONObject finds the first top-level JSON object in raw by matching
 // balanced braces.
-func extractJSONObject(raw string) string {
+func ExtractJSONObject(raw string) string {
 	return extractBalanced(raw, '{', '}', "{}")
 }
 

@@ -56,7 +56,13 @@ func Build(r TriageResult) string {
 	if r.IsBug && len(r.Phase2) > 0 {
 		parts = append(parts, "**This might be related to a known issue:**\n")
 		for _, s := range r.Phase2 {
-			parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", sanitizeLLMOutput(s.Title), sanitizeURL(s.DocURL), sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+			url := sanitizeURL(s.DocURL)
+			title := sanitizeLLMOutput(s.Title)
+			if url != "" {
+				parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", title, url, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+			} else {
+				parts = append(parts, fmt.Sprintf("- %s \u2014 %s %s\n", title, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+			}
 		}
 		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")
 	}
@@ -120,12 +126,18 @@ func Build(r TriageResult) string {
 				updatedNote = fmt.Sprintf(" (last updated: %s)", *ctx.LastUpdated)
 			}
 
+			url := sanitizeURL(ctx.DocURL)
+			topic := sanitizeLLMOutput(ctx.Topic)
+			topicLink := topic
+			if url != "" {
+				topicLink = fmt.Sprintf("[%s](%s)", topic, url)
+			}
 			if ctx.IsInfeasible {
-				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s) \u2014 We explored this and documented our findings.%s %s",
-					sanitizeLLMOutput(ctx.Topic), sanitizeURL(ctx.DocURL), sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+				parts = append(parts, fmt.Sprintf("- %s (%s) \u2014 We explored this and documented our findings.%s %s",
+					topicLink, sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			} else {
-				parts = append(parts, fmt.Sprintf("- [%s](%s) (%s, %s)%s \u2014 %s",
-					sanitizeLLMOutput(ctx.Topic), sanitizeURL(ctx.DocURL), sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+				parts = append(parts, fmt.Sprintf("- %s (%s, %s)%s \u2014 %s",
+					topicLink, sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
 			}
 		}
 		parts = append(parts, "")
