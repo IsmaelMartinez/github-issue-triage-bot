@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
@@ -79,7 +80,7 @@ func AnalyzeEnhancement(ctx context.Context, provider llm.Provider, title, body 
 	}
 
 	var result EnhancementAnalysis
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+	if err := json.Unmarshal([]byte(phases.ExtractJSONObject(raw)), &result); err != nil {
 		return nil, fmt.Errorf("parse enhancement analysis: %w", err)
 	}
 
@@ -108,7 +109,7 @@ func SynthesizeResearch(ctx context.Context, provider llm.Provider, title, body 
 	}
 
 	var result ResearchDocument
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+	if err := json.Unmarshal([]byte(phases.ExtractJSONObject(raw)), &result); err != nil {
 		return nil, fmt.Errorf("parse research document: %w", err)
 	}
 
@@ -187,7 +188,7 @@ func BuildContextBrief(ctx context.Context, provider llm.Provider, title, body s
 	var parsed struct {
 		Summary string `json:"summary"`
 	}
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(phases.ExtractJSONObject(raw)), &parsed); err != nil {
 		return nil, fmt.Errorf("parse context brief summary: %w", err)
 	}
 

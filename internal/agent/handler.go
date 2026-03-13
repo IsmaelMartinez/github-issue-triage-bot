@@ -349,6 +349,18 @@ func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, s
 	ack := "Research session has been rejected and closed."
 	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
 
+	// Create audit entry for rejection
+	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
+		SessionID:         sess.ID,
+		ActionType:        "rejected",
+		InputHash:         hashString(commentBody),
+		OutputSummary:     "Session rejected by " + commentUser,
+		SafetyCheckPassed: true,
+		ConfidenceScore:   1.0,
+	}); err != nil {
+		log.Error("create audit entry", "error", err)
+	}
+
 	log.Info("session rejected")
 	return nil
 }
@@ -443,6 +455,12 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 			_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRevisionRequested, commentUser)
 		}
 		newRoundTrips := sess.RoundTripCount + 1
+		if newRoundTrips >= MaxRoundTrips {
+			log.Warn("max round trips reached on revise, escalating")
+			escalation := "This enhancement request has reached the maximum number of revision rounds. A maintainer will need to review it directly."
+			_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, escalation)
+			return h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, newRoundTrips)
+		}
 		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageRevision, sess.Context, newRoundTrips); err != nil {
 			return fmt.Errorf("update session stage: %w", err)
 		}
@@ -465,10 +483,17 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 		if gate != nil {
 			_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRevisionRequested, commentUser)
 		}
+		newRoundTrips := sess.RoundTripCount + 1
+		if newRoundTrips >= MaxRoundTrips {
+			log.Warn("max round trips reached in review, escalating")
+			escalation := "This enhancement request has reached the maximum number of revision rounds. A maintainer will need to review it directly."
+			_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, escalation)
+			return h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, newRoundTrips)
+		}
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, sess.RoundTripCount+1)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, newRoundTrips)
 	}
 }
 
@@ -598,15 +623,16 @@ func hashString(s string) string {
 	return fmt.Sprintf("%x", h[:8])
 }
 
-// truncate returns s shortened to maxLen characters, appending "..." if truncated.
+// truncate returns s shortened to maxLen runes, appending "..." if truncated.
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
 	if maxLen <= 3 {
-		return s[:maxLen]
+		return string(runes[:maxLen])
 	}
-	return s[:maxLen-3] + "..."
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // slugify converts a string to a URL-friendly slug: lowercase, non-alphanumeric
