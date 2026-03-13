@@ -455,6 +455,12 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 			_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRevisionRequested, commentUser)
 		}
 		newRoundTrips := sess.RoundTripCount + 1
+		if newRoundTrips >= MaxRoundTrips {
+			log.Warn("max round trips reached on revise, escalating")
+			escalation := "This enhancement request has reached the maximum number of revision rounds. A maintainer will need to review it directly."
+			_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, escalation)
+			return h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, newRoundTrips)
+		}
 		if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageRevision, sess.Context, newRoundTrips); err != nil {
 			return fmt.Errorf("update session stage: %w", err)
 		}

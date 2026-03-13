@@ -188,7 +188,7 @@ func BuildContextBrief(ctx context.Context, provider llm.Provider, title, body s
 	var parsed struct {
 		Summary string `json:"summary"`
 	}
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(phases.ExtractJSONObject(raw)), &parsed); err != nil {
 		return nil, fmt.Errorf("parse context brief summary: %w", err)
 	}
 
