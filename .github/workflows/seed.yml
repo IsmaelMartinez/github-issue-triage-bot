@@ -1,0 +1,38 @@
+name: Seed Database
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed_type:
+        description: 'Seed type (troubleshooting, issues, features)'
+        required: true
+        type: choice
+        options:
+          - features
+          - troubleshooting
+          - issues
+      data_file:
+        description: 'Path to seed data file (e.g. data/feature-index.json)'
+        required: true
+        default: 'data/feature-index.json'
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build seed binary
+        run: go build -o seed ./cmd/seed
+
+      - name: Run seed
+        env:
+          DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+          SEED_TYPE: ${{ inputs.seed_type }}
+          DATA_FILE: ${{ inputs.data_file }}
+        run: ./seed "$SEED_TYPE" "$DATA_FILE"
