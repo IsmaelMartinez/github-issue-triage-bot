@@ -60,7 +60,7 @@ func main() {
 
 	tmplPath := filepath.Join(filepath.Dir(os.Args[0]), "template.html")
 	if _, err := os.Stat(tmplPath); err != nil {
-		tmplPath = "cmd/dashboard/template.html"
+		tmplPath = "cmd/server/template.html"
 	}
 
 	tmpl, err := template.ParseFiles(tmplPath)

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -156,6 +157,15 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
 	})
+	// Live dashboard
+	sortedRepos := make([]string, 0, len(allowedRepos))
+	for r := range allowedRepos {
+		sortedRepos = append(sortedRepos, r)
+	}
+	sort.Strings(sortedRepos)
+	dashTmpl := mustParseDashboard()
+	mux.HandleFunc("/dashboard", newDashboardHandler(s, allowedRepos, sortedRepos, dashTmpl, logger))
+
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
