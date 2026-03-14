@@ -14,10 +14,9 @@ type MissingItem struct {
 
 // Suggestion represents a documentation match from Phase 2.
 type Suggestion struct {
-	Title         string
-	DocURL        string
-	Reason        string
-	ActionableStep string
+	Title  string
+	DocURL string
+	Reason string
 }
 
 // Duplicate represents a potential duplicate issue from Phase 3.

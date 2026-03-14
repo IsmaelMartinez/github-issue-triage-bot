@@ -118,7 +118,7 @@ func TestApprovalSignalFlow(t *testing.T) {
 		want    ApprovalSignal
 	}{
 		{"lgtm approves", "lgtm", SignalApproved},
-		{"revise with feedback", "please revise the second approach", SignalRevise},
+		{"revise with feedback", "revise: please focus on the second approach", SignalRevise},
 		{"promote to public", "publish this to the public issue", SignalPromote},
 	}
 
