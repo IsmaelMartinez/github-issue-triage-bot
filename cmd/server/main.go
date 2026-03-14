@@ -164,7 +164,7 @@ func main() {
 	}
 	sort.Strings(sortedRepos)
 	dashTmpl := mustParseDashboard()
-	mux.HandleFunc("/dashboard", newDashboardHandler(s, allowedRepos, sortedRepos, dashTmpl))
+	mux.HandleFunc("/dashboard", newDashboardHandler(s, allowedRepos, sortedRepos, dashTmpl, logger))
 
 	mux.HandleFunc("/report", func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")

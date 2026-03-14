@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +25,7 @@ type dashboardNav struct {
 	Active bool
 }
 
-func newDashboardHandler(s *store.Store, allowedRepos map[string]bool, repos []string, tmpl *template.Template) http.HandlerFunc {
+func newDashboardHandler(s *store.Store, allowedRepos map[string]bool, repos []string, tmpl *template.Template, logger *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
@@ -73,6 +74,8 @@ func newDashboardHandler(s *store.Store, allowedRepos map[string]bool, repos []s
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = tmpl.Execute(w, data)
+		if err := tmpl.Execute(w, data); err != nil {
+			logger.Error("rendering dashboard", "error", err)
+		}
 	}
 }
