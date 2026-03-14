@@ -75,6 +75,24 @@
             </table>
         </section>
         <section>
+            <h2>Approval Gate Outcomes</h2>
+            <table id="gate-table">
+                <thead><tr><th>Gate Type</th><th>Status</th><th>Count</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
+            <h2>Safety Check Stats</h2>
+            <div class="cards" id="safety-cards" style="margin-bottom: 16px;"></div>
+        </section>
+        <section>
+            <h2>Round-Trip Distribution</h2>
+            <table id="roundtrip-table">
+                <thead><tr><th>Round Trips</th><th>Sessions</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
             <h2>Phase Breakdown</h2>
             <table id="phase-table">
                 <thead><tr><th>Phase</th><th>Count</th></tr></thead>
@@ -260,6 +278,64 @@
             tr.appendChild(tdStage);
             tr.appendChild(tdDate);
             agentRecentBody.appendChild(tr);
+        });
+
+        // Approval gate outcomes
+        var gateBody = document.querySelector('#gate-table tbody');
+        (stats.approval_gate_stats || []).forEach(function(g) {
+            var tr = document.createElement('tr');
+            var tdType = document.createElement('td');
+            tdType.textContent = g.gate_type;
+            var tdStatus = document.createElement('td');
+            var statusSpan = document.createElement('span');
+            statusSpan.className = 'phase-tag';
+            var gateColors = { approved: '#dcffe4', rejected: '#ffd7d5', pending: '#fff3cd', revision_requested: '#cfe2ff' };
+            statusSpan.style.background = gateColors[g.status] || '#e1e4e8';
+            statusSpan.textContent = g.status;
+            tdStatus.appendChild(statusSpan);
+            var tdCount = document.createElement('td');
+            tdCount.textContent = g.count;
+            tr.appendChild(tdType);
+            tr.appendChild(tdStatus);
+            tr.appendChild(tdCount);
+            gateBody.appendChild(tr);
+        });
+
+        // Safety check stats
+        var ss = stats.safety_stats || { total_actions: 0, passed: 0, avg_confidence: null };
+        var passRate = ss.total_actions > 0 ? ((ss.passed / ss.total_actions) * 100).toFixed(0) + '%' : 'N/A';
+        var avgConf = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
+        var safetyCards = [
+            { label: 'Total Actions', value: ss.total_actions },
+            { label: 'Pass Rate', value: passRate, cls: 'green' },
+            { label: 'Avg Confidence', value: avgConf },
+        ];
+        var safetyCardsEl = document.getElementById('safety-cards');
+        safetyCards.forEach(function(c) {
+            var div = document.createElement('div');
+            div.className = 'card';
+            var lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = c.label;
+            var val = document.createElement('div');
+            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
+            val.textContent = c.value;
+            div.appendChild(lbl);
+            div.appendChild(val);
+            safetyCardsEl.appendChild(div);
+        });
+
+        // Round-trip distribution
+        var rtBody = document.querySelector('#roundtrip-table tbody');
+        (stats.round_trip_distribution || []).forEach(function(b) {
+            var tr = document.createElement('tr');
+            var tdRT = document.createElement('td');
+            tdRT.textContent = b.round_trips;
+            var tdCount = document.createElement('td');
+            tdCount.textContent = b.count;
+            tr.appendChild(tdRT);
+            tr.appendChild(tdCount);
+            rtBody.appendChild(tr);
         });
 
         var phaseBody = document.querySelector('#phase-table tbody');

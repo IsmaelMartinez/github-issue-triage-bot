@@ -17,6 +17,9 @@ type DashboardStats struct {
 	TriageStats          *TriageStats    `json:"triage_stats"`
 	AgentStats           *AgentStats     `json:"agent_stats"`
 	AvgResponseSeconds   *float64        `json:"avg_response_seconds,omitempty"`
+	ApprovalGateStats    []GateOutcome   `json:"approval_gate_stats"`
+	SafetyStats          *SafetyStats    `json:"safety_stats"`
+	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -64,6 +67,26 @@ type RecentComment struct {
 	ThumbsUp    int      `json:"thumbs_up"`
 	ThumbsDown  int      `json:"thumbs_down"`
 	CreatedAt   string   `json:"created_at"`
+}
+
+// GateOutcome represents an approval gate type/status combination with its count.
+type GateOutcome struct {
+	GateType string `json:"gate_type"`
+	Status   string `json:"status"`
+	Count    int    `json:"count"`
+}
+
+// SafetyStats holds aggregated safety check statistics.
+type SafetyStats struct {
+	TotalActions  int      `json:"total_actions"`
+	Passed        int      `json:"passed"`
+	AvgConfidence *float64 `json:"avg_confidence"`
+}
+
+// RoundTripBucket represents a count of sessions with a given round-trip count.
+type RoundTripBucket struct {
+	RoundTrips int `json:"round_trips"`
+	Count      int `json:"count"`
 }
 
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
@@ -168,6 +191,27 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 	stats.AgentStats = agentStats
+
+	// Approval gate outcomes
+	gateStats, err := s.getApprovalGateStats(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.ApprovalGateStats = gateStats
+
+	// Safety check stats
+	safetyStats, err := s.getSafetyStats(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.SafetyStats = safetyStats
+
+	// Round-trip distribution
+	rtDist, err := s.getRoundTripDistribution(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.RoundTripDistribution = rtDist
 
 	// Average time-to-first-response: seconds between issue creation and triage session creation
 	var avgSeconds *float64
@@ -317,6 +361,83 @@ func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, er
 	}
 
 	return as, nil
+}
+
+func (s *Store) getApprovalGateStats(ctx context.Context, repo string) ([]GateOutcome, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ag.gate_type, ag.status, COUNT(*) AS count
+		FROM approval_gates ag
+		INNER JOIN agent_sessions s ON ag.session_id = s.id
+		WHERE s.repo = $1
+		GROUP BY ag.gate_type, ag.status
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []GateOutcome
+	for rows.Next() {
+		var g GateOutcome
+		if err := rows.Scan(&g.GateType, &g.Status, &g.Count); err != nil {
+			return nil, err
+		}
+		results = append(results, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if results == nil {
+		results = []GateOutcome{}
+	}
+	return results, nil
+}
+
+func (s *Store) getSafetyStats(ctx context.Context, repo string) (*SafetyStats, error) {
+	ss := &SafetyStats{}
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) AS total_actions,
+			COUNT(CASE WHEN al.safety_check_passed THEN 1 END) AS passed,
+			AVG(al.confidence_score) AS avg_confidence
+		FROM agent_audit_log al
+		INNER JOIN agent_sessions s ON al.session_id = s.id
+		WHERE s.repo = $1
+	`, repo).Scan(&ss.TotalActions, &ss.Passed, &ss.AvgConfidence)
+	if err != nil {
+		return nil, err
+	}
+	return ss, nil
+}
+
+func (s *Store) getRoundTripDistribution(ctx context.Context, repo string) ([]RoundTripBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT round_trip_count, COUNT(*) AS count
+		FROM agent_sessions
+		WHERE repo = $1
+		GROUP BY round_trip_count
+		ORDER BY round_trip_count
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []RoundTripBucket
+	for rows.Next() {
+		var b RoundTripBucket
+		if err := rows.Scan(&b.RoundTrips, &b.Count); err != nil {
+			return nil, err
+		}
+		results = append(results, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if results == nil {
+		results = []RoundTripBucket{}
+	}
+	return results, nil
 }
 
 // UpdateReactions updates the thumbs up/down counts for a bot comment.
