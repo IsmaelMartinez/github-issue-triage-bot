@@ -45,15 +45,17 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 		meta := d.Metadata
 		category, _ := meta["category"].(string)
 		desc, _ := meta["description"].(string)
-		summaries = append(summaries, fmt.Sprintf("[%d] %s (%s): %s", i, d.Title, category, truncate(desc, 150)))
+		summaries = append(summaries, fmt.Sprintf("[%d] %s (%s): %s", i, d.Title, category, truncate(desc, 200)))
 	}
 
 	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
 Match this bug report against known issues from our documentation.
 
-Return a JSON array of 0-3 matches. Only include sections with a meaningful connection (shared symptoms, similar error, same component). Use humble language in the reason field ("appears similar", "might be related", "could be connected").
+Return a JSON array of 0-3 matches. Only include sections with a strong connection (same symptoms, same error message, same component affected). For each match, estimate a relevance percentage (60-95). Only include matches above 60%%.
 
-Format: [{"index": 0, "reason": "This appears similar because...", "actionable_step": "Try clearing the cache..."}]
+Keep the reason concise (1-2 sentences combining the explanation and what the user should try).
+
+Format: [{"index": 0, "reason": "This might be related because both involve login failures with SSO providers. Try clearing the cache and restarting.", "relevance": 75}]
 
 If no sections match, return: []
 Respond with ONLY valid JSON, no other text.`
@@ -67,9 +69,9 @@ Respond with ONLY valid JSON, no other text.`
 	// Parse and validate response
 	raw = extractJSONArray(raw)
 	var matches []struct {
-		Index          int    `json:"index"`
-		Reason         string `json:"reason"`
-		ActionableStep string `json:"actionable_step"`
+		Index     int    `json:"index"`
+		Reason    string `json:"reason"`
+		Relevance int    `json:"relevance"`
 	}
 	if err := json.Unmarshal([]byte(raw), &matches); err != nil {
 		return nil, fmt.Errorf("parse suggestions: %w", err)
@@ -77,15 +79,14 @@ Respond with ONLY valid JSON, no other text.`
 
 	var results []Suggestion
 	for _, m := range matches {
-		if m.Index < 0 || m.Index >= len(docs) || m.Reason == "" || m.ActionableStep == "" {
+		if m.Index < 0 || m.Index >= len(docs) || m.Reason == "" || m.Relevance < 60 || m.Relevance > 100 {
 			continue
 		}
 		docURL, _ := docs[m.Index].Metadata["docUrl"].(string)
 		results = append(results, Suggestion{
-			Title:          docs[m.Index].Title,
-			DocURL:         docURL,
-			Reason:         truncate(m.Reason, 200),
-			ActionableStep: truncate(m.ActionableStep, 200),
+			Title:  docs[m.Index].Title,
+			DocURL: docURL,
+			Reason: truncate(m.Reason, 400),
 		})
 		if len(results) >= 3 {
 			break

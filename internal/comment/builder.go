@@ -59,9 +59,9 @@ func Build(r TriageResult) string {
 			url := sanitizeURL(s.DocURL)
 			title := sanitizeLLMOutput(s.Title)
 			if url != "" {
-				parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s %s\n", title, url, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+				parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s\n", title, url, sanitizeLLMOutput(s.Reason)))
 			} else {
-				parts = append(parts, fmt.Sprintf("- %s \u2014 %s %s\n", title, sanitizeLLMOutput(s.Reason), sanitizeLLMOutput(s.ActionableStep)))
+				parts = append(parts, fmt.Sprintf("- %s \u2014 %s\n", title, sanitizeLLMOutput(s.Reason)))
 			}
 		}
 		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")

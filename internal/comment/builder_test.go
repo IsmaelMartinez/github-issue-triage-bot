@@ -69,7 +69,7 @@ func TestBuild_BugWithSuggestions(t *testing.T) {
 		IsBug: true,
 		Phase1: phases.Phase1Result{IsPwaReproducible: true},
 		Phase2: []phases.Suggestion{
-			{Title: "Cache Issue", DocURL: "https://example.com/cache", Reason: "appears similar", ActionableStep: "Try clearing cache"},
+			{Title: "Cache Issue", DocURL: "https://example.com/cache", Reason: "appears similar to a login caching issue. Try clearing cache."},
 		},
 	}
 	got := Build(result)

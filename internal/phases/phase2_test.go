@@ -67,7 +67,7 @@ func TestPhase2(t *testing.T) {
 					return dummyEmbedding, nil
 				},
 				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
-					return `[{"index": 0, "reason": "This appears similar because of login issues", "actionable_step": "Try clearing the cache"}]`, nil
+					return `[{"index": 0, "reason": "This appears similar because of login issues. Try clearing the cache.", "relevance": 75}]`, nil
 				},
 			},
 			store: &mockQuerier{
@@ -176,7 +176,7 @@ func TestPhase2(t *testing.T) {
 					return dummyEmbedding, nil
 				},
 				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
-					return `[{"index": 99, "reason": "out of bounds", "actionable_step": "do something"}]`, nil
+					return `[{"index": 99, "reason": "out of bounds", "relevance": 75}]`, nil
 				},
 			},
 			store: &mockQuerier{
@@ -209,13 +209,32 @@ func TestPhase2(t *testing.T) {
 			wantErrMsg: "generate suggestions",
 		},
 		{
-			name: "empty reason and actionable_step are skipped",
+			name: "empty reason is skipped",
 			llm: &mockProvider{
 				embedFunc: func(ctx context.Context, text string) ([]float32, error) {
 					return dummyEmbedding, nil
 				},
 				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
-					return `[{"index": 0, "reason": "", "actionable_step": "step"}, {"index": 0, "reason": "reason", "actionable_step": ""}]`, nil
+					return `[{"index": 0, "reason": "", "relevance": 75}]`, nil
+				},
+			},
+			store: &mockQuerier{
+				findDocsFunc: func(ctx context.Context, repo string, docTypes []string, embedding []float32, limit int) ([]store.SimilarDocument, error) {
+					return []store.SimilarDocument{
+						{Document: store.Document{Title: "Doc", Metadata: map[string]any{}}},
+					}, nil
+				},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "low relevance is filtered",
+			llm: &mockProvider{
+				embedFunc: func(ctx context.Context, text string) ([]float32, error) {
+					return dummyEmbedding, nil
+				},
+				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
+					return `[{"index": 0, "reason": "weak connection", "relevance": 40}]`, nil
 				},
 			},
 			store: &mockQuerier{
