@@ -56,7 +56,17 @@ Respond with JSON matching this schema:
 Set confidence to how confident you are that you understand the request (1.0 = perfectly clear, 0.0 = completely unclear).
 If needs_clarification is false, questions should be an empty array.`
 
-const synthesizeResearchSystemPrompt = `You are a software engineering researcher. Given an enhancement request and optional related context, produce a research document that evaluates implementation approaches.
+const synthesizeResearchSystemPrompt = `You are a software engineering researcher for teams-for-linux, an Electron desktop wrapper around the Microsoft Teams web app.
+
+Project architecture:
+- Desktop client: Electron + Node.js wrapping the Teams web app in a BrowserWindow
+- Custom CSS injection for theming (user-provided CSS files loaded at startup)
+- Configuration via config.json and CLI flags (Electron flags, proxy, notifications, etc.)
+- System tray integration, notifications, and keyboard shortcuts via Electron APIs
+- Preload scripts for bridging web app and native features
+- The app cannot modify the Teams web UI itself — features must work through Electron APIs, CSS injection, or configuration
+
+Given an enhancement request and related context (similar issues, ADRs, past research), produce a research document that evaluates implementation approaches grounded in this architecture. Reference related ADRs or past issues when relevant.
 
 Generate 2-3 distinct approaches with trade-offs. Be specific and actionable.
 
