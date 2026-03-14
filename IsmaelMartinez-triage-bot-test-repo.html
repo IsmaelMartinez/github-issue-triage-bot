@@ -38,7 +38,7 @@
     <header>
         <div class="container">
             <h1>Triage Bot Dashboard</h1>
-            <div class="meta">IsmaelMartinez/triage-bot-test-repo &middot; Generated 2026-03-14T06:16:39Z</div>
+            <div class="meta">IsmaelMartinez/triage-bot-test-repo &middot; Generated 2026-03-14T08:44:13Z</div>
         </div>
     </header>
     <nav>
@@ -75,6 +75,24 @@
             </table>
         </section>
         <section>
+            <h2>Approval Gate Outcomes</h2>
+            <table id="gate-table">
+                <thead><tr><th>Gate Type</th><th>Status</th><th>Count</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
+            <h2>Safety Check Stats</h2>
+            <div class="cards" id="safety-cards" style="margin-bottom: 16px;"></div>
+        </section>
+        <section>
+            <h2>Round-Trip Distribution</h2>
+            <table id="roundtrip-table">
+                <thead><tr><th>Round Trips</th><th>Sessions</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </section>
+        <section>
             <h2>Phase Breakdown</h2>
             <table id="phase-table">
                 <thead><tr><th>Phase</th><th>Count</th></tr></thead>
@@ -90,7 +108,7 @@
         </section>
     </div>
     <script>
-        const stats = {"total_comments":18,"total_thumbs_up":1,"total_thumbs_down":1,"phase_breakdown":{"phase1":18,"phase2":9,"phase3":12,"phase4b":2},"document_counts":{},"issue_count":47,"recent_comments":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":46,"comment_id":4015914371,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-07T08:06:48Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":37,"comment_id":4008682491,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-06T00:29:19Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":35,"comment_id":3996459666,"phases_run":["phase1","phase2","phase3","phase4b"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T09:57:11Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":30,"comment_id":3996010653,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T08:24:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":29,"comment_id":3993416129,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T20:40:33Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":27,"comment_id":3993416121,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T20:40:33Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":25,"comment_id":3993255515,"phases_run":["phase1","phase2","phase3"],"thumbs_up":1,"thumbs_down":0,"created_at":"2026-03-03T20:07:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":18,"comment_id":3989941552,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T10:02:15Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":16,"comment_id":3989924035,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":1,"created_at":"2026-03-03T09:59:25Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":15,"comment_id":3989397169,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:10:55Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":14,"comment_id":3989358242,"phases_run":["phase1","phase2","phase3","phase4b"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:50Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":12,"comment_id":3989357625,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":11,"comment_id":3989357398,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:36Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":10,"comment_id":3989356609,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:24Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":9,"comment_id":3987866713,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:39:09Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":6,"comment_id":3987825300,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:26:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":2,"comment_id":3987752387,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:04:54Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":1,"comment_id":3987749280,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:03:56Z"}],"triage_stats":{"total":6,"promoted":2,"pending":4,"recent":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":46,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":17,"promoted":true,"created_at":"2026-03-07T08:03:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":47,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":15,"promoted":false,"created_at":"2026-03-07T08:03:27Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":43,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":13,"promoted":false,"created_at":"2026-03-07T08:01:57Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":44,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":12,"promoted":false,"created_at":"2026-03-07T08:01:57Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":41,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":11,"promoted":false,"created_at":"2026-03-06T00:30:24Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":37,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":6,"promoted":true,"created_at":"2026-03-06T00:19:56Z"}]},"agent_stats":{"total":9,"stage_breakdown":{"complete":3,"context_brief":1,"new":2,"review_pending":3},"action_breakdown":{"context_acknowledged":1,"created_pr":1,"posted_context_brief":4,"posted_research":5,"promoted_to_public":1},"recent":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":45,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":14,"stage":"context_brief","created_at":"2026-03-07T08:01:56Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":42,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":10,"stage":"complete","created_at":"2026-03-06T00:30:18Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":40,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":9,"stage":"review_pending","created_at":"2026-03-06T00:28:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":39,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":8,"stage":"complete","created_at":"2026-03-06T00:27:51Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":38,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":7,"stage":"new","created_at":"2026-03-06T00:21:27Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":36,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":5,"stage":"review_pending","created_at":"2026-03-04T11:45:49Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":34,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":3,"stage":"complete","created_at":"2026-03-04T09:39:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":33,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":2,"stage":"new","created_at":"2026-03-04T09:37:43Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":30,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":1,"stage":"review_pending","created_at":"2026-03-04T08:24:30Z"}]},"avg_response_seconds":20.596035333333333};
+        const stats = {"total_comments":18,"total_thumbs_up":1,"total_thumbs_down":1,"phase_breakdown":{"phase1":18,"phase2":9,"phase3":12,"phase4b":2},"document_counts":{},"issue_count":47,"recent_comments":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":46,"comment_id":4015914371,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-07T08:06:48Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":37,"comment_id":4008682491,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-06T00:29:19Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":35,"comment_id":3996459666,"phases_run":["phase1","phase2","phase3","phase4b"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T09:57:11Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":30,"comment_id":3996010653,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T08:24:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":29,"comment_id":3993416129,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T20:40:33Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":27,"comment_id":3993416121,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T20:40:33Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":25,"comment_id":3993255515,"phases_run":["phase1","phase2","phase3"],"thumbs_up":1,"thumbs_down":0,"created_at":"2026-03-03T20:07:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":18,"comment_id":3989941552,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T10:02:15Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":16,"comment_id":3989924035,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":1,"created_at":"2026-03-03T09:59:25Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":15,"comment_id":3989397169,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:10:55Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":14,"comment_id":3989358242,"phases_run":["phase1","phase2","phase3","phase4b"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:50Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":12,"comment_id":3989357625,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":11,"comment_id":3989357398,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:36Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":10,"comment_id":3989356609,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T08:00:24Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":9,"comment_id":3987866713,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:39:09Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":6,"comment_id":3987825300,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:26:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":2,"comment_id":3987752387,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:04:54Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":1,"comment_id":3987749280,"phases_run":["phase1"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-03T00:03:56Z"}],"triage_stats":{"total":6,"promoted":2,"pending":4,"recent":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":46,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":17,"promoted":true,"created_at":"2026-03-07T08:03:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":47,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":15,"promoted":false,"created_at":"2026-03-07T08:03:27Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":43,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":13,"promoted":false,"created_at":"2026-03-07T08:01:57Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":44,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":12,"promoted":false,"created_at":"2026-03-07T08:01:57Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":41,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":11,"promoted":false,"created_at":"2026-03-06T00:30:24Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":37,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":6,"promoted":true,"created_at":"2026-03-06T00:19:56Z"}]},"agent_stats":{"total":9,"stage_breakdown":{"complete":3,"context_brief":1,"new":2,"review_pending":3},"action_breakdown":{"context_acknowledged":1,"created_pr":1,"posted_context_brief":4,"posted_research":5,"promoted_to_public":1},"recent":[{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":45,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":14,"stage":"context_brief","created_at":"2026-03-07T08:01:56Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":42,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":10,"stage":"complete","created_at":"2026-03-06T00:30:18Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":40,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":9,"stage":"review_pending","created_at":"2026-03-06T00:28:40Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":39,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":8,"stage":"complete","created_at":"2026-03-06T00:27:51Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":38,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":7,"stage":"new","created_at":"2026-03-06T00:21:27Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":36,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":5,"stage":"review_pending","created_at":"2026-03-04T11:45:49Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":34,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":3,"stage":"complete","created_at":"2026-03-04T09:39:28Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":33,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":2,"stage":"new","created_at":"2026-03-04T09:37:43Z"},{"repo":"IsmaelMartinez/triage-bot-test-repo","issue_number":30,"shadow_repo":"IsmaelMartinez/triage-bot-test-repo-shadow","shadow_issue":1,"stage":"review_pending","created_at":"2026-03-04T08:24:30Z"}]},"avg_response_seconds":20.596035333333333,"approval_gate_stats":[{"gate_type":"research_approval","status":"approved","count":1},{"gate_type":"research_approval","status":"pending","count":3},{"gate_type":"research_approval","status":"revision_requested","count":1}],"safety_stats":{"total_actions":12,"passed":12,"avg_confidence":0.9958333323399226},"round_trip_distribution":[{"round_trips":0,"count":8},{"round_trips":1,"count":1}]};
 
         const docTotal = Object.values(stats.document_counts || {}).reduce((a, b) => a + b, 0);
         const thumbsRatio = stats.total_comments > 0
@@ -260,6 +278,64 @@
             tr.appendChild(tdStage);
             tr.appendChild(tdDate);
             agentRecentBody.appendChild(tr);
+        });
+
+        
+        var gateBody = document.querySelector('#gate-table tbody');
+        (stats.approval_gate_stats || []).forEach(function(g) {
+            var tr = document.createElement('tr');
+            var tdType = document.createElement('td');
+            tdType.textContent = g.gate_type;
+            var tdStatus = document.createElement('td');
+            var statusSpan = document.createElement('span');
+            statusSpan.className = 'phase-tag';
+            var gateColors = { approved: '#dcffe4', rejected: '#ffd7d5', pending: '#fff3cd', revision_requested: '#cfe2ff' };
+            statusSpan.style.background = gateColors[g.status] || '#e1e4e8';
+            statusSpan.textContent = g.status;
+            tdStatus.appendChild(statusSpan);
+            var tdCount = document.createElement('td');
+            tdCount.textContent = g.count;
+            tr.appendChild(tdType);
+            tr.appendChild(tdStatus);
+            tr.appendChild(tdCount);
+            gateBody.appendChild(tr);
+        });
+
+        
+        var ss = stats.safety_stats || { total_actions: 0, passed: 0, avg_confidence: null };
+        var passRate = ss.total_actions > 0 ? ((ss.passed / ss.total_actions) * 100).toFixed(0) + '%' : 'N/A';
+        var avgConf = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
+        var safetyCards = [
+            { label: 'Total Actions', value: ss.total_actions },
+            { label: 'Pass Rate', value: passRate, cls: 'green' },
+            { label: 'Avg Confidence', value: avgConf },
+        ];
+        var safetyCardsEl = document.getElementById('safety-cards');
+        safetyCards.forEach(function(c) {
+            var div = document.createElement('div');
+            div.className = 'card';
+            var lbl = document.createElement('div');
+            lbl.className = 'label';
+            lbl.textContent = c.label;
+            var val = document.createElement('div');
+            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
+            val.textContent = c.value;
+            div.appendChild(lbl);
+            div.appendChild(val);
+            safetyCardsEl.appendChild(div);
+        });
+
+        
+        var rtBody = document.querySelector('#roundtrip-table tbody');
+        (stats.round_trip_distribution || []).forEach(function(b) {
+            var tr = document.createElement('tr');
+            var tdRT = document.createElement('td');
+            tdRT.textContent = b.round_trips;
+            var tdCount = document.createElement('td');
+            tdCount.textContent = b.count;
+            tr.appendChild(tdRT);
+            tr.appendChild(tdCount);
+            rtBody.appendChild(tr);
         });
 
         var phaseBody = document.querySelector('#phase-table tbody');
