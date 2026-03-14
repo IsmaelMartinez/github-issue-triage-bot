@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Triage Bot Dashboard — {{.Repo}}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #1a1a1a; line-height: 1.6; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: #24292e; color: #c9d1d9; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid #30363d; }
+        .sidebar-header h1 { font-size: 1rem; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .sidebar-header select { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; font-size: 0.8rem; }
+        .sidebar-nav { padding: 12px 0; flex: 1; }
+        .sidebar-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 16px; color: #8b949e; text-decoration: none; font-size: 0.85rem; border-left: 3px solid transparent; }
+        .sidebar-nav a:hover { color: #c9d1d9; background: #161b22; }
+        .sidebar-nav a.active { color: #fff; border-left-color: #f78166; background: #161b22; }
+        .sidebar-nav .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .sidebar-footer { padding: 12px 16px; border-top: 1px solid #30363d; font-size: 0.7rem; color: #484f58; }
+        .content { flex: 1; padding: 24px; overflow-y: auto; }
+        .content h2 { font-size: 1.2rem; font-weight: 600; color: #1a1a1a; margin-bottom: 16px; }
+        .content h3 { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; margin: 16px 0 8px; }
+        .health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .health-card { border-radius: 8px; padding: 16px; text-align: center; }
+        .health-card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .health-card .value { font-size: 1.8rem; font-weight: 700; }
+        .health-card .sub { font-size: 0.75rem; margin-top: 2px; }
+        .hc-green { background: #dcffe4; } .hc-green .label, .hc-green .sub { color: #155724; } .hc-green .value { color: #155724; }
+        .hc-yellow { background: #fff3cd; } .hc-yellow .label, .hc-yellow .sub { color: #664d03; } .hc-yellow .value { color: #664d03; }
+        .hc-red { background: #ffd7d5; } .hc-red .label, .hc-red .sub { color: #721c24; } .hc-red .value { color: #721c24; }
+        .hc-neutral { background: #f0f0f0; } .hc-neutral .label, .hc-neutral .sub { color: #555; } .hc-neutral .value { color: #1a1a1a; }
+        .panel { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+        th { font-weight: 600; color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        a { color: #0366d6; text-decoration: none; } a:hover { text-decoration: underline; }
+        .tag { display: inline-block; border-radius: 12px; padding: 2px 8px; font-size: 0.72rem; font-weight: 500; }
+        .tag-promoted { background: #dcffe4; color: #155724; }
+        .tag-pending { background: #fff3cd; color: #664d03; }
+        .tag-research { background: #cfe2ff; color: #084298; }
+        .tag-complete { background: #dcffe4; color: #155724; }
+        .tag-rejected { background: #ffd7d5; color: #721c24; }
+        .tag-default { background: #e1e4e8; color: #333; }
+        .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .bar-label { width: 70px; font-size: 0.8rem; color: #555; flex-shrink: 0; }
+        .bar-track { flex: 1; background: #e1e4e8; border-radius: 4px; height: 16px; overflow: hidden; }
+        .bar-fill { height: 16px; border-radius: 4px; background: #2ea44f; }
+        .bar-pct { width: 40px; font-size: 0.75rem; color: #555; text-align: right; flex-shrink: 0; }
+        .phases { display: flex; gap: 3px; flex-wrap: wrap; }
+        .phase-tag { background: #e1e4e8; border-radius: 10px; padding: 1px 6px; font-size: 0.7rem; color: #333; }
+        .view { display: none; } .view.active { display: block; }
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; }
+            .sidebar-nav { display: flex; padding: 0; }
+            .sidebar-nav a { border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; }
+            .sidebar-nav a.active { border-bottom-color: #f78166; }
+            .sidebar-footer { display: none; }
+            .two-col { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Triage Bot</h1>
+                <select onchange="location.href=this.value">
+                    {{range .Repos}}<option value="{{.Href}}"{{if .Active}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#overview" class="active" onclick="showView('overview',this);return false"><span class="dot" id="dot-overview"></span> Overview</a>
+                <a href="#triage" onclick="showView('triage',this);return false"><span class="dot" id="dot-triage"></span> Triage</a>
+                <a href="#agent" onclick="showView('agent',this);return false"><span class="dot" id="dot-agent"></span> Agent</a>
+                <a href="#system" onclick="showView('system',this);return false"><span class="dot" id="dot-system"></span> System</a>
+            </nav>
+            <div class="sidebar-footer">Updated {{.Generated}}</div>
+        </aside>
+        <main class="content">
+            <div id="view-overview" class="view active">
+                <h2>Overview</h2>
+                <div class="health-cards" id="overview-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Recent Activity</h3><div id="activity-feed"></div></div>
+                    <div class="panel"><h3>Vector Store</h3><table id="vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
+                </div>
+            </div>
+            <div id="view-triage" class="view">
+                <h2>Bug Triage</h2>
+                <div class="health-cards" id="triage-cards"></div>
+                <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
+                <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+            </div>
+            <div id="view-agent" class="view">
+                <h2>Enhancement Agent</h2>
+                <div class="health-cards" id="agent-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Approval Gates</h3><div id="gate-list"></div></div>
+                    <div class="panel"><h3>Round Trips</h3><table id="rt-table"><thead><tr><th>Trips</th><th style="text-align:right">Sessions</th></tr></thead><tbody></tbody></table></div>
+                </div>
+                <div class="panel"><h3>Recent Sessions</h3><table id="agent-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Stage</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+            </div>
+            <div id="view-system" class="view">
+                <h2>System</h2>
+                <div class="health-cards" id="system-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Vector Store</h3><table id="sys-vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
+                    <div class="panel"><h3>Recent Comments</h3><table id="comments-table"><thead><tr><th>Issue</th><th>Phases</th><th>&#x1F44D;</th><th>&#x1F44E;</th></tr></thead><tbody></tbody></table></div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script>
+    var stats = {{.StatsJSON}};
+
+    /* DOM helper: el('div', {text:'hi', cls:'foo'}, [child1, child2]) */
+    function el(tag, a, ch) {
+        var e = document.createElement(tag);
+        if (a) Object.keys(a).forEach(function(k) {
+            if (k === 'text') e.textContent = a[k];
+            else if (k === 'cls') e.className = a[k];
+            else if (k === 'style') e.style.cssText = a[k];
+            else e.setAttribute(k, a[k]);
+        });
+        if (ch) ch.forEach(function(c) { if (c) e.appendChild(c); });
+        return e;
+    }
+    function mkTag(t, c) { return el('span', {text: t, cls: 'tag ' + (c || 'tag-default')}); }
+    function stageTag(s) { var m = {complete:'tag-complete', context_brief:'tag-pending', review_pending:'tag-research', researching:'tag-research', approved:'tag-promoted', new:'tag-default'}; return mkTag(s, m[s] || 'tag-default'); }
+    function iLink(r, n) { return el('a', {href: 'https://github.com/' + r + '/issues/' + n, text: '#' + n}); }
+    function fDate(d) { return d ? d.substring(0, 10) : ''; }
+    function hCls(v, g, y, hi) { if (v == null) return 'hc-neutral'; if (hi) return v >= g ? 'hc-green' : v >= y ? 'hc-yellow' : 'hc-red'; return v <= g ? 'hc-green' : v <= y ? 'hc-yellow' : 'hc-red'; }
+    function addCards(id, cards) { var c = document.getElementById(id); cards.forEach(function(d) { c.appendChild(el('div', {cls: 'health-card ' + d.cls}, [el('div', {cls: 'label', text: d.label}), el('div', {cls: 'value', text: d.value}), d.sub ? el('div', {cls: 'sub', text: d.sub}) : null])); }); }
+    function fillTbl(id, rows) { var tb = document.querySelector('#' + id + ' tbody'); rows.forEach(function(r) { var tr = el('tr'); r.forEach(function(c) { var td = el('td'); if (typeof c === 'string' || typeof c === 'number') td.textContent = c; else td.appendChild(c); tr.appendChild(td); }); tb.appendChild(tr); }); }
+    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); }
+
+    /* Data */
+    var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
+    var ag = stats.agent_stats || {total:0, stage_breakdown:{}, action_breakdown:{}, recent:[]};
+    var ss = stats.safety_stats || {total_actions:0, passed:0, avg_confidence:null};
+    var gates = stats.approval_gate_stats || [];
+    var rt = stats.round_trip_distribution || [];
+    var phr = stats.phase_hit_rate || {};
+    var ab = ag.action_breakdown || {};
+
+    var promRate = ts.total > 0 ? (ts.promoted / ts.total * 100) : null;
+    var safeRate = ss.total_actions > 0 ? (ss.passed / ss.total_actions * 100) : null;
+    var avgR = stats.avg_response_seconds;
+    var rStr = 'N/A';
+    if (avgR != null) { var sec = Math.round(avgR); rStr = sec < 60 ? sec + 's' : sec < 3600 ? Math.round(sec / 60) + 'm' : (sec / 3600).toFixed(1) + 'h'; }
+
+    /* Sidebar health dots */
+    function setDot(id, c) { document.getElementById(id).style.background = c; }
+    setDot('dot-overview', '#2ea44f');
+    setDot('dot-triage', promRate == null ? '#484f58' : promRate >= 50 ? '#2ea44f' : promRate >= 25 ? '#d29922' : '#da3633');
+    var pendAg = Object.keys(ag.stage_breakdown).reduce(function(n, k) { return k !== 'complete' ? n + ag.stage_breakdown[k] : n; }, 0);
+    setDot('dot-agent', pendAg > 0 ? '#d29922' : '#2ea44f');
+    setDot('dot-system', safeRate == null ? '#484f58' : safeRate >= 95 ? '#2ea44f' : safeRate >= 80 ? '#d29922' : '#da3633');
+
+    /* Overview cards */
+    addCards('overview-cards', [
+        {label: 'Triage', value: promRate != null ? promRate.toFixed(0) + '%' : 'N/A', sub: ts.promoted + '/' + ts.total + ' promoted', cls: hCls(promRate, 50, 25, true)},
+        {label: 'Agent', value: pendAg, sub: pendAg > 0 ? 'pending review' : 'all complete', cls: pendAg > 0 ? 'hc-yellow' : 'hc-green'},
+        {label: 'Safety', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', sub: 'pass rate', cls: hCls(safeRate, 95, 80, true)},
+        {label: 'Response', value: rStr, sub: 'avg time', cls: hCls(avgR, 60, 300, false)}
+    ]);
+
+    /* Activity feed: merge triage + agent recent, sort by date desc */
+    var feed = [];
+    (ts.recent || []).forEach(function(t) { feed.push({date: t.created_at, type: 'triage', repo: t.repo, num: t.issue_number, sr: t.shadow_repo, sn: t.shadow_issue, status: t.promoted ? 'promoted' : 'pending'}); });
+    (ag.recent || []).forEach(function(a) { feed.push({date: a.created_at, type: 'agent', repo: a.repo, num: a.issue_number, sr: a.shadow_repo, sn: a.shadow_issue, status: a.stage}); });
+    feed.sort(function(a, b) { return b.date.localeCompare(a.date); });
+    var feedEl = document.getElementById('activity-feed');
+    feed.slice(0, 15).forEach(function(f) {
+        var tc = f.status === 'promoted' ? 'tag-promoted' : f.status === 'pending' ? 'tag-pending' : f.status === 'complete' ? 'tag-complete' : f.status === 'context_brief' ? 'tag-pending' : 'tag-research';
+        feedEl.appendChild(el('div', {style: 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.82rem;border-bottom:1px solid #f0f0f0'}, [
+            el('span', {text: fDate(f.date), style: 'color:#8b949e;width:65px;flex-shrink:0;font-size:0.75rem'}),
+            iLink(f.repo, f.num), el('span', {text: f.type, style: 'color:#8b949e;font-size:0.72rem'}), mkTag(f.status, tc)
+        ]));
+    });
+    if (feed.length === 0) feedEl.appendChild(el('div', {text: 'No activity yet', style: 'color:#8b949e;font-size:0.85rem;padding:8px 0'}));
+
+    /* Vector store tables (overview + system) */
+    var dc = stats.document_counts || {};
+    var vr = Object.keys(dc).sort().map(function(k) { return [k, dc[k]]; });
+    vr.push(['Issues', stats.issue_count]);
+    fillTbl('vector-table', vr);
+    fillTbl('sys-vector-table', vr);
+
+    /* Triage view */
+    addCards('triage-cards', [
+        {label: 'Total', value: ts.total, cls: 'hc-neutral'},
+        {label: 'Promoted', value: ts.promoted, sub: 'via lgtm', cls: 'hc-green'},
+        {label: 'Pending', value: ts.pending, cls: ts.pending > 0 ? 'hc-yellow' : 'hc-neutral'}
+    ]);
+    var barsEl = document.getElementById('phase-bars');
+    var pkeys = Object.keys(phr).sort();
+    if (pkeys.length === 0) barsEl.appendChild(el('div', {text: 'No triage data yet', style: 'color:#8b949e;font-size:0.85rem'}));
+    pkeys.forEach(function(p) { var pct = (phr[p] * 100).toFixed(0); barsEl.appendChild(el('div', {cls: 'bar-row'}, [el('span', {cls: 'bar-label', text: p}), el('div', {cls: 'bar-track'}, [el('div', {cls: 'bar-fill', style: 'width:' + pct + '%'})]), el('span', {cls: 'bar-pct', text: pct + '%'})])); });
+    fillTbl('triage-table', (ts.recent || []).map(function(t) {
+        var st = t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending');
+        var sl = t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue});
+        return [iLink(t.repo, t.issue_number), sl, st, fDate(t.created_at)];
+    }));
+
+    /* Agent view */
+    addCards('agent-cards', [
+        {label: 'Sessions', value: ag.total, cls: 'hc-neutral'},
+        {label: 'Briefs', value: ab['posted_context_brief'] || 0, cls: 'hc-neutral'},
+        {label: 'Researched', value: ab['posted_research'] || 0, cls: 'hc-neutral'},
+        {label: 'Acknowledged', value: ab['context_acknowledged'] || 0, cls: 'hc-neutral'}
+    ]);
+    var gEl = document.getElementById('gate-list');
+    if (gates.length === 0) gEl.appendChild(el('div', {text: 'No approval gates yet', style: 'color:#8b949e;font-size:0.85rem'}));
+    var gbt = {}; gates.forEach(function(g) { if (!gbt[g.gate_type]) gbt[g.gate_type] = []; gbt[g.gate_type].push(g); });
+    Object.keys(gbt).sort().forEach(function(gt) {
+        var row = el('div', {style: 'margin-bottom:6px;font-size:0.82rem'});
+        row.appendChild(el('span', {text: gt + ': ', style: 'color:#555'}));
+        gbt[gt].forEach(function(g) { var c = g.status === 'approved' ? 'tag-promoted' : g.status === 'rejected' ? 'tag-rejected' : g.status === 'pending' ? 'tag-pending' : 'tag-research'; row.appendChild(mkTag(g.count + ' ' + g.status, c)); row.appendChild(document.createTextNode(' ')); });
+        gEl.appendChild(row);
+    });
+    fillTbl('rt-table', rt.map(function(b) { return [b.round_trips, b.count]; }));
+    fillTbl('agent-table', (ag.recent || []).map(function(a) { var sl = a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}); return [iLink(a.repo, a.issue_number), sl, stageTag(a.stage), fDate(a.created_at)]; }));
+
+    /* System view */
+    var avgC = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
+    var tUp = stats.total_thumbs_up || 0, tDn = stats.total_thumbs_down || 0, tTot = tUp + tDn;
+    var tRate = tTot > 0 ? (tUp / tTot * 100).toFixed(0) + '%' : 'No reactions';
+    addCards('system-cards', [
+        {label: 'Safety Pass', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', cls: hCls(safeRate, 95, 80, true)},
+        {label: 'Avg Confidence', value: avgC, cls: 'hc-neutral'},
+        {label: 'Comments', value: stats.total_comments, cls: 'hc-neutral'},
+        {label: 'Reactions', value: tRate, sub: tTot > 0 ? tUp + ' up / ' + tDn + ' down' : '', cls: 'hc-neutral'}
+    ]);
+    fillTbl('comments-table', (stats.recent_comments || []).slice(0, 10).map(function(c) {
+        var lk = iLink(c.repo, c.issue_number);
+        if (c.comment_id) lk.href += '#issuecomment-' + c.comment_id;
+        var ph = el('div', {cls: 'phases'});
+        (c.phases_run || []).forEach(function(p) { ph.appendChild(el('span', {cls: 'phase-tag', text: p})); });
+        return [lk, ph, c.thumbs_up, c.thumbs_down];
+    }));
+    </script>
+</body>
+</html>

@@ -20,6 +20,7 @@ type DashboardStats struct {
 	ApprovalGateStats    []GateOutcome   `json:"approval_gate_stats"`
 	SafetyStats          *SafetyStats    `json:"safety_stats"`
 	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
+	PhaseHitRate          map[string]float64 `json:"phase_hit_rate"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -94,6 +95,7 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 	stats := &DashboardStats{
 		PhaseBreakdown: make(map[string]int),
 		DocumentCounts: make(map[string]int),
+		PhaseHitRate:   make(map[string]float64),
 		RecentComments: []RecentComment{},
 	}
 
@@ -225,6 +227,13 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 	stats.AvgResponseSeconds = avgSeconds
+
+	// Phase hit rate
+	phaseHitRate, err := s.getPhaseHitRate(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.PhaseHitRate = phaseHitRate
 
 	return stats, nil
 }
@@ -438,6 +447,32 @@ func (s *Store) getRoundTripDistribution(ctx context.Context, repo string) ([]Ro
 		results = []RoundTripBucket{}
 	}
 	return results, nil
+}
+
+func (s *Store) getPhaseHitRate(ctx context.Context, repo string) (map[string]float64, error) {
+	result := map[string]float64{}
+	rows, err := s.pool.Query(ctx, `
+		SELECT phase,
+			COUNT(DISTINCT t.id)::float / NULLIF(
+				(SELECT COUNT(*) FROM triage_sessions WHERE repo = $1), 0
+			) AS hit_rate
+		FROM triage_sessions t, unnest(t.phases_run) AS phase
+		WHERE t.repo = $1
+		GROUP BY phase
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var phase string
+		var rate float64
+		if err := rows.Scan(&phase, &rate); err != nil {
+			return nil, err
+		}
+		result[phase] = rate
+	}
+	return result, rows.Err()
 }
 
 // UpdateReactions updates the thumbs up/down counts for a bot comment.
