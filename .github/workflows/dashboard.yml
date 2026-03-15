@@ -11,7 +11,23 @@ on:
 permissions:
   contents: write
   pages: write
+  id-token: write
 jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2
+        with:
+          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
+          service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
+      - name: Close stale shadow issues
+        run: |
+          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          curl -sf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
+            || echo "cleanup failed, continuing"
   generate:
     runs-on: ubuntu-latest
     steps:

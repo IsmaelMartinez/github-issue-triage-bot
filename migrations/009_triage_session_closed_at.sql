@@ -1,0 +1,1 @@
+ALTER TABLE triage_sessions ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;

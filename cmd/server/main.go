@@ -147,8 +147,11 @@ func main() {
 				logger.Error("failed to close stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
 				continue
 			}
-			if ss.SessionType == "agent" {
+			switch ss.SessionType {
+			case "agent":
 				_ = s.MarkSessionComplete(r.Context(), ss.ID)
+			case "triage":
+				_ = s.MarkTriageSessionClosed(r.Context(), ss.ID)
 			}
 			closed++
 			logger.Info("closed stale shadow issue", "type", ss.SessionType, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)

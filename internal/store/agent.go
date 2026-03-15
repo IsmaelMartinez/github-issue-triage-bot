@@ -125,12 +125,12 @@ func (s *Store) ListStaleSessions(ctx context.Context, staleDuration time.Durati
 		return nil, err
 	}
 
-	// Stale triage sessions (no corresponding bot_comment = not promoted)
+	// Stale triage sessions (no corresponding bot_comment = not promoted, not already closed)
 	rows2, err := s.pool.Query(ctx, `
 		SELECT t.id, t.shadow_repo, t.shadow_issue_number
 		FROM triage_sessions t
 		LEFT JOIN bot_comments b ON t.repo = b.repo AND t.issue_number = b.issue_number
-		WHERE b.id IS NULL AND t.created_at < $1
+		WHERE b.id IS NULL AND t.closed_at IS NULL AND t.created_at < $1
 	`, cutoff)
 	if err != nil {
 		return nil, fmt.Errorf("list stale triage sessions: %w", err)
@@ -156,6 +156,14 @@ func (s *Store) MarkSessionComplete(ctx context.Context, id int64) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE agent_sessions SET stage = $1, updated_at = now() WHERE id = $2
 	`, StageComplete, id)
+	return err
+}
+
+// MarkTriageSessionClosed sets the closed_at timestamp on a triage session.
+func (s *Store) MarkTriageSessionClosed(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE triage_sessions SET closed_at = now() WHERE id = $1
+	`, id)
 	return err
 }
 
