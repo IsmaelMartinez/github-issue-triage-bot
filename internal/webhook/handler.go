@@ -16,6 +16,7 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/safety"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
@@ -39,13 +40,14 @@ type Handler struct {
 	ctx           context.Context
 	agentHandler  *agent.AgentHandler
 	shadowRepos   map[string]string
+	mirror        *mirror.Service
 }
 
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
 // ctx is used as the parent context for background triage goroutines.
 // shadowRepos maps source repos to their shadow repos for triage review and agent sessions.
-func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string) *Handler {
+func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string, mirrorSvc *mirror.Service) *Handler {
 	structural := safety.NewStructuralValidator(safety.StructuralConfig{
 		MaxCommentLength: maxCommentLength,
 	})
@@ -62,6 +64,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		ctx:           ctx,
 		agentHandler:  agentHandler,
 		shadowRepos:   shadowRepos,
+		mirror:        mirrorSvc,
 	}
 }
 
@@ -144,6 +147,27 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			defer cancel()
 			h.processCommentEvent(ctx, event)
 		}()
+
+	case "push":
+		var event gh.PushEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		// Only mirror pushes to the default branch
+		if event.Ref == "refs/heads/main" || event.Ref == "refs/heads/master" {
+			h.wg.Add(1)
+			go func() {
+				defer h.wg.Done()
+				ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
+				defer cancel()
+				h.handlePush(ctx, event)
+			}()
+		} else {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, "ignored non-default branch push")
+			return
+		}
 
 	default:
 		w.WriteHeader(http.StatusOK)
@@ -499,6 +523,29 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	}
 
 	issueLog.Info("retriage complete, posted to shadow repo", "shadowIssue", shadowNumber)
+}
+
+func (h *Handler) handlePush(ctx context.Context, event gh.PushEvent) {
+	repo := event.Repo.FullName
+	log := h.logger.With("repo", repo, "ref", event.Ref)
+
+	shadowRepo, ok := h.shadowRepos[repo]
+	if !ok {
+		log.Info("no shadow repo configured, skipping mirror sync")
+		return
+	}
+
+	if h.mirror == nil {
+		log.Warn("mirror service not configured, skipping sync")
+		return
+	}
+
+	log.Info("triggering mirror sync for push event")
+	if err := h.mirror.Sync(ctx, event.Installation.ID, repo, shadowRepo); err != nil {
+		log.Error("mirror sync failed", "error", err)
+		return
+	}
+	log.Info("mirror sync completed successfully")
 }
 
 func (h *Handler) handleStateChange(ctx context.Context, repo string, issue gh.IssueDetail) {

@@ -17,6 +17,7 @@ import (
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/webhook"
 )
@@ -86,8 +87,19 @@ func main() {
 		logger.Info("shadow repos configured", "count", len(shadowRepos))
 	}
 
+	// Set up mirror service for shadow repo code sync
+	var mirrorSvc *mirror.Service
+	if len(shadowRepos) > 0 {
+		mirrorCacheDir := os.Getenv("MIRROR_CACHE_DIR")
+		if mirrorCacheDir == "" {
+			mirrorCacheDir = os.TempDir()
+		}
+		mirrorSvc = mirror.New(ghClient, logger, mirrorCacheDir)
+		logger.Info("mirror service configured", "cacheDir", mirrorCacheDir)
+	}
+
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, shadowRepos)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, shadowRepos, mirrorSvc)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)

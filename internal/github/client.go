@@ -349,6 +349,20 @@ func (c *Client) ListInstallations(ctx context.Context) ([]int64, error) {
 	return ids, nil
 }
 
+// InstallationToken returns an access token for the given installation.
+// This can be used for git clone/push operations via HTTPS.
+func (c *Client) InstallationToken(ctx context.Context, installationID int64) (string, error) {
+	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("create installation transport: %w", err)
+	}
+	token, err := itr.Token(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get installation token: %w", err)
+	}
+	return token, nil
+}
+
 // FormatShadowIssueBody formats an issue body for a shadow repo mirror issue.
 func FormatShadowIssueBody(sourceRepo string, issueNumber int, title, body string) string {
 	return fmt.Sprintf("**Mirror of %s#%d**\n\n**Original title:** %s\n\n---\n\n%s", sourceRepo, issueNumber, title, body)
@@ -425,6 +439,13 @@ type IssueUser struct {
 // LabelInfo is a GitHub label.
 type LabelInfo struct {
 	Name string `json:"name"`
+}
+
+// PushEvent represents a GitHub push webhook event payload.
+type PushEvent struct {
+	Ref          string           `json:"ref"`
+	Repo         RepoDetail       `json:"repository"`
+	Installation InstallationInfo `json:"installation"`
 }
 
 // RepoDetail is the repository portion of a webhook event.
