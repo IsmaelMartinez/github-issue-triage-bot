@@ -6,390 +6,242 @@
     <title>Triage Bot Dashboard — IsmaelMartinez/teams-for-linux</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #333; line-height: 1.6; }
-        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
-        header { background: #24292e; color: #fff; padding: 24px 0; margin-bottom: 24px; }
-        header .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-        header h1 { font-size: 1.4rem; font-weight: 600; }
-        header .meta { font-size: 0.85rem; color: #8b949e; }
-        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .card .label { font-size: 0.8rem; text-transform: uppercase; color: #666; letter-spacing: 0.05em; margin-bottom: 4px; }
-        .card .value { font-size: 2rem; font-weight: 700; color: #24292e; }
-        .card .value.green { color: #2ea44f; }
-        .card .value.red { color: #d73a49; }
-        section { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        section h2 { font-size: 1.1rem; margin-bottom: 12px; color: #24292e; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; color: #1a1a1a; line-height: 1.6; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: #24292e; color: #c9d1d9; display: flex; flex-direction: column; flex-shrink: 0; }
+        .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid #30363d; }
+        .sidebar-header h1 { font-size: 1rem; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .sidebar-header select { width: 100%; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; font-size: 0.8rem; }
+        .sidebar-nav { padding: 12px 0; flex: 1; }
+        .sidebar-nav a { display: flex; align-items: center; gap: 8px; padding: 8px 16px; color: #8b949e; text-decoration: none; font-size: 0.85rem; border-left: 3px solid transparent; }
+        .sidebar-nav a:hover { color: #c9d1d9; background: #161b22; }
+        .sidebar-nav a.active { color: #fff; border-left-color: #f78166; background: #161b22; }
+        .sidebar-nav .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .sidebar-footer { padding: 12px 16px; border-top: 1px solid #30363d; font-size: 0.7rem; color: #484f58; }
+        .content { flex: 1; padding: 24px; overflow-y: auto; }
+        .content h2 { font-size: 1.2rem; font-weight: 600; color: #1a1a1a; margin-bottom: 16px; }
+        .content h3 { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; margin: 16px 0 8px; }
+        .health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .health-card { border-radius: 8px; padding: 16px; text-align: center; }
+        .health-card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+        .health-card .value { font-size: 1.8rem; font-weight: 700; }
+        .health-card .sub { font-size: 0.75rem; margin-top: 2px; }
+        .hc-green { background: #dcffe4; } .hc-green .label, .hc-green .sub { color: #155724; } .hc-green .value { color: #155724; }
+        .hc-yellow { background: #fff3cd; } .hc-yellow .label, .hc-yellow .sub { color: #664d03; } .hc-yellow .value { color: #664d03; }
+        .hc-red { background: #ffd7d5; } .hc-red .label, .hc-red .sub { color: #721c24; } .hc-red .value { color: #721c24; }
+        .hc-neutral { background: #f0f0f0; } .hc-neutral .label, .hc-neutral .sub { color: #555; } .hc-neutral .value { color: #1a1a1a; }
+        .panel { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
-        th { font-weight: 600; color: #555; }
-        a { color: #0366d6; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .phases { display: flex; gap: 4px; flex-wrap: wrap; }
-        .phase-tag { background: #e1e4e8; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; }
-        nav { background: #1b1f23; padding: 0; }
-        nav .container { display: flex; gap: 0; padding: 0; }
-        nav a { color: #8b949e; padding: 10px 16px; font-size: 0.85rem; text-decoration: none; border-bottom: 2px solid transparent; }
-        nav a:hover { color: #fff; text-decoration: none; }
-        nav a.active { color: #fff; border-bottom-color: #f78166; }
+        th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
+        th { font-weight: 600; color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        a { color: #0366d6; text-decoration: none; } a:hover { text-decoration: underline; }
+        .tag { display: inline-block; border-radius: 12px; padding: 2px 8px; font-size: 0.72rem; font-weight: 500; }
+        .tag-promoted { background: #dcffe4; color: #155724; }
+        .tag-pending { background: #fff3cd; color: #664d03; }
+        .tag-research { background: #cfe2ff; color: #084298; }
+        .tag-complete { background: #dcffe4; color: #155724; }
+        .tag-rejected { background: #ffd7d5; color: #721c24; }
+        .tag-default { background: #e1e4e8; color: #333; }
+        .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .bar-label { width: 70px; font-size: 0.8rem; color: #555; flex-shrink: 0; }
+        .bar-track { flex: 1; background: #e1e4e8; border-radius: 4px; height: 16px; overflow: hidden; }
+        .bar-fill { height: 16px; border-radius: 4px; background: #2ea44f; }
+        .bar-pct { width: 40px; font-size: 0.75rem; color: #555; text-align: right; flex-shrink: 0; }
+        .phases { display: flex; gap: 3px; flex-wrap: wrap; }
+        .phase-tag { background: #e1e4e8; border-radius: 10px; padding: 1px 6px; font-size: 0.7rem; color: #333; }
+        .view { display: none; } .view.active { display: block; }
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; }
+            .sidebar-nav { display: flex; padding: 0; }
+            .sidebar-nav a { border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; }
+            .sidebar-nav a.active { border-bottom-color: #f78166; }
+            .sidebar-footer { display: none; }
+            .two-col { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>Triage Bot Dashboard</h1>
-            <div class="meta">IsmaelMartinez/teams-for-linux &middot; Generated 2026-03-14T08:44:13Z</div>
-        </div>
-    </header>
-    <nav>
-        <div class="container">
-            <a href="index.html" class="active">teams-for-linux</a><a href="IsmaelMartinez-triage-bot-test-repo.html">triage-bot-test-repo</a>
-        </div>
-    </nav>
-    <div class="container">
-        <div class="cards" id="cards"></div>
-        <section>
-            <h2>Shadow Repo: Bug Triage</h2>
-            <div class="cards" id="triage-cards" style="margin-bottom: 16px;"></div>
-            <table id="triage-table">
-                <thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
-        <section>
-            <h2>Shadow Repo: Enhancement Agent</h2>
-            <div class="cards" id="agent-cards" style="margin-bottom: 16px;"></div>
-            <table id="agent-stage-table">
-                <thead><tr><th>Stage</th><th>Count</th></tr></thead>
-                <tbody></tbody>
-            </table>
-            <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 0.95rem;">Action Signals</h3>
-            <table id="agent-action-table">
-                <thead><tr><th>Action</th><th>Count</th></tr></thead>
-                <tbody></tbody>
-            </table>
-            <h3 style="margin-top: 16px; margin-bottom: 8px; font-size: 0.95rem;">Recent Sessions</h3>
-            <table id="agent-recent-table">
-                <thead><tr><th>Issue</th><th>Shadow</th><th>Stage</th><th>Date</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
-        <section>
-            <h2>Approval Gate Outcomes</h2>
-            <table id="gate-table">
-                <thead><tr><th>Gate Type</th><th>Status</th><th>Count</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
-        <section>
-            <h2>Safety Check Stats</h2>
-            <div class="cards" id="safety-cards" style="margin-bottom: 16px;"></div>
-        </section>
-        <section>
-            <h2>Round-Trip Distribution</h2>
-            <table id="roundtrip-table">
-                <thead><tr><th>Round Trips</th><th>Sessions</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
-        <section>
-            <h2>Phase Breakdown</h2>
-            <table id="phase-table">
-                <thead><tr><th>Phase</th><th>Count</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
-        <section>
-            <h2>Recent Comments</h2>
-            <table id="comments-table">
-                <thead><tr><th>Issue</th><th>Phases</th><th>Thumbs Up</th><th>Thumbs Down</th><th>Date</th></tr></thead>
-                <tbody></tbody>
-            </table>
-        </section>
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Triage Bot</h1>
+                <select onchange="location.href=this.value">
+                    <option value="index.html" selected>teams-for-linux</option><option value="IsmaelMartinez-triage-bot-test-repo.html">triage-bot-test-repo</option>
+                </select>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#overview" class="active" onclick="showView('overview',this);return false"><span class="dot" id="dot-overview"></span> Overview</a>
+                <a href="#triage" onclick="showView('triage',this);return false"><span class="dot" id="dot-triage"></span> Triage</a>
+                <a href="#agent" onclick="showView('agent',this);return false"><span class="dot" id="dot-agent"></span> Agent</a>
+                <a href="#system" onclick="showView('system',this);return false"><span class="dot" id="dot-system"></span> System</a>
+            </nav>
+            <div class="sidebar-footer">Updated 2026-03-15T06:22:48Z</div>
+        </aside>
+        <main class="content">
+            <div id="view-overview" class="view active">
+                <h2>Overview</h2>
+                <div class="health-cards" id="overview-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Recent Activity</h3><div id="activity-feed"></div></div>
+                    <div class="panel"><h3>Vector Store</h3><table id="vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
+                </div>
+            </div>
+            <div id="view-triage" class="view">
+                <h2>Bug Triage</h2>
+                <div class="health-cards" id="triage-cards"></div>
+                <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
+                <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+            </div>
+            <div id="view-agent" class="view">
+                <h2>Enhancement Agent</h2>
+                <div class="health-cards" id="agent-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Approval Gates</h3><div id="gate-list"></div></div>
+                    <div class="panel"><h3>Round Trips</h3><table id="rt-table"><thead><tr><th>Trips</th><th style="text-align:right">Sessions</th></tr></thead><tbody></tbody></table></div>
+                </div>
+                <div class="panel"><h3>Recent Sessions</h3><table id="agent-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Stage</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+            </div>
+            <div id="view-system" class="view">
+                <h2>System</h2>
+                <div class="health-cards" id="system-cards"></div>
+                <div class="two-col">
+                    <div class="panel"><h3>Vector Store</h3><table id="sys-vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
+                    <div class="panel"><h3>Recent Comments</h3><table id="comments-table"><thead><tr><th>Issue</th><th>Phases</th><th>&#x1F44D;</th><th>&#x1F44E;</th></tr></thead><tbody></tbody></table></div>
+                </div>
+            </div>
+        </main>
     </div>
     <script>
-        const stats = {"total_comments":4,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":4,"phase2":2,"phase3":4},"document_counts":{"adr":19,"configuration":4,"research":11,"roadmap":1,"troubleshooting":14},"issue_count":1365,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2335,"comment_id":4059040758,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-14T01:05:48Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2326,"comment_id":4045268116,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-12T09:34:58Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2322,"comment_id":4042350333,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-11T21:32:04Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}],"triage_stats":{"total":6,"promoted":3,"pending":3,"recent":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2335,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":9,"promoted":true,"created_at":"2026-03-13T21:03:29Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2334,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":8,"promoted":false,"created_at":"2026-03-13T15:53:15Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2332,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":7,"promoted":false,"created_at":"2026-03-13T07:41:13Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2326,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":6,"promoted":true,"created_at":"2026-03-12T09:32:05Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2323,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":5,"promoted":false,"created_at":"2026-03-11T10:14:33Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2322,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":4,"promoted":true,"created_at":"2026-03-11T10:05:56Z"}]},"agent_stats":{"total":2,"stage_breakdown":{"approved":1,"complete":1},"action_breakdown":{"created_pr":1,"posted_context_brief":1,"posted_research":2},"recent":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2318,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":2,"stage":"complete","created_at":"2026-03-10T14:13:40Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2304,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":1,"stage":"approved","created_at":"2026-03-05T08:27:53Z"}]},"avg_response_seconds":21.897054,"approval_gate_stats":[{"gate_type":"research_approval","status":"approved","count":1},{"gate_type":"research_approval","status":"rejected","count":1}],"safety_stats":{"total_actions":4,"passed":4,"avg_confidence":1},"round_trip_distribution":[{"round_trips":0,"count":2}]};
+    var stats = {"total_comments":4,"total_thumbs_up":0,"total_thumbs_down":0,"phase_breakdown":{"phase1":4,"phase2":2,"phase3":4},"document_counts":{"adr":19,"configuration":4,"research":11,"roadmap":1,"troubleshooting":14},"issue_count":1368,"recent_comments":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2335,"comment_id":4059040758,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-14T01:05:48Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2326,"comment_id":4045268116,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-12T09:34:58Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2322,"comment_id":4042350333,"phases_run":["phase1","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-11T21:32:04Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2300,"comment_id":3998186429,"phases_run":["phase1","phase2","phase3"],"thumbs_up":0,"thumbs_down":0,"created_at":"2026-03-04T15:14:31Z"}],"triage_stats":{"total":6,"promoted":3,"pending":3,"recent":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2335,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":9,"promoted":true,"created_at":"2026-03-13T21:03:29Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2334,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":8,"promoted":false,"created_at":"2026-03-13T15:53:15Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2332,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":7,"promoted":false,"created_at":"2026-03-13T07:41:13Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2326,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":6,"promoted":true,"created_at":"2026-03-12T09:32:05Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2323,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":5,"promoted":false,"created_at":"2026-03-11T10:14:33Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2322,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":4,"promoted":true,"created_at":"2026-03-11T10:05:56Z"}]},"agent_stats":{"total":2,"stage_breakdown":{"approved":1,"complete":1},"action_breakdown":{"created_pr":1,"posted_context_brief":1,"posted_research":2},"recent":[{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2318,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":2,"stage":"complete","created_at":"2026-03-10T14:13:40Z"},{"repo":"IsmaelMartinez/teams-for-linux","issue_number":2304,"shadow_repo":"IsmaelMartinez/teams-for-linux-shadow","shadow_issue":1,"stage":"approved","created_at":"2026-03-05T08:27:53Z"}]},"avg_response_seconds":21.897054,"approval_gate_stats":[{"gate_type":"research_approval","status":"approved","count":1},{"gate_type":"research_approval","status":"rejected","count":1}],"safety_stats":{"total_actions":4,"passed":4,"avg_confidence":1},"round_trip_distribution":[{"round_trips":0,"count":2}],"phase_hit_rate":{"phase1":1,"phase2":0.16666666666666666,"phase3":0.6666666666666666,"phase4b":0.16666666666666666}};
 
-        const docTotal = Object.values(stats.document_counts || {}).reduce((a, b) => a + b, 0);
-        const thumbsRatio = stats.total_comments > 0
-            ? ((stats.total_thumbs_up / (stats.total_thumbs_up + stats.total_thumbs_down)) * 100 || 0).toFixed(0) + '%'
-            : 'N/A';
-
-        var responseTime = 'N/A';
-        if (stats.avg_response_seconds != null) {
-            var secs = Math.round(stats.avg_response_seconds);
-            if (secs < 60) responseTime = secs + 's';
-            else if (secs < 3600) responseTime = Math.round(secs / 60) + 'm';
-            else responseTime = (secs / 3600).toFixed(1) + 'h';
-        }
-
-        const cards = [
-            { label: 'Total Comments', value: stats.total_comments },
-            { label: 'Thumbs Up Rate', value: thumbsRatio, cls: 'green' },
-            { label: 'Avg Response Time', value: responseTime, cls: 'green' },
-            { label: 'Documents Indexed', value: docTotal },
-            { label: 'Issues Indexed', value: stats.issue_count },
-        ];
-
-        const cardsEl = document.getElementById('cards');
-        cards.forEach(function(c) {
-            var div = document.createElement('div');
-            div.className = 'card';
-            var lbl = document.createElement('div');
-            lbl.className = 'label';
-            lbl.textContent = c.label;
-            var val = document.createElement('div');
-            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
-            val.textContent = c.value;
-            div.appendChild(lbl);
-            div.appendChild(val);
-            cardsEl.appendChild(div);
+     
+    function el(tag, a, ch) {
+        var e = document.createElement(tag);
+        if (a) Object.keys(a).forEach(function(k) {
+            if (k === 'text') e.textContent = a[k];
+            else if (k === 'cls') e.className = a[k];
+            else if (k === 'style') e.style.cssText = a[k];
+            else e.setAttribute(k, a[k]);
         });
+        if (ch) ch.forEach(function(c) { if (c) e.appendChild(c); });
+        return e;
+    }
+    function mkTag(t, c) { return el('span', {text: t, cls: 'tag ' + (c || 'tag-default')}); }
+    function stageTag(s) { var m = {complete:'tag-complete', context_brief:'tag-pending', review_pending:'tag-research', researching:'tag-research', approved:'tag-promoted', new:'tag-default'}; return mkTag(s, m[s] || 'tag-default'); }
+    function iLink(r, n) { return el('a', {href: 'https://github.com/' + r + '/issues/' + n, text: '#' + n}); }
+    function fDate(d) { return d ? d.substring(0, 10) : ''; }
+    function hCls(v, g, y, hi) { if (v == null) return 'hc-neutral'; if (hi) return v >= g ? 'hc-green' : v >= y ? 'hc-yellow' : 'hc-red'; return v <= g ? 'hc-green' : v <= y ? 'hc-yellow' : 'hc-red'; }
+    function addCards(id, cards) { var c = document.getElementById(id); cards.forEach(function(d) { c.appendChild(el('div', {cls: 'health-card ' + d.cls}, [el('div', {cls: 'label', text: d.label}), el('div', {cls: 'value', text: d.value}), d.sub ? el('div', {cls: 'sub', text: d.sub}) : null])); }); }
+    function fillTbl(id, rows) { var tb = document.querySelector('#' + id + ' tbody'); rows.forEach(function(r) { var tr = el('tr'); r.forEach(function(c) { var td = el('td'); if (typeof c === 'string' || typeof c === 'number') td.textContent = c; else td.appendChild(c); tr.appendChild(td); }); tb.appendChild(tr); }); }
+    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); }
 
-        
-        var ts = stats.triage_stats || { total: 0, promoted: 0, pending: 0, recent: [] };
-        var triageCards = [
-            { label: 'Total Triage Sessions', value: ts.total },
-            { label: 'Promoted (lgtm)', value: ts.promoted, cls: 'green' },
-            { label: 'Pending / Rejected', value: ts.pending },
-        ];
-        var triageCardsEl = document.getElementById('triage-cards');
-        triageCards.forEach(function(c) {
-            var div = document.createElement('div');
-            div.className = 'card';
-            var lbl = document.createElement('div');
-            lbl.className = 'label';
-            lbl.textContent = c.label;
-            var val = document.createElement('div');
-            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
-            val.textContent = c.value;
-            div.appendChild(lbl);
-            div.appendChild(val);
-            triageCardsEl.appendChild(div);
-        });
+     
+    var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
+    var ag = stats.agent_stats || {total:0, stage_breakdown:{}, action_breakdown:{}, recent:[]};
+    var ss = stats.safety_stats || {total_actions:0, passed:0, avg_confidence:null};
+    var gates = stats.approval_gate_stats || [];
+    var rt = stats.round_trip_distribution || [];
+    var phr = stats.phase_hit_rate || {};
+    var ab = ag.action_breakdown || {};
 
-        var triageBody = document.querySelector('#triage-table tbody');
-        (ts.recent || []).forEach(function(t) {
-            var tr = document.createElement('tr');
-            var tdIssue = document.createElement('td');
-            var link = document.createElement('a');
-            link.href = 'https://github.com/' + t.repo + '/issues/' + t.issue_number;
-            link.textContent = '#' + t.issue_number;
-            tdIssue.appendChild(link);
-            var tdShadow = document.createElement('td');
-            if (t.shadow_repo) {
-                var shadowLink = document.createElement('a');
-                shadowLink.href = 'https://github.com/' + t.shadow_repo + '/issues/' + t.shadow_issue;
-                shadowLink.textContent = '#' + t.shadow_issue;
-                tdShadow.appendChild(shadowLink);
-            } else {
-                tdShadow.textContent = '#' + t.shadow_issue;
-            }
-            var tdStatus = document.createElement('td');
-            var statusSpan = document.createElement('span');
-            statusSpan.className = 'phase-tag';
-            statusSpan.style.background = t.promoted ? '#dcffe4' : '#fff3cd';
-            statusSpan.textContent = t.promoted ? 'promoted' : 'pending';
-            tdStatus.appendChild(statusSpan);
-            var tdDate = document.createElement('td');
-            tdDate.textContent = t.created_at ? t.created_at.substring(0, 10) : '';
-            tr.appendChild(tdIssue);
-            tr.appendChild(tdShadow);
-            tr.appendChild(tdStatus);
-            tr.appendChild(tdDate);
-            triageBody.appendChild(tr);
-        });
+    var promRate = ts.total > 0 ? (ts.promoted / ts.total * 100) : null;
+    var safeRate = ss.total_actions > 0 ? (ss.passed / ss.total_actions * 100) : null;
+    var avgR = stats.avg_response_seconds;
+    var rStr = 'N/A';
+    if (avgR != null) { var sec = Math.round(avgR); rStr = sec < 60 ? sec + 's' : sec < 3600 ? Math.round(sec / 60) + 'm' : (sec / 3600).toFixed(1) + 'h'; }
 
-        
-        var ag = stats.agent_stats || { total: 0, stage_breakdown: {}, action_breakdown: {}, recent: [] };
-        var agentCards = [
-            { label: 'Total Agent Sessions', value: ag.total },
-            { label: 'Context Briefs', value: ag.action_breakdown['posted_context_brief'] || 0 },
-            { label: 'Research Requested', value: ag.action_breakdown['posted_research'] || 0 },
-            { label: 'Acknowledged', value: ag.action_breakdown['context_acknowledged'] || 0 },
-        ];
-        var agentCardsEl = document.getElementById('agent-cards');
-        agentCards.forEach(function(c) {
-            var div = document.createElement('div');
-            div.className = 'card';
-            var lbl = document.createElement('div');
-            lbl.className = 'label';
-            lbl.textContent = c.label;
-            var val = document.createElement('div');
-            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
-            val.textContent = c.value;
-            div.appendChild(lbl);
-            div.appendChild(val);
-            agentCardsEl.appendChild(div);
-        });
+     
+    function setDot(id, c) { document.getElementById(id).style.background = c; }
+    setDot('dot-overview', '#2ea44f');
+    setDot('dot-triage', promRate == null ? '#484f58' : promRate >= 50 ? '#2ea44f' : promRate >= 25 ? '#d29922' : '#da3633');
+    var pendAg = Object.keys(ag.stage_breakdown).reduce(function(n, k) { return k !== 'complete' ? n + ag.stage_breakdown[k] : n; }, 0);
+    setDot('dot-agent', pendAg > 0 ? '#d29922' : '#2ea44f');
+    setDot('dot-system', safeRate == null ? '#484f58' : safeRate >= 95 ? '#2ea44f' : safeRate >= 80 ? '#d29922' : '#da3633');
 
-        var stageBody = document.querySelector('#agent-stage-table tbody');
-        Object.entries(ag.stage_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
-            var tr = document.createElement('tr');
-            var tdStage = document.createElement('td');
-            tdStage.textContent = entry[0];
-            var tdCount = document.createElement('td');
-            tdCount.textContent = entry[1];
-            tr.appendChild(tdStage);
-            tr.appendChild(tdCount);
-            stageBody.appendChild(tr);
-        });
+     
+    addCards('overview-cards', [
+        {label: 'Triage', value: promRate != null ? promRate.toFixed(0) + '%' : 'N/A', sub: ts.promoted + '/' + ts.total + ' promoted', cls: hCls(promRate, 50, 25, true)},
+        {label: 'Agent', value: pendAg, sub: pendAg > 0 ? 'pending review' : 'all complete', cls: pendAg > 0 ? 'hc-yellow' : 'hc-green'},
+        {label: 'Safety', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', sub: 'pass rate', cls: hCls(safeRate, 95, 80, true)},
+        {label: 'Response', value: rStr, sub: 'avg time', cls: hCls(avgR, 60, 300, false)}
+    ]);
 
-        var actionBody = document.querySelector('#agent-action-table tbody');
-        Object.entries(ag.action_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
-            var tr = document.createElement('tr');
-            var tdAction = document.createElement('td');
-            tdAction.textContent = entry[0];
-            var tdCount = document.createElement('td');
-            tdCount.textContent = entry[1];
-            tr.appendChild(tdAction);
-            tr.appendChild(tdCount);
-            actionBody.appendChild(tr);
-        });
+     
+    var feed = [];
+    (ts.recent || []).forEach(function(t) { feed.push({date: t.created_at, type: 'triage', repo: t.repo, num: t.issue_number, sr: t.shadow_repo, sn: t.shadow_issue, status: t.promoted ? 'promoted' : 'pending'}); });
+    (ag.recent || []).forEach(function(a) { feed.push({date: a.created_at, type: 'agent', repo: a.repo, num: a.issue_number, sr: a.shadow_repo, sn: a.shadow_issue, status: a.stage}); });
+    feed.sort(function(a, b) { return b.date.localeCompare(a.date); });
+    var feedEl = document.getElementById('activity-feed');
+    feed.slice(0, 15).forEach(function(f) {
+        var tc = f.status === 'promoted' ? 'tag-promoted' : f.status === 'pending' ? 'tag-pending' : f.status === 'complete' ? 'tag-complete' : f.status === 'context_brief' ? 'tag-pending' : 'tag-research';
+        feedEl.appendChild(el('div', {style: 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.82rem;border-bottom:1px solid #f0f0f0'}, [
+            el('span', {text: fDate(f.date), style: 'color:#8b949e;width:65px;flex-shrink:0;font-size:0.75rem'}),
+            iLink(f.repo, f.num), el('span', {text: f.type, style: 'color:#8b949e;font-size:0.72rem'}), mkTag(f.status, tc)
+        ]));
+    });
+    if (feed.length === 0) feedEl.appendChild(el('div', {text: 'No activity yet', style: 'color:#8b949e;font-size:0.85rem;padding:8px 0'}));
 
-        var agentRecentBody = document.querySelector('#agent-recent-table tbody');
-        (ag.recent || []).forEach(function(a) {
-            var tr = document.createElement('tr');
-            var tdIssue = document.createElement('td');
-            var link = document.createElement('a');
-            link.href = 'https://github.com/' + a.repo + '/issues/' + a.issue_number;
-            link.textContent = '#' + a.issue_number;
-            tdIssue.appendChild(link);
-            var tdShadow = document.createElement('td');
-            if (a.shadow_repo) {
-                var shadowLink = document.createElement('a');
-                shadowLink.href = 'https://github.com/' + a.shadow_repo + '/issues/' + a.shadow_issue;
-                shadowLink.textContent = '#' + a.shadow_issue;
-                tdShadow.appendChild(shadowLink);
-            } else {
-                tdShadow.textContent = '#' + a.shadow_issue;
-            }
-            var tdStage = document.createElement('td');
-            var stageSpan = document.createElement('span');
-            stageSpan.className = 'phase-tag';
-            var stageColors = { complete: '#dcffe4', context_brief: '#fff3cd', researching: '#cfe2ff', review_pending: '#cfe2ff' };
-            stageSpan.style.background = stageColors[a.stage] || '#e1e4e8';
-            stageSpan.textContent = a.stage;
-            tdStage.appendChild(stageSpan);
-            var tdDate = document.createElement('td');
-            tdDate.textContent = a.created_at ? a.created_at.substring(0, 10) : '';
-            tr.appendChild(tdIssue);
-            tr.appendChild(tdShadow);
-            tr.appendChild(tdStage);
-            tr.appendChild(tdDate);
-            agentRecentBody.appendChild(tr);
-        });
+     
+    var dc = stats.document_counts || {};
+    var vr = Object.keys(dc).sort().map(function(k) { return [k, dc[k]]; });
+    vr.push(['Issues', stats.issue_count]);
+    fillTbl('vector-table', vr);
+    fillTbl('sys-vector-table', vr);
 
-        
-        var gateBody = document.querySelector('#gate-table tbody');
-        (stats.approval_gate_stats || []).forEach(function(g) {
-            var tr = document.createElement('tr');
-            var tdType = document.createElement('td');
-            tdType.textContent = g.gate_type;
-            var tdStatus = document.createElement('td');
-            var statusSpan = document.createElement('span');
-            statusSpan.className = 'phase-tag';
-            var gateColors = { approved: '#dcffe4', rejected: '#ffd7d5', pending: '#fff3cd', revision_requested: '#cfe2ff' };
-            statusSpan.style.background = gateColors[g.status] || '#e1e4e8';
-            statusSpan.textContent = g.status;
-            tdStatus.appendChild(statusSpan);
-            var tdCount = document.createElement('td');
-            tdCount.textContent = g.count;
-            tr.appendChild(tdType);
-            tr.appendChild(tdStatus);
-            tr.appendChild(tdCount);
-            gateBody.appendChild(tr);
-        });
+     
+    addCards('triage-cards', [
+        {label: 'Total', value: ts.total, cls: 'hc-neutral'},
+        {label: 'Promoted', value: ts.promoted, sub: 'via lgtm', cls: 'hc-green'},
+        {label: 'Pending', value: ts.pending, cls: ts.pending > 0 ? 'hc-yellow' : 'hc-neutral'}
+    ]);
+    var barsEl = document.getElementById('phase-bars');
+    var pkeys = Object.keys(phr).sort();
+    if (pkeys.length === 0) barsEl.appendChild(el('div', {text: 'No triage data yet', style: 'color:#8b949e;font-size:0.85rem'}));
+    pkeys.forEach(function(p) { var pct = (phr[p] * 100).toFixed(0); barsEl.appendChild(el('div', {cls: 'bar-row'}, [el('span', {cls: 'bar-label', text: p}), el('div', {cls: 'bar-track'}, [el('div', {cls: 'bar-fill', style: 'width:' + pct + '%'})]), el('span', {cls: 'bar-pct', text: pct + '%'})])); });
+    fillTbl('triage-table', (ts.recent || []).map(function(t) {
+        var st = t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending');
+        var sl = t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue});
+        return [iLink(t.repo, t.issue_number), sl, st, fDate(t.created_at)];
+    }));
 
-        
-        var ss = stats.safety_stats || { total_actions: 0, passed: 0, avg_confidence: null };
-        var passRate = ss.total_actions > 0 ? ((ss.passed / ss.total_actions) * 100).toFixed(0) + '%' : 'N/A';
-        var avgConf = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
-        var safetyCards = [
-            { label: 'Total Actions', value: ss.total_actions },
-            { label: 'Pass Rate', value: passRate, cls: 'green' },
-            { label: 'Avg Confidence', value: avgConf },
-        ];
-        var safetyCardsEl = document.getElementById('safety-cards');
-        safetyCards.forEach(function(c) {
-            var div = document.createElement('div');
-            div.className = 'card';
-            var lbl = document.createElement('div');
-            lbl.className = 'label';
-            lbl.textContent = c.label;
-            var val = document.createElement('div');
-            val.className = 'value' + (c.cls ? ' ' + c.cls : '');
-            val.textContent = c.value;
-            div.appendChild(lbl);
-            div.appendChild(val);
-            safetyCardsEl.appendChild(div);
-        });
+     
+    addCards('agent-cards', [
+        {label: 'Sessions', value: ag.total, cls: 'hc-neutral'},
+        {label: 'Briefs', value: ab['posted_context_brief'] || 0, cls: 'hc-neutral'},
+        {label: 'Researched', value: ab['posted_research'] || 0, cls: 'hc-neutral'},
+        {label: 'Acknowledged', value: ab['context_acknowledged'] || 0, cls: 'hc-neutral'}
+    ]);
+    var gEl = document.getElementById('gate-list');
+    if (gates.length === 0) gEl.appendChild(el('div', {text: 'No approval gates yet', style: 'color:#8b949e;font-size:0.85rem'}));
+    var gbt = {}; gates.forEach(function(g) { if (!gbt[g.gate_type]) gbt[g.gate_type] = []; gbt[g.gate_type].push(g); });
+    Object.keys(gbt).sort().forEach(function(gt) {
+        var row = el('div', {style: 'margin-bottom:6px;font-size:0.82rem'});
+        row.appendChild(el('span', {text: gt + ': ', style: 'color:#555'}));
+        gbt[gt].forEach(function(g) { var c = g.status === 'approved' ? 'tag-promoted' : g.status === 'rejected' ? 'tag-rejected' : g.status === 'pending' ? 'tag-pending' : 'tag-research'; row.appendChild(mkTag(g.count + ' ' + g.status, c)); row.appendChild(document.createTextNode(' ')); });
+        gEl.appendChild(row);
+    });
+    fillTbl('rt-table', rt.map(function(b) { return [b.round_trips, b.count]; }));
+    fillTbl('agent-table', (ag.recent || []).map(function(a) { var sl = a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}); return [iLink(a.repo, a.issue_number), sl, stageTag(a.stage), fDate(a.created_at)]; }));
 
-        
-        var rtBody = document.querySelector('#roundtrip-table tbody');
-        (stats.round_trip_distribution || []).forEach(function(b) {
-            var tr = document.createElement('tr');
-            var tdRT = document.createElement('td');
-            tdRT.textContent = b.round_trips;
-            var tdCount = document.createElement('td');
-            tdCount.textContent = b.count;
-            tr.appendChild(tdRT);
-            tr.appendChild(tdCount);
-            rtBody.appendChild(tr);
-        });
-
-        var phaseBody = document.querySelector('#phase-table tbody');
-        Object.entries(stats.phase_breakdown || {}).sort(function(a, b) { return b[1] - a[1]; }).forEach(function(entry) {
-            var tr = document.createElement('tr');
-            var tdPhase = document.createElement('td');
-            tdPhase.textContent = entry[0];
-            var tdCount = document.createElement('td');
-            tdCount.textContent = entry[1];
-            tr.appendChild(tdPhase);
-            tr.appendChild(tdCount);
-            phaseBody.appendChild(tr);
-        });
-
-        var commentsBody = document.querySelector('#comments-table tbody');
-        (stats.recent_comments || []).forEach(function(c) {
-            var tr = document.createElement('tr');
-
-            var tdIssue = document.createElement('td');
-            var link = document.createElement('a');
-            if (c.comment_id) {
-                link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number + '#issuecomment-' + c.comment_id;
-            } else {
-                link.href = 'https://github.com/' + c.repo + '/issues/' + c.issue_number;
-            }
-            link.textContent = '#' + c.issue_number;
-            tdIssue.appendChild(link);
-
-            var tdPhases = document.createElement('td');
-            var phasesDiv = document.createElement('div');
-            phasesDiv.className = 'phases';
-            (c.phases_run || []).forEach(function(p) {
-                var span = document.createElement('span');
-                span.className = 'phase-tag';
-                span.textContent = p;
-                phasesDiv.appendChild(span);
-            });
-            tdPhases.appendChild(phasesDiv);
-
-            var tdUp = document.createElement('td');
-            tdUp.textContent = c.thumbs_up;
-            var tdDown = document.createElement('td');
-            tdDown.textContent = c.thumbs_down;
-            var tdDate = document.createElement('td');
-            tdDate.textContent = c.created_at ? c.created_at.substring(0, 10) : '';
-
-            tr.appendChild(tdIssue);
-            tr.appendChild(tdPhases);
-            tr.appendChild(tdUp);
-            tr.appendChild(tdDown);
-            tr.appendChild(tdDate);
-            commentsBody.appendChild(tr);
-        });
-
+     
+    var avgC = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
+    var tUp = stats.total_thumbs_up || 0, tDn = stats.total_thumbs_down || 0, tTot = tUp + tDn;
+    var tRate = tTot > 0 ? (tUp / tTot * 100).toFixed(0) + '%' : 'No reactions';
+    addCards('system-cards', [
+        {label: 'Safety Pass', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', cls: hCls(safeRate, 95, 80, true)},
+        {label: 'Avg Confidence', value: avgC, cls: 'hc-neutral'},
+        {label: 'Comments', value: stats.total_comments, cls: 'hc-neutral'},
+        {label: 'Reactions', value: tRate, sub: tTot > 0 ? tUp + ' up / ' + tDn + ' down' : '', cls: 'hc-neutral'}
+    ]);
+    fillTbl('comments-table', (stats.recent_comments || []).slice(0, 10).map(function(c) {
+        var lk = iLink(c.repo, c.issue_number);
+        if (c.comment_id) lk.href += '#issuecomment-' + c.comment_id;
+        var ph = el('div', {cls: 'phases'});
+        (c.phases_run || []).forEach(function(p) { ph.appendChild(el('span', {cls: 'phase-tag', text: p})); });
+        return [lk, ph, c.thumbs_up, c.thumbs_down];
+    }));
     </script>
 </body>
 </html>
