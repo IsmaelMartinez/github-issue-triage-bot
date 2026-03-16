@@ -1,0 +1,209 @@
+[
+  {
+    "topic": "v39.8.2",
+    "status": "released",
+    "doc_path": "releases/tag/v39.8.2",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.8.2",
+    "summary": "# Release Notes for v39.8.2\n\n## Other Changes\n\n* Backported fix for b/491421267. [#50230](https://github.com/electron/electron/pull/50230) ",
+    "source": "upstream_release",
+    "last_updated": "2026-03-13"
+  },
+  {
+    "topic": "v39.8.1",
+    "status": "released",
+    "doc_path": "releases/tag/v39.8.1",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.8.1",
+    "summary": "# Release Notes for v39.8.1\n\n## Fixes\n\n* Added validation to protocol client methods to reject protocol names that do not conform to the RFC 3986 URI scheme grammar. [#50156](https://github.com/electron/electron/pull/50156) <sup>(Also in [38](https://github.com/electron/electron/pull/50157), [40](https://github.com/electron/electron/pull/50158), [41](https://github.com/electron/electron/pull/50155))</sup>\n* Fixed an issue on macOS where calling `autoUpdater.quitAndInstall()` could fail if `checkForUpdates()` was called again after an update was already downloaded. [#50215](https://github.com/electron/electron/pull/50215) <sup>(Also in [40](https://github.com/electron/electron/pull/50216), [41](https://github.com/electron/electron/pull/50217))</sup>\n* Fixed an issue where Chrome Devtools menus may not appear in certain embedded windows. [#50136](https://github.com/electron/electron/pull/50136) <sup>(Also in [40](https://github.com/electron/electron/pull/50138), [41](https://github.com/electron/electron/pull/50137))</sup>\n* Fixed an issue where `additionalData` passed to `app.requestSingleInstanceLock` on Windows could be truncated or fail to deserialize in the primary instance's `second-instance` event. [#50174](https://github.com/electron/electron/pull/50174) <sup>(Also in [38](https://github.com/electron/electron/pull/50177), [40](https://github.com/electron/electron/pull/50162), [41](https://github.com/electron/electron/pull/50154))</sup>\n* Fixed an issue where `screen.getCursorScreenPoint()` crashed on Wayland when it was called before a `BrowserWindow` had been created. [#50106](https://github.com/electron/electron/pull/50106) <sup>(Also in [40](https://github.com/electron/electron/pull/50104), [41](https://github.com/electron/electron/pull/50105))</sup>\n* Fixed an issue where calling `setBounds` on a `WebContentsView` could trigger redundant `page-favicon-updated` events even when the favicon had not changed. [#50086](https://github.com/electron/electron/pull/5",
+    "source": "upstream_release",
+    "last_updated": "2026-03-12"
+  },
+  {
+    "topic": "v39.8.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.8.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.8.0",
+    "summary": "# Release Notes for v39.8.0\n\n## Features\n\n* Added support for `--experimental-transform-types`. [#49881](https://github.com/electron/electron/pull/49881) <sup>(Also in [40](https://github.com/electron/electron/pull/49883), [41](https://github.com/electron/electron/pull/49882))</sup>\n## Fixes\n\n* Fixed an issue on macOS where Universal Links were not delivered to `app.on('continue-activity')` on cold launch when `NSUserActivity.userInfo` was nil. [#50004](https://github.com/electron/electron/pull/50004) <sup>(Also in [40](https://github.com/electron/electron/pull/50005), [41](https://github.com/electron/electron/pull/50006))</sup>\n* Fixed an issue where `VideoFrame` objects returned through `contextBridge` had an incorrect prototype. [#50021](https://github.com/electron/electron/pull/50021) <sup>(Also in [40](https://github.com/electron/electron/pull/50022), [41](https://github.com/electron/electron/pull/50023))</sup>\n* Fixed an issue where setting `zoomFactor` in `setWindowOpenHandler`'s `overrideBrowserWindowOptions` had no effect on windows opened via `window.open()`. [#49910](https://github.com/electron/electron/pull/49910) <sup>(Also in [40](https://github.com/electron/electron/pull/49909), [41](https://github.com/electron/electron/pull/49911))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-03-03"
+  },
+  {
+    "topic": "v39.7.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.7.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.7.0",
+    "summary": "# Release Notes for v39.7.0\n\n## Features\n\n* Added support for `long-animation-frame` script attribution (via `--enable-features=AlwaysLogLOAFURL`). [#49771](https://github.com/electron/electron/pull/49771) <sup>(Also in [40](https://github.com/electron/electron/pull/49772), [41](https://github.com/electron/electron/pull/49773))</sup>\n## Fixes\n\n* Fixed an issue where frameless windows had resize issues in Mac App Store builds. [#49861](https://github.com/electron/electron/pull/49861) <sup>(Also in [40](https://github.com/electron/electron/pull/49856), [41](https://github.com/electron/electron/pull/49857))</sup>\n* Fixed an issue where menu item enabled state wasn't updated during key equivalent dispatch when the menu was closed on macOS. [#49888](https://github.com/electron/electron/pull/49888) <sup>(Also in [40](https://github.com/electron/electron/pull/49889), [41](https://github.com/electron/electron/pull/49890))</sup>\n* Fixed an issue where pressing AltGr could activate or focus the menu bar. [#49914](https://github.com/electron/electron/pull/49914) <sup>(Also in [40](https://github.com/electron/electron/pull/49915), [41](https://github.com/electron/electron/pull/49916))</sup>\n* Fixed memory leak when setting icons on Linux/GTK. [#49896](https://github.com/electron/electron/pull/49896) <sup>(Also in [38](https://github.com/electron/electron/pull/49897), [40](https://github.com/electron/electron/pull/49898), [41](https://github.com/electron/electron/pull/49895))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-02-25"
+  },
+  {
+    "topic": "v39.6.1",
+    "status": "released",
+    "doc_path": "releases/tag/v39.6.1",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.6.1",
+    "summary": "# Release Notes for v39.6.1\n\n## Fixes\n\n* Fixed draggable regions not updating position when DevTools is docked to the left or right in a frameless window. [#49846](https://github.com/electron/electron/pull/49846) <sup>(Also in [41](https://github.com/electron/electron/pull/49848))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-02-19"
+  },
+  {
+    "topic": "v39.6.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.6.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.6.0",
+    "summary": "# Release Notes for v39.6.0\n\n## Features\n\n* Added a disclaim option to the UtilityProcess API to allow for TCC disclaiming on macOS. [#49696](https://github.com/electron/electron/pull/49696) <sup>(Also in [40](https://github.com/electron/electron/pull/49695), [41](https://github.com/electron/electron/pull/49693))</sup>\n## Fixes\n\n* Addressed upstream Chromium shift to enable `CoreAudio Tap API` for audio capture used in electron's `desktopCapturer` (🍏 macOS). [#49740](https://github.com/electron/electron/pull/49740) <sup>(Also in [41](https://github.com/electron/electron/pull/49739))</sup>\n## Other Changes\n\n* Backported fix for 483569511. [#49791](https://github.com/electron/electron/pull/49791) ",
+    "source": "upstream_release",
+    "last_updated": "2026-02-13"
+  },
+  {
+    "topic": "v39.5.2",
+    "status": "released",
+    "doc_path": "releases/tag/v39.5.2",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.5.2",
+    "summary": "# Release Notes for v39.5.2\n\n## Fixes\n\n* Fixed a crash that could occur when using the File System Access API. [#49634](https://github.com/electron/electron/pull/49634) <sup>(Also in [40](https://github.com/electron/electron/pull/49635), [41](https://github.com/electron/electron/pull/49636))</sup>\n* Fixed an issue where alt+space triggered th system context menu even if an accelerator was registered for the hotkey combination. [#49641](https://github.com/electron/electron/pull/49641) <sup>(Also in [40](https://github.com/electron/electron/pull/49640), [41](https://github.com/electron/electron/pull/49642))</sup>\n* Fixed an issue where role-based menu items were incorrectly returning `null` for their accelerator property. [#49670](https://github.com/electron/electron/pull/49670) <sup>(Also in [40](https://github.com/electron/electron/pull/49669), [41](https://github.com/electron/electron/pull/49668))</sup>\n* Fixed application input broken on certain wayland compositors when DND action was cancelled. [#49694](https://github.com/electron/electron/pull/49694) \n* Fixed dock menu items not respecting enabled and checked properties on macOS. [#49626](https://github.com/electron/electron/pull/49626) <sup>(Also in [38](https://github.com/electron/electron/pull/49627), [40](https://github.com/electron/electron/pull/49624), [41](https://github.com/electron/electron/pull/49625))</sup>\n## Other Changes\n\n* Refactored our MSIX updater code to use an upstream Chromium pattern and eliminates the need for special exception handling build flags. [#49688](https://github.com/electron/electron/pull/49688) <sup>(Also in [40](https://github.com/electron/electron/pull/49687), [41](https://github.com/electron/electron/pull/49686))</sup>\n## Unknown\n\n* Fixed squirrel.mac stacked update behavior to old staged updates. [#49637](https://github.com/electron/electron/pull/49637) <sup>(Also in [40](https://github.com/electron/electron/pull/49638), [41](https://github.com/electron/electron/pull/49639)",
+    "source": "upstream_release",
+    "last_updated": "2026-02-10"
+  },
+  {
+    "topic": "v39.5.1",
+    "status": "released",
+    "doc_path": "releases/tag/v39.5.1",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.5.1",
+    "summary": "# Release Notes for v39.5.1\n\n## Fixes\n\n* Fixed rendering glitches on macOS. [#49615](https://github.com/electron/electron/pull/49615) <sup>(Also in [40](https://github.com/electron/electron/pull/49609), [41](https://github.com/electron/electron/pull/49621))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-02-03"
+  },
+  {
+    "topic": "v39.5.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.5.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.5.0",
+    "summary": "# Release Notes for v39.5.0\n\n## Features\n\n* Added support for MSIX auto-updating. [#49585](https://github.com/electron/electron/pull/49585) <sup>(Also in [40](https://github.com/electron/electron/pull/49587), [41](https://github.com/electron/electron/pull/49586))</sup>\n## Fixes\n\n* Fixed an issue where menu item accelerators stopped working after the item's enabled property was toggled on macOS. [#49593](https://github.com/electron/electron/pull/49593) <sup>(Also in [40](https://github.com/electron/electron/pull/49592), [41](https://github.com/electron/electron/pull/49591))</sup>\n* Fixed an issue whereby a duplicate \"Toggle Full Screen\" menu item appeared in the View menu on macOS. [#49597](https://github.com/electron/electron/pull/49597) <sup>(Also in [38](https://github.com/electron/electron/pull/49596), [40](https://github.com/electron/electron/pull/49595), [41](https://github.com/electron/electron/pull/49598))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-02-02"
+  },
+  {
+    "topic": "v39.4.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.4.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.4.0",
+    "summary": "# Release Notes for v39.4.0\n\n## Fixes\n\n* Fixed an issue in `chrome://accessibility`. [#49559](https://github.com/electron/electron/pull/49559) <sup>(Also in [40](https://github.com/electron/electron/pull/49560), [41](https://github.com/electron/electron/pull/49561))</sup>\n* Fixed an issue where `shell.writeShortcutLink` was throwing `TypeError: Insufficient number of arguments` when called with just `[(path, options)]`. [#49502](https://github.com/electron/electron/pull/49502) <sup>(Also in [40](https://github.com/electron/electron/pull/49501), [41](https://github.com/electron/electron/pull/49503))</sup>\n* Fixed crash in platform_util::Beep() on Linux. [#49484](https://github.com/electron/electron/pull/49484) <sup>(Also in [40](https://github.com/electron/electron/pull/49482), [41](https://github.com/electron/electron/pull/49483))</sup>\n## Other Changes\n\n* Updated Node.js to v22.22.0. [#49389](https://github.com/electron/electron/pull/49389) \n## Unknown\n\n* Fixed an issue where some packages weren't correctly filtered on macOS in dialogs. [#49472](https://github.com/electron/electron/pull/49472) <sup>(Also in [38](https://github.com/electron/electron/pull/49471), [40](https://github.com/electron/electron/pull/49473), [41](https://github.com/electron/electron/pull/49470))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2026-01-28"
+  },
+  {
+    "topic": "v39.3.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.3.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.3.0",
+    "summary": "# Release Notes for v39.3.0\n\n## Features\n\n* Added support for WebSocket authentication through the `login` event on `webContents`. [#49065](https://github.com/electron/electron/pull/49065) <sup>(Also in [40](https://github.com/electron/electron/pull/49064))</sup>\n## Fixes\n\n* Fixed `setRepresentedFilename()` not setting `AXDocument` accessibility attribute on macOS. [#49418](https://github.com/electron/electron/pull/49418) <sup>(Also in [40](https://github.com/electron/electron/pull/49417))</sup>\n* Fixed a potential race condition crash when opening DevTools. [#49423](https://github.com/electron/electron/pull/49423) <sup>(Also in [40](https://github.com/electron/electron/pull/49422))</sup>\n* Fixed stack overflow when compiling deeply nested JS functions. [#49360](https://github.com/electron/electron/pull/49360) \n* Made toplevel icon Wayland protocol work. [#49415](https://github.com/electron/electron/pull/49415) <sup>(Also in [40](https://github.com/electron/electron/pull/49414))</sup>\n* Requests sent via `net` are now capable of having their headers modified to use reserved headers via `webRequest`. [#49242](https://github.com/electron/electron/pull/49242) <sup>(Also in [40](https://github.com/electron/electron/pull/49241))</sup>\n## Other Changes\n\n* Backported fix for 466786677. [#49287](https://github.com/electron/electron/pull/49287) \n* Updated Chromium to 142.0.7444.265. [#49322](https://github.com/electron/electron/pull/49322) ",
+    "source": "upstream_release",
+    "last_updated": "2026-01-21"
+  },
+  {
+    "topic": "v39.2.7",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.7",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.7",
+    "summary": "# Release Notes for v39.2.7\n\n## Other Changes\n\n* Updated Chromium to 142.0.7444.235. [#49190](https://github.com/electron/electron/pull/49190) ",
+    "source": "upstream_release",
+    "last_updated": "2025-12-12"
+  },
+  {
+    "topic": "v39.2.6",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.6",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.6",
+    "summary": "# Release Notes for v39.2.6\n\n## Fixes\n\n* Fixed visual artifacts while resizing a window on Windows. [#49138](https://github.com/electron/electron/pull/49138) \n## Other Changes\n\n* Updated Chromium to 142.0.7444.226. [#49137](https://github.com/electron/electron/pull/49137) ",
+    "source": "upstream_release",
+    "last_updated": "2025-12-05"
+  },
+  {
+    "topic": "v39.2.5",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.5",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.5",
+    "summary": "# Release Notes for v39.2.5\n\n## Fixes\n\n* Fixed a Windows notification issue where clicking a native notification would result in an application hang on certain Windows environments. [#49130](https://github.com/electron/electron/pull/49130) <sup>(Also in [40](https://github.com/electron/electron/pull/49129))</sup>\n* Fixed an issue where `menu-did-close` was not emitted properly for some application menus. [#49093](https://github.com/electron/electron/pull/49093) <sup>(Also in [38](https://github.com/electron/electron/pull/49094), [40](https://github.com/electron/electron/pull/49092))</sup>\n* Reduced amount of visual artifacts while resizing a window on Windows. [#49076](https://github.com/electron/electron/pull/49076) \n## Other Changes\n\n* Fixed devtools element panel flickering when with node inspection. [#49044](https://github.com/electron/electron/pull/49044) <sup>(Also in [40](https://github.com/electron/electron/pull/49043))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2025-12-03"
+  },
+  {
+    "topic": "v39.2.4",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.4",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.4",
+    "summary": "# Release Notes for v39.2.4\n\n## Fixes\n\n* Fixed an issue where the close callback param for `menu.popup` would fire when any arbitrary submenu of the given menu closed, and not the menu itself. [#49045](https://github.com/electron/electron/pull/49045) <sup>(Also in [38](https://github.com/electron/electron/pull/49047), [40](https://github.com/electron/electron/pull/49046))</sup>\n* Fixed crash when reading system certificates via nodejs tls module. [#49042](https://github.com/electron/electron/pull/49042) <sup>(Also in [40](https://github.com/electron/electron/pull/49041))</sup>\n* Fixed the issue where the parent window leave disabled after the modal window call show() multiple time. [#49019](https://github.com/electron/electron/pull/49019) <sup>(Also in [38](https://github.com/electron/electron/pull/49020), [40](https://github.com/electron/electron/pull/49021))</sup>\n## Other Changes\n\n* Updated Chromium to 142.0.7444.177. [#49037](https://github.com/electron/electron/pull/49037) ",
+    "source": "upstream_release",
+    "last_updated": "2025-11-26"
+  },
+  {
+    "topic": "v39.2.3",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.3",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.3",
+    "summary": "# Release Notes for v39.2.3\r\n\r\n* Updated Chromium to 142.0.7444.175.",
+    "source": "upstream_release",
+    "last_updated": "2025-11-19"
+  },
+  {
+    "topic": "v39.2.2",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.2",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.2",
+    "summary": "# Release Notes for v39.2.2\r\n\r\n## Fixes\r\n\r\n* Fixed crash when creating event object for IPC events. [#48992](https://github.com/electron/electron/pull/48992) <sup>(Also in [40](https://github.com/electron/electron/pull/48991))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2025-11-18"
+  },
+  {
+    "topic": "v39.2.1",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.1",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.1",
+    "summary": "# Release Notes for v39.2.1\n\n## Fixes\n\n* Fixed an issue where some apps would throw an exception on launch. [#48975](https://github.com/electron/electron/pull/48975) <sup>(Also in [40](https://github.com/electron/electron/pull/48976))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2025-11-15"
+  },
+  {
+    "topic": "v39.2.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.2.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.2.0",
+    "summary": "# Release Notes for v39.2.0\n\n## Features\n\n* Added `app.isHardwareAccelerationEnabled()`. [#48680](https://github.com/electron/electron/pull/48680) <sup>(Also in [37](https://github.com/electron/electron/pull/48679), [38](https://github.com/electron/electron/pull/48681))</sup>\n* Added bypassCustomProtocolHandlers option to net.request. [#48882](https://github.com/electron/electron/pull/48882) <sup>(Also in [38](https://github.com/electron/electron/pull/48881), [40](https://github.com/electron/electron/pull/48883))</sup>\n* Automatically focus DevTools when element is inspected or breakpoint is triggered. [#48702](https://github.com/electron/electron/pull/48702) <sup>(Also in [37](https://github.com/electron/electron/pull/48703), [38](https://github.com/electron/electron/pull/48701))</sup>\n* Enables resetting accent color to follow system accent settings if a previous color has been set via `window.setAccentColor(null)`. [#48852](https://github.com/electron/electron/pull/48852) <sup>(Also in [38](https://github.com/electron/electron/pull/48853))</sup>\n* Updated `nativeImage.createFromNamedImage` to support SF Symbol names. [#48773](https://github.com/electron/electron/pull/48773) <sup>(Also in [40](https://github.com/electron/electron/pull/48772))</sup>\n## Fixes\n\n* Fixed crash on windows when UTF-8 is in path. [#48944](https://github.com/electron/electron/pull/48944) <sup>(Also in [38](https://github.com/electron/electron/pull/48947), [40](https://github.com/electron/electron/pull/48942))</sup>\n* Reenable V8 trap handlers for wasm in browser and utility process, improves runtime execution of wasm. [#48837](https://github.com/electron/electron/pull/48837) <sup>(Also in [40](https://github.com/electron/electron/pull/48839))</sup>\n* Restored window's canHide property. [#48901](https://github.com/electron/electron/pull/48901) <sup>(Also in [37](https://github.com/electron/electron/pull/48902), [38](https://github.com/electron/electron/pull/48900))</sup>\n* Windows: Calling ",
+    "source": "upstream_release",
+    "last_updated": "2025-11-14"
+  },
+  {
+    "topic": "v39.1.2",
+    "status": "released",
+    "doc_path": "releases/tag/v39.1.2",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.1.2",
+    "summary": "# Release Notes for v39.1.2\n\n## Fixes\n\n* Corrected the appearance of tiled windows on GNOME (when frame: true), and removed resize handles from tiled edges. [#48834](https://github.com/electron/electron/pull/48834) <sup>(Also in [38](https://github.com/electron/electron/pull/48836), [40](https://github.com/electron/electron/pull/48835))</sup>\n* Fix: ESM-from-CJS import when CJK characters are in path. [#48873](https://github.com/electron/electron/pull/48873) \n* Fixed oom crash when optimizing certain wasm functions involving large phi nodes. [#48815](https://github.com/electron/electron/pull/48815) <sup>(Also in [38](https://github.com/electron/electron/pull/48817), [40](https://github.com/electron/electron/pull/48816))</sup>\n* Fixed the issue where the parent window remained interactive after the modal window was opened. [#48865](https://github.com/electron/electron/pull/48865) <sup>(Also in [40](https://github.com/electron/electron/pull/48864))</sup>\n## Other Changes\n\n* Updated Chromium to 142.0.7444.134. [#48818](https://github.com/electron/electron/pull/48818) \n## Documentation\n\n * Documentation changes: [#48842](https://github.com/electron/electron/pull/48842)\n\n## Unknown\n\n* Fixed an issue that menu items on macOS could not be disabled under all circumstances. [#48830](https://github.com/electron/electron/pull/48830) <sup>(Also in [38](https://github.com/electron/electron/pull/48829), [40](https://github.com/electron/electron/pull/48828))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2025-11-10"
+  },
+  {
+    "topic": "v39.1.1",
+    "status": "released",
+    "doc_path": "releases/tag/v39.1.1",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.1.1",
+    "summary": "# Release Notes for v39.1.1\n\n## Fixes\n\n* Fixed an application crash when clicking or hovering over the native MacOS \"Window\" menu. Reverts #48598. [#48800](https://github.com/electron/electron/pull/48800) <sup>(Also in [40](https://github.com/electron/electron/pull/48799))</sup>\n* Fixed draw smoothing round corner issue. [#48781](https://github.com/electron/electron/pull/48781) <sup>(Also in [40](https://github.com/electron/electron/pull/48782))</sup>",
+    "source": "upstream_release",
+    "last_updated": "2025-11-06"
+  },
+  {
+    "topic": "v39.1.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.1.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.1.0",
+    "summary": "# Release Notes for v39.1.0\n\n## Fixes\n\n* Fixed an issue on Wayland (Linux) where right-clicking in the titlebar could  break mouse interactions. [#48758](https://github.com/electron/electron/pull/48758) <sup>(Also in [38](https://github.com/electron/electron/pull/48757), [40](https://github.com/electron/electron/pull/48759))</sup>\n* Fixed an issue that menu items on macOS could not be disabled under all circumstances. [#48711](https://github.com/electron/electron/pull/48711) <sup>(Also in [37](https://github.com/electron/electron/pull/48712), [38](https://github.com/electron/electron/pull/48710))</sup>\n* Fixed incorrect signal variable reference in nan-spec-runner that could cause install failures to go undetected. [#48709](https://github.com/electron/electron/pull/48709) <sup>(Also in [38](https://github.com/electron/electron/pull/48708))</sup>\n## Other Changes\n\n* Updated Chromium to 142.0.7444.59. [#48723](https://github.com/electron/electron/pull/48723) \n* Updated Node.js to v22.21.1. [#48616](https://github.com/electron/electron/pull/48616) ",
+    "source": "upstream_release",
+    "last_updated": "2025-11-05"
+  },
+  {
+    "topic": "v39.0.0",
+    "status": "released",
+    "doc_path": "releases/tag/v39.0.0",
+    "doc_url": "https://github.com/electron/electron/releases/tag/v39.0.0",
+    "summary": "# Release Notes for v39.0.0\r\n\r\n## Stack Upgrades\r\n* Chromium `142.0.7444.52`\r\n    * [New in 142](https://developer.chrome.com/blog/new-in-chrome-142/)\r\n    * [New in 141](https://developer.chrome.com/blog/new-in-chrome-141/)\r\n* Node `22.20.0`\r\n    * [Node 22.20.0 blog post](https://nodejs.org/en/blog/release/v22.20.0/)\r\n* V8 `14.2`\r\n\r\n## Breaking Changes\r\n* Added `colorSpace` to offscreen shared texture info of `webContents.on('paint')` event.\r\n  * Breaking Changed the signature of `OffscreenSharedTexture` to provide a unified `handle` that holds the native handle. [#47315](https://github.com/electron/electron/pull/47315)\r\n* Fixed a spec compliance issue with `window.open` where it should always create a resizable popup window but did not. [#47540](https://github.com/electron/electron/pull/47540) \r\n\r\n*For breaking changes inherited via Chromium, see [blog post](https://www.electronjs.org/blog/electron-39-0)*\r\n## Features\r\n\r\n### Additions\r\n\r\n* Added `RGBAF16` output format with scRGB HDR color space support to Offscreen Rendering. [#48504](https://github.com/electron/electron/pull/48504) \r\n* Added `fileBacked` and `purgeable` fields to `process.getSystemMemoryInfo()` for macOS. [#47628](https://github.com/electron/electron/pull/47628) <span style=\"font-size:small;\">(Also in [37](https://github.com/electron/electron/pull/48143), [38](https://github.com/electron/electron/pull/48146))</span>\r\n* Added support for `guid` `Tray` constructor option on macOS to allow tray icons to maintain position across launches. [#47838](https://github.com/electron/electron/pull/47838) <span style=\"font-size:small;\">(Also in [36](https://github.com/electron/electron/pull/48078), [37](https://github.com/electron/electron/pull/48076), [38](https://github.com/electron/electron/pull/48077))</span>\r\n* Added `webFrameMain.fromFrameToken(processId, frameToken)` to get a `WebFrameMain` instance from its frame token. [#47850](https://github.com/electron/electron/pull/47850) <span style=\"font-size:",
+    "source": "upstream_release",
+    "last_updated": "2025-10-27"
+  }
+]

@@ -202,16 +202,16 @@ func seedFeatures(ctx context.Context, s *store.Store, l *llm.Client, repo strin
 	}
 
 	for i, e := range entries {
-		// Validate doc_type against allowed enhancement types
+		// Validate doc_type against all seedable types
 		validType := false
-		for _, dt := range store.EnhancementDocTypes {
+		for _, dt := range store.AllSeedableDocTypes {
 			if e.Source == dt {
 				validType = true
 				break
 			}
 		}
 		if !validType {
-			return fmt.Errorf("feature %d has invalid source %q, must be one of %v", i, e.Source, store.EnhancementDocTypes)
+			return fmt.Errorf("feature %d has invalid source %q, must be one of %v", i, e.Source, store.AllSeedableDocTypes)
 		}
 
 		text := fmt.Sprintf("%s\n%s", e.Topic, e.Summary)
