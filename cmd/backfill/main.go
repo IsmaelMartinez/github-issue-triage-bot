@@ -91,12 +91,6 @@ func main() {
 				issLog.Error("phase 2 failed", "error", err)
 			}
 			result.Phase2 = p2
-
-			p3, err := phases.Phase3(ctx, s, llmClient, issLog, dataRepo, iss.Number, iss.Title, iss.Body)
-			if err != nil {
-				issLog.Error("phase 3 failed", "error", err)
-			}
-			result.Phase3 = p3
 		}
 
 		if isEnhancement {
@@ -106,16 +100,6 @@ func main() {
 			}
 			result.Phase4a = p4a
 		}
-
-		currentLabel := "bug"
-		if isEnhancement {
-			currentLabel = "enhancement"
-		}
-		p4b, err := phases.Phase4b(ctx, llmClient, issLog, iss.Title, iss.Body, currentLabel)
-		if err != nil {
-			issLog.Error("phase 4b failed", "error", err)
-		}
-		result.Phase4b = p4b
 
 		body := commentpkg.Build(result)
 		phasesRun := collectPhasesRun(result)
@@ -222,14 +206,8 @@ func collectPhasesRun(r commentpkg.TriageResult) []string {
 	if r.Phase2 != nil {
 		p = append(p, "phase2")
 	}
-	if r.Phase3 != nil {
-		p = append(p, "phase3")
-	}
 	if r.Phase4a != nil {
 		p = append(p, "phase4a")
-	}
-	if r.Phase4b != nil {
-		p = append(p, "phase4b")
 	}
 	return p
 }

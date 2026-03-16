@@ -19,17 +19,6 @@ type Suggestion struct {
 	Reason string
 }
 
-// Duplicate represents a potential duplicate issue from Phase 3.
-type Duplicate struct {
-	Number     int
-	Title      string
-	State      string
-	Reason     string
-	Similarity int
-	ClosedAt   *string
-	Milestone  *string
-}
-
 // ContextMatch represents a feature/ADR/research match from Phase 4a.
 type ContextMatch struct {
 	Topic       string
@@ -41,9 +30,3 @@ type ContextMatch struct {
 	IsInfeasible bool
 }
 
-// Misclassification represents a label suggestion from Phase 4b.
-type Misclassification struct {
-	SuggestedLabel string
-	Confidence     int
-	Reason         string
-}

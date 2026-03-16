@@ -82,54 +82,6 @@ func TestBuild_BugWithSuggestions(t *testing.T) {
 	}
 }
 
-func TestBuild_BugWithDuplicates(t *testing.T) {
-	milestone := "v2.0"
-	result := TriageResult{
-		IsBug: true,
-		Phase1: phases.Phase1Result{IsPwaReproducible: true},
-		Phase3: []phases.Duplicate{
-			{Number: 100, Title: "Same bug", State: "open", Reason: "appears similar", Similarity: 80},
-			{Number: 50, Title: "Fixed bug", State: "closed", Reason: "was same issue", Similarity: 70, Milestone: &milestone},
-		},
-	}
-	got := Build(result)
-
-	if !strings.Contains(got, "#100") {
-		t.Error("missing open duplicate")
-	}
-	if !strings.Contains(got, "#50") {
-		t.Error("missing closed duplicate")
-	}
-	if !strings.Contains(got, "Resolved in v2.0") {
-		t.Error("missing milestone note")
-	}
-}
-
-func TestBuild_Phase3SanitizesDuplicateTitles(t *testing.T) {
-	milestone := "v3.0"
-	result := TriageResult{
-		IsBug: true,
-		Phase3: []phases.Duplicate{
-			{Number: 200, Title: "[evil](javascript:alert(1))", State: "open", Reason: "looks similar", Similarity: 90},
-			{Number: 201, Title: "[pwned](data:text/html,<script>)", State: "closed", Reason: "same root cause", Similarity: 75, Milestone: &milestone},
-		},
-	}
-	got := Build(result)
-
-	if strings.Contains(got, "javascript:") {
-		t.Error("Phase 3 open duplicate title was not sanitized: javascript: scheme still present")
-	}
-	if strings.Contains(got, "data:text") {
-		t.Error("Phase 3 closed duplicate title was not sanitized: data: scheme still present")
-	}
-	if !strings.Contains(got, "[evil](removed)") {
-		t.Error("expected sanitized open duplicate title with (removed) link")
-	}
-	if !strings.Contains(got, "[pwned](removed)") {
-		t.Error("expected sanitized closed duplicate title with (removed) link")
-	}
-}
-
 func TestBuild_Phase4aSanitizesNonInfeasibleBranch(t *testing.T) {
 	result := TriageResult{
 		IsEnhancement: true,
@@ -168,22 +120,3 @@ func TestBuild_Enhancement(t *testing.T) {
 	}
 }
 
-func TestBuild_Misclassification(t *testing.T) {
-	result := TriageResult{
-		IsBug: true,
-		Phase1: phases.Phase1Result{IsPwaReproducible: true},
-		Phase4b: &phases.Misclassification{
-			SuggestedLabel: "enhancement",
-			Confidence:     85,
-			Reason:         "This describes a new feature request.",
-		},
-	}
-	got := Build(result)
-
-	if !strings.Contains(got, "Label suggestion") {
-		t.Error("missing misclassification hint")
-	}
-	if !strings.Contains(got, "feature request") {
-		t.Error("missing label hint text")
-	}
-}

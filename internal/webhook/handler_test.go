@@ -121,24 +121,20 @@ func TestCollectPhasesRun(t *testing.T) {
 			want:   []string{"phase1"},
 		},
 		{
-			name: "all phases",
+			name: "all active phases",
 			result: comment.TriageResult{
 				Phase2:  []phases.Suggestion{{}},
-				Phase3:  []phases.Duplicate{{}},
 				Phase4a: []phases.ContextMatch{{}},
-				Phase4b: &phases.Misclassification{},
 			},
-			want: []string{"phase1", "phase2", "phase3", "phase4a", "phase4b"},
+			want: []string{"phase1", "phase2", "phase4a"},
 		},
 		{
 			name: "bug phases only",
 			result: comment.TriageResult{
 				IsBug:  true,
 				Phase2: []phases.Suggestion{{}},
-				Phase3: []phases.Duplicate{{}},
-				Phase4b: &phases.Misclassification{},
 			},
-			want: []string{"phase1", "phase2", "phase3", "phase4b"},
+			want: []string{"phase1", "phase2"},
 		},
 	}
 
