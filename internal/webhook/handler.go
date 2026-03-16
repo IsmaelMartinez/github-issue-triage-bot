@@ -336,16 +336,6 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		result.Phase2 = p2
 	}
 
-	// Phase 3: Duplicate detection (bugs only)
-	if isBug {
-		p3, err := phases.Phase3(ctx, h.store, h.llm, issueLog, dataRepo, issue.Number, issue.Title, issue.Body)
-		if err != nil {
-			issueLog.Error("phase 3 failed", "error", err)
-		}
-		issueLog.Info("phase 3 complete", "duplicates", len(p3))
-		result.Phase3 = p3
-	}
-
 	// Phase 4a: Enhancement context (enhancements only)
 	if isEnhancement {
 		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
@@ -355,18 +345,6 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		issueLog.Info("phase 4a complete", "matches", len(p4a))
 		result.Phase4a = p4a
 	}
-
-	// Phase 4b: Misclassification detection (always runs)
-	currentLabel := "bug"
-	if isEnhancement {
-		currentLabel = "enhancement"
-	}
-	p4b, err := phases.Phase4b(ctx, h.llm, issueLog, issue.Title, issue.Body, currentLabel)
-	if err != nil {
-		issueLog.Error("phase 4b failed", "error", err)
-	}
-	issueLog.Info("phase 4b complete", "result", p4b)
-	result.Phase4b = p4b
 
 	// Build triage comment
 	body := comment.Build(result)
@@ -458,12 +436,6 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 			issueLog.Error("retriage phase 2 failed", "error", err)
 		}
 		result.Phase2 = p2
-
-		p3, err := phases.Phase3(ctx, h.store, h.llm, issueLog, dataRepo, issue.Number, issue.Title, issue.Body)
-		if err != nil {
-			issueLog.Error("retriage phase 3 failed", "error", err)
-		}
-		result.Phase3 = p3
 	}
 
 	if isEnhancement {
@@ -473,16 +445,6 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		}
 		result.Phase4a = p4a
 	}
-
-	currentLabel := "bug"
-	if isEnhancement {
-		currentLabel = "enhancement"
-	}
-	p4b, err := phases.Phase4b(ctx, h.llm, issueLog, issue.Title, issue.Body, currentLabel)
-	if err != nil {
-		issueLog.Error("retriage phase 4b failed", "error", err)
-	}
-	result.Phase4b = p4b
 
 	body := comment.Build(result)
 	phasesRun := collectPhasesRun(result)
@@ -636,14 +598,8 @@ func collectPhasesRun(r comment.TriageResult) []string {
 	if r.Phase2 != nil {
 		phases = append(phases, "phase2")
 	}
-	if r.Phase3 != nil {
-		phases = append(phases, "phase3")
-	}
 	if r.Phase4a != nil {
 		phases = append(phases, "phase4a")
-	}
-	if r.Phase4b != nil {
-		phases = append(phases, "phase4b")
 	}
 	return phases
 }

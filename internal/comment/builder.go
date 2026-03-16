@@ -8,14 +8,14 @@ import (
 )
 
 // TriageResult holds all phase outputs for building the consolidated comment.
+// Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed
+// in favour of GitHub native tooling. See docs/plans/2026-03-15-lean-bot-pivot-design.md.
 type TriageResult struct {
 	IsBug         bool
 	IsEnhancement bool
 	Phase1        phases.Phase1Result
 	Phase2        []phases.Suggestion
-	Phase3        []phases.Duplicate
 	Phase4a       []phases.ContextMatch
-	Phase4b       *phases.Misclassification
 }
 
 // Build constructs the consolidated markdown comment from all phase results.
@@ -24,9 +24,7 @@ func Build(r TriageResult) string {
 	hasContent := (r.IsBug && len(r.Phase1.MissingItems) > 0) ||
 		(r.IsBug && r.Phase1.IsPwaReproducible) ||
 		len(r.Phase2) > 0 ||
-		len(r.Phase3) > 0 ||
-		len(r.Phase4a) > 0 ||
-		r.Phase4b != nil
+		len(r.Phase4a) > 0
 
 	if !hasContent {
 		return ""
@@ -65,36 +63,6 @@ func Build(r TriageResult) string {
 			}
 		}
 		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")
-	}
-
-	// Duplicate suggestions from Phase 3 (bugs only)
-	if r.IsBug && len(r.Phase3) > 0 {
-		openDups := filterDuplicates(r.Phase3, "open")
-		closedDups := filterDuplicates(r.Phase3, "closed")
-
-		parts = append(parts, "**This issue might be related to existing discussions:**\n")
-
-		if len(openDups) > 0 {
-			parts = append(parts, "*Potentially related open issues:*")
-			for _, d := range openDups {
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%d%% similar) \u2014 %s", d.Number, sanitizeLLMOutput(d.Title), d.Similarity, sanitizeLLMOutput(d.Reason)))
-			}
-			parts = append(parts, "")
-		}
-
-		if len(closedDups) > 0 {
-			parts = append(parts, "*Recently resolved issues that could be relevant:*")
-			for _, d := range closedDups {
-				resolvedNote := "Resolved"
-				if d.Milestone != nil {
-					resolvedNote = fmt.Sprintf("Resolved in %s", *d.Milestone)
-				}
-				parts = append(parts, fmt.Sprintf("- #%d \u2014 \"%s\" (%s) \u2014 %s", d.Number, sanitizeLLMOutput(d.Title), resolvedNote, sanitizeLLMOutput(d.Reason)))
-			}
-			parts = append(parts, "")
-		}
-
-		parts = append(parts, "> If one of these matches your issue, consider adding your details there instead.\n")
 	}
 
 	// --- Enhancement-specific sections ---
@@ -174,19 +142,6 @@ func Build(r TriageResult) string {
 		}
 	}
 
-	// Misclassification hint
-	if r.Phase4b != nil {
-		labelHint := "a bug report"
-		if r.Phase4b.SuggestedLabel == "enhancement" {
-			labelHint = "a feature request"
-		} else if r.Phase4b.SuggestedLabel == "question" {
-			labelHint = "a question"
-		}
-		parts = append(parts, fmt.Sprintf(
-			"> **Label suggestion:** This might be %s rather than what it's currently labelled as. %s Re-labelling as `%s` would help us apply the right triage process.\n",
-			labelHint, sanitizeLLMOutput(r.Phase4b.Reason), r.Phase4b.SuggestedLabel))
-	}
-
 	// Tip link
 	if r.IsBug {
 		parts = append(parts,
@@ -208,12 +163,3 @@ func Build(r TriageResult) string {
 	return strings.Join(parts, "\n")
 }
 
-func filterDuplicates(dups []phases.Duplicate, state string) []phases.Duplicate {
-	var result []phases.Duplicate
-	for _, d := range dups {
-		if d.State == state {
-			result = append(result, d)
-		}
-	}
-	return result
-}
