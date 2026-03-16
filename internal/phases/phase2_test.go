@@ -246,6 +246,44 @@ func TestPhase2(t *testing.T) {
 			},
 			wantCount: 0,
 		},
+		{
+			name: "troubleshooting doc at 65% filtered by higher category threshold",
+			llm: &mockProvider{
+				embedFunc: func(ctx context.Context, text string) ([]float32, error) {
+					return dummyEmbedding, nil
+				},
+				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
+					return `[{"index": 0, "reason": "weak troubleshooting match", "relevance": 65}]`, nil
+				},
+			},
+			store: &mockQuerier{
+				findDocsFunc: func(ctx context.Context, repo string, docTypes []string, embedding []float32, limit int) ([]store.SimilarDocument, error) {
+					return []store.SimilarDocument{
+						{Document: store.Document{Title: "Doc", DocType: "troubleshooting", Metadata: map[string]any{}}},
+					}, nil
+				},
+			},
+			wantCount: 0,
+		},
+		{
+			name: "configuration doc at 55% passes lower category threshold",
+			llm: &mockProvider{
+				embedFunc: func(ctx context.Context, text string) ([]float32, error) {
+					return dummyEmbedding, nil
+				},
+				generateJSONWithSysFunc: func(ctx context.Context, sys, user string, temp float64, max int) (string, error) {
+					return `[{"index": 0, "reason": "related config option", "relevance": 55}]`, nil
+				},
+			},
+			store: &mockQuerier{
+				findDocsFunc: func(ctx context.Context, repo string, docTypes []string, embedding []float32, limit int) ([]store.SimilarDocument, error) {
+					return []store.SimilarDocument{
+						{Document: store.Document{Title: "Config", DocType: "configuration", Metadata: map[string]any{"docUrl": "https://example.com/config"}}},
+					}, nil
+				},
+			},
+			wantCount: 1,
+		},
 	}
 
 	for _, tt := range tests {

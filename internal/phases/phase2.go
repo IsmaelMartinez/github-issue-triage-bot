@@ -28,8 +28,8 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 	if err != nil {
 		return nil, fmt.Errorf("embed issue: %w", err)
 	}
-	// Find similar troubleshooting documents
-	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration"}, embedding, 5)
+	// Find similar documents across all doc types
+	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration", "adr", "roadmap", "research"}, embedding, 5)
 	if err != nil {
 		return nil, fmt.Errorf("find similar docs: %w", err)
 	}
@@ -49,11 +49,11 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 	}
 
 	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
-Match this bug report against known issues from our documentation.
+Match this bug report against our documentation: troubleshooting guides, configuration options, architecture decisions (ADRs), roadmap items, and research documents.
 
-Return a JSON array of 0-3 matches. Only include sections with a strong connection (same symptoms, same error message, same component affected). For each match, estimate a relevance percentage (60-95). Only include matches above 60%%.
+Return a JSON array of 0-3 matches. Only include sections with a strong connection (same symptoms, same error message, same component, or a documented decision/limitation that explains the behaviour). For each match, estimate a relevance percentage (60-95). Only include matches above 60%%.
 
-Keep the reason concise (1-2 sentences combining the explanation and what the user should try).
+Keep the reason concise (1-2 sentences combining the explanation and what the user should try or be aware of).
 
 Format: [{"index": 0, "reason": "This might be related because both involve login failures with SSO providers. Try clearing the cache and restarting.", "relevance": 75}]
 
@@ -77,9 +77,28 @@ Respond with ONLY valid JSON, no other text.`
 		return nil, fmt.Errorf("parse suggestions: %w", err)
 	}
 
+	// Per-category relevance thresholds: troubleshooting needs high precision
+	// (wrong suggestions waste user time), other doc types are lower risk
+	// (informational context rather than actionable troubleshooting steps).
+	categoryThresholds := map[string]int{
+		"troubleshooting": 70,
+		"configuration":   50,
+		"adr":             55,
+		"roadmap":         55,
+		"research":        55,
+	}
+	defaultThreshold := 60
+
 	var results []Suggestion
 	for _, m := range matches {
-		if m.Index < 0 || m.Index >= len(docs) || m.Reason == "" || m.Relevance < 60 || m.Relevance > 100 {
+		if m.Index < 0 || m.Index >= len(docs) || m.Reason == "" || m.Relevance > 100 {
+			continue
+		}
+		threshold := defaultThreshold
+		if t, ok := categoryThresholds[docs[m.Index].DocType]; ok {
+			threshold = t
+		}
+		if m.Relevance < threshold {
 			continue
 		}
 		docURL, _ := docs[m.Index].Metadata["docUrl"].(string)
