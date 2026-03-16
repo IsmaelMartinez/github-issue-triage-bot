@@ -56,8 +56,18 @@ type SimilarIssue struct {
 }
 
 // EnhancementDocTypes lists the document types that Phase 4a searches for
-// enhancement context. The seed command validates against this list.
+// enhancement context.
 var EnhancementDocTypes = []string{"roadmap", "adr", "research"}
+
+// UpstreamDocTypes lists the document types for upstream dependency docs
+// (e.g. Electron release notes, version-tagged issues).
+var UpstreamDocTypes = []string{"upstream_release", "upstream_issue"}
+
+// AllSeedableDocTypes is the union of all valid doc_type values for the seed command.
+var AllSeedableDocTypes = append(
+	append([]string{"troubleshooting", "configuration"}, EnhancementDocTypes...),
+	UpstreamDocTypes...,
+)
 
 // Agent session stage constants.
 const (

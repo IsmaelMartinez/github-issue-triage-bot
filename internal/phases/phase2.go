@@ -28,8 +28,8 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 	if err != nil {
 		return nil, fmt.Errorf("embed issue: %w", err)
 	}
-	// Find similar documents across all doc types
-	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration", "adr", "roadmap", "research"}, embedding, 5)
+	// Find similar documents across all doc types (project + upstream)
+	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration", "adr", "roadmap", "research", "upstream_release", "upstream_issue"}, embedding, 5)
 	if err != nil {
 		return nil, fmt.Errorf("find similar docs: %w", err)
 	}
@@ -81,11 +81,13 @@ Respond with ONLY valid JSON, no other text.`
 	// (wrong suggestions waste user time), other doc types are lower risk
 	// (informational context rather than actionable troubleshooting steps).
 	categoryThresholds := map[string]int{
-		"troubleshooting": 70,
-		"configuration":   50,
-		"adr":             55,
-		"roadmap":         55,
-		"research":        55,
+		"troubleshooting":  70,
+		"configuration":    50,
+		"adr":              55,
+		"roadmap":          55,
+		"research":         55,
+		"upstream_release": 50,
+		"upstream_issue":   45,
 	}
 	defaultThreshold := 60
 
