@@ -27,9 +27,6 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	}
 	got := Build(result)
 
-	if !strings.Contains(got, "Thanks for reporting this issue") {
-		t.Error("missing bug greeting")
-	}
 	if !strings.Contains(got, "Reproduction steps") {
 		t.Error("missing reproduction steps item")
 	}
@@ -42,8 +39,11 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	if !strings.Contains(got, "Troubleshooting Guide") {
 		t.Error("missing troubleshooting guide link")
 	}
-	if !strings.Contains(got, "I'm a bot") {
+	if !strings.Contains(got, "Bot suggestion") {
 		t.Error("missing bot disclosure")
+	}
+	if !strings.Contains(got, "@ismael-triage-bot") {
+		t.Error("missing feedback mention hint")
 	}
 }
 
@@ -56,7 +56,7 @@ func TestBuild_BugWithPWA(t *testing.T) {
 	}
 	got := Build(result)
 
-	if !strings.Contains(got, "Microsoft Teams web app") {
+	if !strings.Contains(got, "Teams web app") {
 		t.Error("missing PWA note")
 	}
 	if !strings.Contains(got, "Microsoft Feedback Portal") {
@@ -74,7 +74,7 @@ func TestBuild_BugWithSuggestions(t *testing.T) {
 	}
 	got := Build(result)
 
-	if !strings.Contains(got, "known issue") {
+	if !strings.Contains(got, "Possibly related") {
 		t.Error("missing suggestions header")
 	}
 	if !strings.Contains(got, "[Cache Issue](https://example.com/cache)") {
@@ -97,26 +97,21 @@ func TestBuild_Phase4aSanitizesNonInfeasibleBranch(t *testing.T) {
 }
 
 func TestBuild_Enhancement(t *testing.T) {
-	lastUpdated := "2026-01-15"
 	result := TriageResult{
 		IsEnhancement: true,
 		Phase4a: []phases.ContextMatch{
-			{Topic: "Dark Mode", Status: "planned", DocURL: "https://example.com/dark", Source: "roadmap", LastUpdated: &lastUpdated, Reason: "appears related"},
+			{Topic: "Dark Mode", Status: "planned", DocURL: "https://example.com/dark", Source: "roadmap", Reason: "appears related"},
 		},
 	}
 	got := Build(result)
 
-	if !strings.Contains(got, "Thanks for the feature suggestion") {
-		t.Error("missing enhancement greeting")
-	}
-	if !strings.Contains(got, "previously explored") {
+	if !strings.Contains(got, "Related work") {
 		t.Error("missing context header")
 	}
 	if !strings.Contains(got, "[Dark Mode](https://example.com/dark)") {
 		t.Error("missing context link")
 	}
-	if !strings.Contains(got, "Development Roadmap") {
+	if !strings.Contains(got, "Roadmap") {
 		t.Error("missing roadmap tip link")
 	}
 }
-

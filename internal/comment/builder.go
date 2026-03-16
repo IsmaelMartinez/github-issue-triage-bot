@@ -32,52 +32,41 @@ func Build(r TriageResult) string {
 
 	var parts []string
 
-	// Greeting
-	if r.IsBug {
-		parts = append(parts, "\U0001F44B Thanks for reporting this issue!\n")
-	} else {
-		parts = append(parts, "\U0001F44B Thanks for the feature suggestion!\n")
-	}
-
-	// --- Bug-specific sections ---
-
-	// PWA reproducibility note (bugs only)
+	// PWA reproducibility note (bugs only, before anything else)
 	if r.IsBug && r.Phase1.IsPwaReproducible {
 		parts = append(parts,
-			"> **Note:** You mentioned this bug also occurs on the [Microsoft Teams web app](https://teams.microsoft.com). "+
-				"This suggests the issue may be with Microsoft Teams itself rather than Teams for Linux. "+
-				"You could also report it to [Microsoft Feedback Portal](https://feedbackportal.microsoft.com/). "+
-				"That said, we'll still take a look \u2014 there may be something we can do on our end.\n")
+			"> This bug also occurs on the [Teams web app](https://teams.microsoft.com), "+
+				"which suggests a Microsoft-side issue. Consider reporting to the "+
+				"[Microsoft Feedback Portal](https://feedbackportal.microsoft.com/) too. "+
+				"We'll still take a look.\n")
 	}
 
-	// Solution suggestions from Phase 2 (bugs only)
+	// Known issue matches from Phase 2 (bugs only)
 	if r.IsBug && len(r.Phase2) > 0 {
-		parts = append(parts, "**This might be related to a known issue:**\n")
+		parts = append(parts, "**Possibly related:**\n")
 		for _, s := range r.Phase2 {
 			url := sanitizeURL(s.DocURL)
 			title := sanitizeLLMOutput(s.Title)
 			if url != "" {
-				parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s\n", title, url, sanitizeLLMOutput(s.Reason)))
+				parts = append(parts, fmt.Sprintf("- [%s](%s) \u2014 %s", title, url, sanitizeLLMOutput(s.Reason)))
 			} else {
-				parts = append(parts, fmt.Sprintf("- %s \u2014 %s\n", title, sanitizeLLMOutput(s.Reason)))
+				parts = append(parts, fmt.Sprintf("- %s \u2014 %s", title, sanitizeLLMOutput(s.Reason)))
 			}
 		}
-		parts = append(parts, "> These suggestions are based on our documentation and may not be exact matches.\n")
+		parts = append(parts, "")
 	}
-
-	// --- Enhancement-specific sections ---
 
 	// Enhancement context from Phase 4a (enhancements only)
 	if r.IsEnhancement && len(r.Phase4a) > 0 {
 		statusLabels := map[string]string{
 			"shipped":       "Shipped",
 			"planned":       "Planned",
-			"investigating": "Under investigation",
-			"deferred":      "Deferred / awaiting feedback",
-			"rejected":      "Previously explored",
+			"investigating": "Investigating",
+			"deferred":      "Deferred",
+			"rejected":      "Explored",
 		}
 
-		parts = append(parts, "**We've previously explored related areas:**\n")
+		parts = append(parts, "**Related work:**\n")
 		for _, ctx := range r.Phase4a {
 			statusLabel := statusLabels[ctx.Status]
 			if statusLabel == "" {
@@ -85,13 +74,9 @@ func Build(r TriageResult) string {
 			}
 			sourceLabel := "Roadmap"
 			if ctx.Source == "adr" {
-				sourceLabel = "Architecture Decision"
+				sourceLabel = "ADR"
 			} else if ctx.Source == "research" {
 				sourceLabel = "Research"
-			}
-			updatedNote := ""
-			if ctx.LastUpdated != nil {
-				updatedNote = fmt.Sprintf(" (last updated: %s)", *ctx.LastUpdated)
 			}
 
 			url := sanitizeURL(ctx.DocURL)
@@ -101,22 +86,18 @@ func Build(r TriageResult) string {
 				topicLink = fmt.Sprintf("[%s](%s)", topic, url)
 			}
 			if ctx.IsInfeasible {
-				parts = append(parts, fmt.Sprintf("- %s (%s) \u2014 We explored this and documented our findings.%s %s",
-					topicLink, sourceLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+				parts = append(parts, fmt.Sprintf("- %s (%s) \u2014 %s",
+					topicLink, sourceLabel, sanitizeLLMOutput(ctx.Reason)))
 			} else {
-				parts = append(parts, fmt.Sprintf("- %s (%s, %s)%s \u2014 %s",
-					topicLink, sourceLabel, statusLabel, updatedNote, sanitizeLLMOutput(ctx.Reason)))
+				parts = append(parts, fmt.Sprintf("- %s (%s, %s) \u2014 %s",
+					topicLink, sourceLabel, statusLabel, sanitizeLLMOutput(ctx.Reason)))
 			}
 		}
 		parts = append(parts, "")
-		parts = append(parts, "> Our roadmap is a living document and priorities may have changed. Your feedback helps shape future development.\n")
 	}
 
-	// --- Common sections ---
-
-	// Missing information checklist (bugs only — Phase 1 checks bug template fields)
+	// Missing information checklist (bugs only)
 	if r.IsBug && len(r.Phase1.MissingItems) > 0 {
-		parts = append(parts, "To help us investigate, could you provide some additional details?\n")
 		parts = append(parts, "**Missing information:**")
 		for _, item := range r.Phase1.MissingItems {
 			parts = append(parts, fmt.Sprintf("- [ ] **%s** \u2014 %s", item.Label, item.Detail))
@@ -124,42 +105,31 @@ func Build(r TriageResult) string {
 		parts = append(parts, "")
 	}
 
-	// Debug instructions (collapsible)
+	// Debug instructions (collapsible, only when debug output is missing)
 	for _, item := range r.Phase1.MissingItems {
 		if item.Label == "Debug console output" {
 			parts = append(parts,
 				"<details>\n"+
-					"<summary><b>How to get debug logs</b></summary>\n\n"+
-					"1. Run the application from the terminal with logging enabled:\n"+
-					"   ```bash\n"+
-					"   ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n"+
-					"   ```\n"+
-					"2. Reproduce the issue\n"+
-					"3. Copy the relevant console output\n"+
-					"4. Feel free to redact any sensitive information (emails, URLs, etc.)\n\n"+
+					"<summary>How to get debug logs</summary>\n\n"+
+					"```bash\n"+
+					"ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n"+
+					"```\n"+
+					"Reproduce the issue and copy the relevant output.\n\n"+
 					"</details>\n")
 			break
 		}
 	}
 
-	// Tip link
+	// Footer: tip + feedback + bot disclosure
 	if r.IsBug {
 		parts = append(parts,
-			"> **Tip:** You might also find helpful information in our "+
-				"[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting).\n")
+			"*Bot suggestion \u2014 [Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) \u2014 "+
+				"react \U0001F44D/\U0001F44E or mention @ismael-triage-bot with feedback.*")
 	} else {
 		parts = append(parts,
-			"> **Tip:** Check our [Development Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap) "+
-				"for the current project direction and planned features.\n")
+			"*Bot suggestion \u2014 [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap) \u2014 "+
+				"react \U0001F44D/\U0001F44E or mention @ismael-triage-bot with feedback.*")
 	}
-
-	// Bot disclosure
-	parts = append(parts, "---\n")
-	parts = append(parts,
-		"*I'm a bot that helps with issue triage. "+
-			"Suggestions are based on documentation and may not be exact. "+
-			"A maintainer will review this issue.*")
 
 	return strings.Join(parts, "\n")
 }
-
