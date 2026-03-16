@@ -21,6 +21,10 @@ Migration 010: `feedback_signals` table (repo, issue_number, signal_type, detail
 
 See full implementation details in the session where this was planned (2026-03-16).
 
+## Additional: @mention feedback processing
+
+The bot footer now invites users to `@ismael-triage-bot` with feedback. The comments arrive via `issue_comment` webhooks but are currently ignored for triage sessions (only agent sessions process non-signal comments). When F1 is built, add @mention detection in the webhook handler: if a comment on a triaged issue mentions the bot, store it as a `feedback_signal` with `signal_type: 'user_mention'` and the comment body as details. This provides qualitative feedback alongside the quantitative signals (reactions, issue edits).
+
 ## Trigger to start
 
 When we have enough triage data (20+ promoted sessions) to make the metrics meaningful, or when preparing for Stage A → B transition.
