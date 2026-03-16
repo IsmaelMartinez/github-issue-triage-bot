@@ -51,6 +51,10 @@ cd terraform && terraform plan && terraform apply
 
 # Seed via GitHub Actions (workflow_dispatch)
 gh workflow run seed.yml -f seed_type=features -f data_file=data/feature-index.json
+
+# Seed upstream dependency docs (e.g. Electron release notes)
+./scripts/generate-upstream-index.sh --repo electron/electron --type releases --version 39 --doc-type upstream_release > data/electron-v39-releases.json
+./seed upstream data/electron-v39-releases.json
 ```
 
 ## Architecture
@@ -59,7 +63,9 @@ The service receives GitHub webhook events (issue opened/closed/reopened, issue 
 
 Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): for enhancement requests, searches roadmap/ADR/research documents for related context.
 
-All phase results are consolidated into a single markdown comment by the comment builder. When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue.
+All phase results are consolidated into a single markdown comment by the comment builder (concise format: no greeting, compact footer with feedback hint). When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue.
+
+The vector store includes upstream dependency docs (Electron release notes, changelogs) in addition to project-specific docs, so Phase 2 can surface relevant upstream changes when triaging bug reports.
 
 For enhancement issues with a configured shadow repo, the bot also starts an agent session. The agent creates a mirror issue and posts a context brief with relevant ADRs, roadmap items, and similar past issues from vector search, plus a short LLM-generated summary. The maintainer can reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge and close the session, or `reject` to discard. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
 
@@ -92,7 +98,8 @@ internal/safety/llm_validator.go # LLM-based safety reviewer (relevance, tone, i
 internal/runner/runner.go     # Runner interface for task execution abstraction
 internal/runner/inprocess.go  # In-process runner (goroutines with context timeout)
 scripts/generate-feature-index.sh # Generate seed JSON from teams-for-linux ADRs/research/roadmap
-data/feature-index.json       # Generated seed data (31 ADR/research/roadmap docs)
+scripts/generate-upstream-index.sh # Generate seed JSON from upstream dependency releases/changelogs
+data/                         # Seed data (feature index, Electron upstream docs)
 migrations/                   # Database migrations (001-009)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
@@ -130,6 +137,8 @@ Go 1.26 with standard library where possible. External dependencies: pgx/v5 (Pos
 The Gemini API client uses the REST API directly rather than an SDK to minimize dependencies. JSON responses are parsed with `responseMimeType: application/json` for structured output.
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/ExtractJSONObject helpers with fallback parsing. All LLM JSON responses must be passed through `phases.ExtractJSONObject()` before `json.Unmarshal`, even when using `responseMimeType: application/json`, as a defensive measure against code-fenced or prefixed responses.
+
+The comment builder produces concise output: no greeting line, a compact footer with a feedback hint. Keep builder output minimal — avoid padding or preamble.
 
 Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool uses DASHBOARD_REPO (optional, defaults to IsmaelMartinez/teams-for-linux).
 
