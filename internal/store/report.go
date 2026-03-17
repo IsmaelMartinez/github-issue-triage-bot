@@ -2,7 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // DashboardStats holds aggregated statistics for the dashboard.
@@ -236,12 +240,18 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 	}
 	stats.PhaseHitRate = phaseHitRate
 
-	// Feedback stats
+	// Feedback stats (non-fatal only if table doesn't exist yet — migration 010)
 	feedbackStats, err := s.GetFeedbackStats(ctx, repo)
 	if err != nil {
-		return nil, err
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
+			slog.Warn("feedback_signals table not found, skipping", "error", err)
+		} else {
+			return nil, err
+		}
+	} else {
+		stats.FeedbackStats = feedbackStats
 	}
-	stats.FeedbackStats = feedbackStats
 
 	return stats, nil
 }
