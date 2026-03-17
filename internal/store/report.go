@@ -171,11 +171,11 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 
-	// Recent 20 comments
+	// Recent 25 comments
 	rows3, err := s.pool.Query(ctx, `
 		SELECT repo, issue_number, comment_id, phases_run, thumbs_up, thumbs_down, created_at
 		FROM bot_comments WHERE repo = $1
-		ORDER BY created_at DESC LIMIT 20
+		ORDER BY created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
@@ -307,13 +307,13 @@ func (s *Store) getTriageStats(ctx context.Context, repo string) (*TriageStats, 
 
 	ts.Pending = ts.Total - ts.Promoted
 
-	// Recent 10 triage sessions
+	// Recent 25 triage sessions
 	rows, err := s.pool.Query(ctx, `
 		SELECT t.repo, t.issue_number, t.shadow_repo, t.shadow_issue_number,
 			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
 			t.created_at
 		FROM triage_sessions t WHERE t.repo = $1
-		ORDER BY t.created_at DESC LIMIT 10
+		ORDER BY t.created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
@@ -392,11 +392,11 @@ func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, er
 		return nil, err
 	}
 
-	// Recent 10 agent sessions
+	// Recent 25 agent sessions
 	rows3, err := s.pool.Query(ctx, `
 		SELECT repo, issue_number, shadow_repo, shadow_issue_number, stage, created_at
 		FROM agent_sessions WHERE repo = $1
-		ORDER BY created_at DESC LIMIT 10
+		ORDER BY created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
