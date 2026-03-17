@@ -26,7 +26,7 @@ The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` envi
 
 ### Dashboard
 
-A daily-generated dashboard at https://ismaelmartinez.github.io/github-issue-triage-bot/ shows triage activity, phase hit rates, reaction metrics, and agent session status. It is built by `cmd/dashboard` and deployed to GitHub Pages via `.github/workflows/dashboard.yml`.
+The live dashboard at https://triage-bot-lhuutxzbnq-uc.a.run.app/dashboard shows triage activity, phase hit rates, reaction metrics, and agent session status.
 
 ## Architecture
 
@@ -56,8 +56,8 @@ Cloud Run (Go binary)
                 +-- Publish summary to public issue
         |
         v
-Neon PostgreSQL + pgvector             GitHub Pages Dashboard
-(documents, issues, bot_comments,      (daily via cmd/dashboard)
+Neon PostgreSQL + pgvector
+(documents, issues, bot_comments,
  agent_sessions, agent_audit_log)
 ```
 
