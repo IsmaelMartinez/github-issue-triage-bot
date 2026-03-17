@@ -17,14 +17,10 @@ go vet ./...
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 golangci-lint run ./...
 
-# Build server, seed, dashboard, and sync-reactions binaries
+# Build server, seed, and sync-reactions binaries
 go build -o server ./cmd/server
 go build -o seed ./cmd/seed
-go build -o dashboard ./cmd/dashboard
 go build -o sync-reactions ./cmd/sync-reactions
-
-# Generate dashboard HTML (requires DATABASE_URL)
-go run ./cmd/dashboard [output-path]
 
 # Sync GitHub reactions to bot comments in DB (requires DATABASE_URL, GITHUB_TOKEN)
 go run ./cmd/sync-reactions
@@ -74,9 +70,8 @@ For enhancement issues with a configured shadow repo, the bot also starts an age
 ```
 cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /report, /dashboard)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
-cmd/server/template.html      # Dashboard v2 template (sidebar layout, shared with static generator)
+cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js charts, drill-down)
 cmd/seed/main.go              # CLI to import JSON indexes into database
-cmd/dashboard/main.go         # Static dashboard HTML generator (GitHub Pages snapshot)
 cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
 cmd/backfill/main.go          # One-time backfill of triage results for historical issues
 internal/webhook/handler.go   # Webhook verification, replay protection, routing
@@ -105,7 +100,7 @@ data/                         # Seed data (feature index, Electron upstream docs
 migrations/                   # Database migrations (001-010)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
-.github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages + stale cleanup + health check
+.github/workflows/dashboard.yml # Daily maintenance: stale cleanup, health check, reaction sync
 .github/workflows/seed.yml    # Manual seed workflow (workflow_dispatch)
 docs/decisions/               # Architecture decision records
 docs/plans/                   # Implementation plans and design docs
@@ -142,7 +137,7 @@ Phase 1 is pure string parsing (no network calls) and has the most comprehensive
 
 The comment builder produces concise output: no greeting line, a compact footer with a feedback hint. Keep builder output minimal — avoid padding or preamble.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync. The cmd/dashboard tool uses DASHBOARD_REPO (optional, defaults to IsmaelMartinez/teams-for-linux).
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
 
 ## Issue Template Headers
 

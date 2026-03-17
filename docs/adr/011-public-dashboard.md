@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented
+Superseded by ADR 012
 
 ## Context
 

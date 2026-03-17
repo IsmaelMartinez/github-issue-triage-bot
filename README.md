@@ -1,18 +1,16 @@
 # GitHub Issue Triage Bot
 
-An automated issue triage assistant for the [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux) project. When a new issue is opened, the bot analyzes its content and posts a helpful comment with relevant context: known solutions from documentation, potential duplicates from issue history, related roadmap items, and missing information prompts.
+An automated issue triage assistant for the [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux) project. When a new issue is opened, the bot analyzes its content and posts a helpful comment with relevant context: known solutions from documentation, related roadmap items, and missing information prompts.
 
 ## How it works
 
 The bot runs as a Go service on Google Cloud Run, receiving GitHub webhook events. When an issue is opened, it runs a multi-phase triage pipeline:
 
 - Phase 1 checks if the bug report is missing key information (reproduction steps, debug logs, expected behavior) by parsing the issue body against the project's form template.
-- Phase 2 searches the troubleshooting documentation using vector similarity (pgvector) to find known solutions, then uses Gemini to generate targeted suggestions with links.
-- Phase 3 searches past issues for potential duplicates, again using vector similarity followed by LLM-based semantic comparison.
+- Phase 2 searches the troubleshooting documentation, upstream Electron release notes, and similar past issues using vector similarity (pgvector) to find known solutions, then uses Gemini to generate targeted suggestions with links.
 - Phase 4a (enhancements only) searches roadmap items, architecture decisions, and research documents to surface existing context about similar feature requests.
-- Phase 4b checks whether the issue might be miscategorized (e.g., a question labeled as a bug).
 
-All phase results are consolidated into a single markdown comment. The bot identifies itself as automated and notes that a maintainer will review.
+When not running in silent mode, all phase results are consolidated into a single concise comment with a compact footer and feedback hint.
 
 ### Enhancement Researcher Agent
 
@@ -26,7 +24,7 @@ The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` envi
 
 ### Dashboard
 
-A daily-generated dashboard at https://ismaelmartinez.github.io/github-issue-triage-bot/ shows triage activity, phase hit rates, reaction metrics, and agent session status. It is built by `cmd/dashboard` and deployed to GitHub Pages via `.github/workflows/dashboard.yml`.
+The live dashboard at https://triage-bot-lhuutxzbnq-uc.a.run.app/dashboard shows triage activity, phase hit rates, reaction metrics, and agent session status.
 
 ## Architecture
 
@@ -39,9 +37,7 @@ Cloud Run (Go binary)
         +-- Triage Pipeline
         |       +-- Phase 1: Template parsing (no LLM)
         |       +-- Phase 2: pgvector search + Gemini (bugs)
-        |       +-- Phase 3: pgvector search + Gemini (bugs)
         |       +-- Phase 4a: pgvector search + Gemini (enhancements)
-        |       +-- Phase 4b: Gemini classification (all)
         |       |
         |       v
         |   Post comment / store for dashboard (silent mode)
@@ -56,8 +52,8 @@ Cloud Run (Go binary)
                 +-- Publish summary to public issue
         |
         v
-Neon PostgreSQL + pgvector             GitHub Pages Dashboard
-(documents, issues, bot_comments,      (daily via cmd/dashboard)
+Neon PostgreSQL + pgvector
+(documents, issues, bot_comments,
  agent_sessions, agent_audit_log)
 ```
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -26,6 +27,9 @@ type DashboardStats struct {
 	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
 	PhaseHitRate          map[string]float64 `json:"phase_hit_rate"`
 	FeedbackStats         *FeedbackStats     `json:"feedback_stats"`
+	DailyTriageCounts     []DailyBucket      `json:"daily_triage_counts"`
+	DailyAgentCounts      []DailyBucket      `json:"daily_agent_counts"`
+	DailyFeedbackCounts   []DailyBucket      `json:"daily_feedback_counts"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -95,6 +99,12 @@ type RoundTripBucket struct {
 	Count      int `json:"count"`
 }
 
+// DailyBucket holds a date string and an event count for time-series charts.
+type DailyBucket struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
 func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardStats, error) {
 	stats := &DashboardStats{
@@ -162,11 +172,11 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 
-	// Recent 20 comments
+	// Recent 25 comments
 	rows3, err := s.pool.Query(ctx, `
 		SELECT repo, issue_number, comment_id, phases_run, thumbs_up, thumbs_down, created_at
 		FROM bot_comments WHERE repo = $1
-		ORDER BY created_at DESC LIMIT 20
+		ORDER BY created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
@@ -253,6 +263,25 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		stats.FeedbackStats = feedbackStats
 	}
 
+	// Daily time-series counts (non-fatal)
+	if dailyTriage, err := s.GetDailyTriageCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily triage counts", "error", err)
+	} else {
+		stats.DailyTriageCounts = dailyTriage
+	}
+
+	if dailyAgent, err := s.GetDailyAgentCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily agent counts", "error", err)
+	} else {
+		stats.DailyAgentCounts = dailyAgent
+	}
+
+	if dailyFeedback, err := s.GetDailyFeedbackCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily feedback counts", "error", err)
+	} else {
+		stats.DailyFeedbackCounts = dailyFeedback
+	}
+
 	return stats, nil
 }
 
@@ -279,13 +308,13 @@ func (s *Store) getTriageStats(ctx context.Context, repo string) (*TriageStats, 
 
 	ts.Pending = ts.Total - ts.Promoted
 
-	// Recent 10 triage sessions
+	// Recent 25 triage sessions
 	rows, err := s.pool.Query(ctx, `
 		SELECT t.repo, t.issue_number, t.shadow_repo, t.shadow_issue_number,
 			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
 			t.created_at
 		FROM triage_sessions t WHERE t.repo = $1
-		ORDER BY t.created_at DESC LIMIT 10
+		ORDER BY t.created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
@@ -364,11 +393,11 @@ func (s *Store) getAgentStats(ctx context.Context, repo string) (*AgentStats, er
 		return nil, err
 	}
 
-	// Recent 10 agent sessions
+	// Recent 25 agent sessions
 	rows3, err := s.pool.Query(ctx, `
 		SELECT repo, issue_number, shadow_repo, shadow_issue_number, stage, created_at
 		FROM agent_sessions WHERE repo = $1
-		ORDER BY created_at DESC LIMIT 10
+		ORDER BY created_at DESC LIMIT 25
 	`, repo)
 	if err != nil {
 		return nil, err
@@ -500,6 +529,202 @@ func (s *Store) UpdateReactions(ctx context.Context, repo string, issueNumber, t
 		WHERE repo = $1 AND issue_number = $2
 	`, repo, issueNumber, thumbsUp, thumbsDown)
 	return err
+}
+
+// GetDailyTriageCounts returns a 30-day time series of triage session counts.
+func (s *Store) GetDailyTriageCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date::text AS date, COALESCE(t.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM triage_sessions
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) t ON t.day = d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// GetDailyAgentCounts returns a 30-day time series of agent session counts.
+func (s *Store) GetDailyAgentCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date::text AS date, COALESCE(a.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM agent_sessions
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) a ON a.day = d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// GetDailyFeedbackCounts returns a 30-day time series of feedback signal counts.
+func (s *Store) GetDailyFeedbackCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date::text AS date, COALESCE(f.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM feedback_signals
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) f ON f.day = d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// scanDailyBuckets reads rows of (date, count) into a []DailyBucket slice.
+func scanDailyBuckets(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}) ([]DailyBucket, error) {
+	var buckets []DailyBucket
+	for rows.Next() {
+		var b DailyBucket
+		var d time.Time
+		if err := rows.Scan(&d, &b.Count); err != nil {
+			return nil, err
+		}
+		b.Date = d.Format("2006-01-02")
+		buckets = append(buckets, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if buckets == nil {
+		buckets = []DailyBucket{}
+	}
+	return buckets, nil
+}
+
+// TriageDetail holds full detail for a single triage session.
+type TriageDetail struct {
+	ID            int64    `json:"id"`
+	Repo          string   `json:"repo"`
+	IssueNumber   int      `json:"issue_number"`
+	ShadowRepo    string   `json:"shadow_repo"`
+	ShadowIssue   int      `json:"shadow_issue"`
+	TriageComment string   `json:"triage_comment"`
+	PhasesRun     []string `json:"phases_run"`
+	Promoted      bool     `json:"promoted"`
+	CreatedAt     string   `json:"created_at"`
+}
+
+// AuditLogEntry records a single action taken by the agent, for dashboard drill-down.
+// Named AuditLogEntry to avoid collision with the AuditEntry type in models.go.
+type AuditLogEntry struct {
+	ActionType      string  `json:"action_type"`
+	OutputSummary   string  `json:"output_summary"`
+	SafetyPassed    bool    `json:"safety_passed"`
+	ConfidenceScore float64 `json:"confidence_score"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// AgentDetail holds full detail for a single agent session including its audit log.
+type AgentDetail struct {
+	ID             int64           `json:"id"`
+	Repo           string          `json:"repo"`
+	IssueNumber    int             `json:"issue_number"`
+	ShadowRepo     string          `json:"shadow_repo"`
+	ShadowIssue    int             `json:"shadow_issue"`
+	Stage          string          `json:"stage"`
+	RoundTripCount int             `json:"round_trip_count"`
+	AuditLog       []AuditLogEntry `json:"audit_log"`
+	CreatedAt      string          `json:"created_at"`
+}
+
+// GetTriageSessionDetail returns full detail for the triage session matching repo+issueNumber.
+// It returns nil if no session is found.
+func (s *Store) GetTriageSessionDetail(ctx context.Context, repo string, issueNumber int) (*TriageDetail, error) {
+	d := &TriageDetail{}
+	var createdAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT t.id, t.repo, t.issue_number, t.shadow_repo, t.shadow_issue_number,
+			t.triage_comment, t.phases_run,
+			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
+			t.created_at
+		FROM triage_sessions t
+		WHERE t.repo = $1 AND t.issue_number = $2
+	`, repo, issueNumber).Scan(
+		&d.ID, &d.Repo, &d.IssueNumber, &d.ShadowRepo, &d.ShadowIssue,
+		&d.TriageComment, &d.PhasesRun, &d.Promoted, &createdAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	d.CreatedAt = createdAt.Format(time.RFC3339)
+	return d, nil
+}
+
+// GetAgentSessionDetail returns full detail for the agent session matching repo+issueNumber,
+// including all audit log entries. It returns nil if no session is found.
+func (s *Store) GetAgentSessionDetail(ctx context.Context, repo string, issueNumber int) (*AgentDetail, error) {
+	d := &AgentDetail{}
+	var createdAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, repo, issue_number, shadow_repo, shadow_issue_number,
+			stage, round_trip_count, created_at
+		FROM agent_sessions
+		WHERE repo = $1 AND issue_number = $2
+	`, repo, issueNumber).Scan(
+		&d.ID, &d.Repo, &d.IssueNumber, &d.ShadowRepo, &d.ShadowIssue,
+		&d.Stage, &d.RoundTripCount, &createdAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	d.CreatedAt = createdAt.Format(time.RFC3339)
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT action_type, output_summary, safety_check_passed, confidence_score, created_at
+		FROM agent_audit_log
+		WHERE session_id = $1
+		ORDER BY created_at ASC
+	`, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	d.AuditLog = []AuditLogEntry{}
+	for rows.Next() {
+		var entry AuditLogEntry
+		var entryCreatedAt time.Time
+		if err := rows.Scan(&entry.ActionType, &entry.OutputSummary, &entry.SafetyPassed, &entry.ConfidenceScore, &entryCreatedAt); err != nil {
+			return nil, err
+		}
+		entry.CreatedAt = entryCreatedAt.Format(time.RFC3339)
+		d.AuditLog = append(d.AuditLog, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return d, nil
 }
 
 // ListBotComments returns all bot comments for a given repo.

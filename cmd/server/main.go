@@ -284,6 +284,74 @@ func main() {
 			logger.Error("encoding stats response", "error", err)
 		}
 	})
+	mux.HandleFunc("/api/triage/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		issueStr := strings.TrimPrefix(r.URL.Path, "/api/triage/")
+		issueNum, err := strconv.Atoi(issueStr)
+		if err != nil {
+			http.Error(w, "invalid issue number", http.StatusBadRequest)
+			return
+		}
+		detail, err := s.GetTriageSessionDetail(r.Context(), repo, issueNum)
+		if err != nil {
+			logger.Error("fetching triage detail", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if detail == nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if encErr := json.NewEncoder(w).Encode(detail); encErr != nil {
+			logger.Error("encoding triage detail", "error", encErr)
+		}
+	})
+	mux.HandleFunc("/api/agent/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		issueStr := strings.TrimPrefix(r.URL.Path, "/api/agent/")
+		issueNum, err := strconv.Atoi(issueStr)
+		if err != nil {
+			http.Error(w, "invalid issue number", http.StatusBadRequest)
+			return
+		}
+		detail, err := s.GetAgentSessionDetail(r.Context(), repo, issueNum)
+		if err != nil {
+			logger.Error("fetching agent detail", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if detail == nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if encErr := json.NewEncoder(w).Encode(detail); encErr != nil {
+			logger.Error("encoding agent detail", "error", encErr)
+		}
+	})
 
 	server := &http.Server{
 		Addr:         ":" + port,

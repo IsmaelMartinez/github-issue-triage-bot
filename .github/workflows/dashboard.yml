@@ -1,21 +1,24 @@
-name: Update Dashboard
+name: Daily Maintenance
 on:
   schedule:
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       repos:
-        description: 'Comma-separated list of repos to generate dashboards for'
+        description: 'Comma-separated list of repos for maintenance (cleanup, health check, reaction sync)'
         default: 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo'
         required: false
 permissions:
-  contents: write
-  pages: write
+  contents: read
   id-token: write
 jobs:
-  cleanup:
+  maintenance:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        with:
+          go-version-file: go.mod
       - id: auth
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2
         with:
@@ -24,7 +27,7 @@ jobs:
       - name: Close stale shadow issues
         run: |
           TOKEN=$(gcloud auth print-identity-token --impersonate-service-account=triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
-          curl -sf -X POST \
+          curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
             -H "Authorization: Bearer $TOKEN" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
             || echo "cleanup failed, continuing"
@@ -36,19 +39,12 @@ jobs:
           IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
           for repo in "${REPO_LIST[@]}"; do
             repo=$(echo "$repo" | xargs)
-            curl -sf -X POST \
+            curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
               -H "Authorization: Bearer $TOKEN" \
               "https://triage-bot-lhuutxzbnq-uc.a.run.app/health-check?repo=$repo" \
               || echo "health-check failed for $repo, continuing"
           done
-  generate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
-        with:
-          go-version-file: go.mod
-      - name: Sync reactions and generate dashboards
+      - name: Sync reactions
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
@@ -61,9 +57,3 @@ jobs:
               REPO="$repo" go run ./cmd/sync-reactions || echo "sync-reactions failed for $repo, continuing"
             fi
           done
-          go run ./cmd/dashboard docs/dashboard
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e  # v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs/dashboard
