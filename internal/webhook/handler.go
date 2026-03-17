@@ -215,6 +215,9 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 	if err := h.agentHandler.HandleComment(ctx, installationID, repo, issueNumber, commentBody, commentUser); err != nil {
 		log.Error("handling agent comment", "error", err)
 	}
+
+	// Check for @mention feedback on the source repo
+	h.checkMentionFeedback(ctx, repo, issueNumber, event.Comment)
 }
 
 func (h *Handler) handleTriageComment(ctx context.Context, installationID int64, shadowRepo string, shadowIssueNumber int, commentBody string) (bool, error) {
@@ -268,6 +271,8 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 		h.handleOpened(ctx, installationID, repo, issue)
 	case "closed", "reopened":
 		h.handleStateChange(ctx, repo, issue)
+	case "edited":
+		h.handleEdited(ctx, installationID, repo, issue, event.Changes)
 	default:
 		h.logger.Info("ignoring action", "action", event.Action, "issue", issue.Number)
 	}
@@ -541,6 +546,132 @@ func (h *Handler) upsertIssue(ctx context.Context, repo string, issue gh.IssueDe
 	}); err != nil {
 		h.logger.Error("upserting issue", "error", err)
 	}
+}
+
+const botMentionHandle = "@ismael-triage-bot"
+
+func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail, changes *gh.IssueChanges) {
+	log := h.logger.With("repo", repo, "issue", issue.Number)
+
+	// Always update the issue embedding with the new body
+	h.upsertIssue(ctx, repo, issue)
+
+	// No body change to analyze (could be title or label edit)
+	if changes == nil || changes.Body == nil {
+		log.Debug("edited event without body change, skipping feedback check")
+		return
+	}
+
+	// Only track edit signals for bugs (Phase 1 is only shown to users for bugs)
+	if !hasLabel(issue.Labels, "bug") {
+		log.Debug("edited event on non-bug issue, skipping feedback check")
+		return
+	}
+
+	// Check whether this issue was ever triaged
+	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
+	if err != nil {
+		log.Error("checking bot comment for edit feedback", "error", err)
+		return
+	}
+	triaged, err := h.store.HasTriageSession(ctx, repo, issue.Number)
+	if err != nil {
+		log.Error("checking triage session for edit feedback", "error", err)
+		return
+	}
+	if !commented && !triaged {
+		log.Debug("edited issue was never triaged, skipping feedback check")
+		return
+	}
+
+	filled := computeFilledSections(changes.Body.From, issue.Body)
+	if len(filled) == 0 {
+		log.Debug("edit did not fill any missing sections")
+		return
+	}
+
+	oldResult := phases.Phase1(changes.Body.From)
+	if err := h.store.RecordFeedbackSignal(ctx, store.FeedbackSignal{
+		Repo:        repo,
+		IssueNumber: issue.Number,
+		SignalType:  "issue_edit_filled",
+		Details: map[string]any{
+			"filled_items":  filled,
+			"total_flagged": len(oldResult.MissingItems),
+			"remaining":     len(oldResult.MissingItems) - len(filled),
+		},
+	}); err != nil {
+		log.Error("recording edit feedback signal", "error", err)
+		return
+	}
+	log.Info("recorded edit fill signal", "filled", filled)
+}
+
+func (h *Handler) checkMentionFeedback(ctx context.Context, repo string, issueNumber int, comment gh.CommentDetail) {
+	if !strings.Contains(comment.Body, botMentionHandle) {
+		return
+	}
+
+	log := h.logger.With("repo", repo, "issue", issueNumber)
+
+	// Only record if this issue was triaged
+	commented, err := h.store.HasBotCommented(ctx, repo, issueNumber)
+	if err != nil {
+		log.Error("checking bot comment for mention feedback", "error", err)
+		return
+	}
+	triaged, err := h.store.HasTriageSession(ctx, repo, issueNumber)
+	if err != nil {
+		log.Error("checking triage session for mention feedback", "error", err)
+		return
+	}
+	if !commented && !triaged {
+		return
+	}
+
+	body := comment.Body
+	if len(body) > 500 {
+		cut := 500
+		for cut > 0 && !utf8.RuneStart(body[cut]) {
+			cut--
+		}
+		body = body[:cut]
+	}
+
+	if err := h.store.RecordFeedbackSignal(ctx, store.FeedbackSignal{
+		Repo:        repo,
+		IssueNumber: issueNumber,
+		SignalType:  "user_mention",
+		Details: map[string]any{
+			"comment_id": comment.ID,
+			"body":       body,
+			"user":       comment.User.Login,
+		},
+	}); err != nil {
+		log.Error("recording mention feedback signal", "error", err)
+		return
+	}
+	log.Info("recorded mention feedback signal", "user", comment.User.Login)
+}
+
+// computeFilledSections returns the labels of Phase 1 missing items that were
+// present in oldBody but are no longer missing in newBody.
+func computeFilledSections(oldBody, newBody string) []string {
+	oldResult := phases.Phase1(oldBody)
+	newResult := phases.Phase1(newBody)
+
+	newMissing := make(map[string]bool, len(newResult.MissingItems))
+	for _, item := range newResult.MissingItems {
+		newMissing[item.Label] = true
+	}
+
+	var filled []string
+	for _, item := range oldResult.MissingItems {
+		if !newMissing[item.Label] {
+			filled = append(filled, item.Label)
+		}
+	}
+	return filled
 }
 
 func hasLabel(labels []gh.LabelInfo, name string) bool {

@@ -21,6 +21,7 @@ type DashboardStats struct {
 	SafetyStats          *SafetyStats    `json:"safety_stats"`
 	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
 	PhaseHitRate          map[string]float64 `json:"phase_hit_rate"`
+	FeedbackStats         *FeedbackStats     `json:"feedback_stats"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -234,6 +235,13 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		return nil, err
 	}
 	stats.PhaseHitRate = phaseHitRate
+
+	// Feedback stats
+	feedbackStats, err := s.GetFeedbackStats(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	stats.FeedbackStats = feedbackStats
 
 	return stats, nil
 }

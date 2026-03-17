@@ -142,6 +142,16 @@ type TriageSession struct {
 	CreatedAt         time.Time
 }
 
+// FeedbackSignal records a user feedback event (edit fill or @mention).
+type FeedbackSignal struct {
+	ID          int64
+	Repo        string
+	IssueNumber int
+	SignalType  string
+	Details     map[string]any
+	CreatedAt   time.Time
+}
+
 // ApprovalGate represents a human-in-the-loop checkpoint in the agent workflow.
 type ApprovalGate struct {
 	ID         int64

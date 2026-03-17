@@ -172,6 +172,82 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
 	})
+	mux.HandleFunc("/health-check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		alertRepo := r.URL.Query().Get("alert_repo")
+		if alertRepo == "" {
+			alertRepo = "IsmaelMartinez/github-issue-triage-bot"
+		}
+
+		metrics, err := s.GetHealthMetrics(r.Context(), repo)
+		if err != nil {
+			logger.Error("failed to get health metrics", "error", err, "repo", repo)
+			http.Error(w, "failed to get health metrics", http.StatusInternalServerError)
+			return
+		}
+
+		alerts := store.EvaluateThresholds(metrics)
+		if len(alerts) > 0 {
+			logger.Warn("health check alerts", "count", len(alerts), "repo", repo)
+
+			installations, instErr := ghClient.ListInstallations(r.Context())
+			if instErr != nil || len(installations) == 0 {
+				logger.Error("failed to get installations for health alerts", "error", instErr)
+			} else {
+				installID := installations[0]
+				for _, alert := range alerts {
+					title := fmt.Sprintf("[Health Alert] %s", alert.Metric)
+					// Check for existing open alert issue to avoid duplicates
+					query := fmt.Sprintf("repo:%s is:open \"%s\" in:title", alertRepo, title)
+					existing, searchErr := ghClient.SearchIssues(r.Context(), installID, query)
+					if searchErr != nil {
+						logger.Error("failed to search for existing alert issue", "error", searchErr, "metric", alert.Metric)
+						continue
+					}
+					if len(existing) > 0 {
+						logger.Info("alert issue already exists, skipping", "metric", alert.Metric, "existing_issue", existing[0].Number)
+						continue
+					}
+					body := fmt.Sprintf("## Health Alert: %s\n\nCurrent: %.4f\nThreshold: %.4f\n\n%s\n\nRepo: %s\nChecked at: %s",
+						alert.Metric, alert.Current, alert.Threshold, alert.Message, repo, metrics.CheckedAt)
+					issueNum, createErr := ghClient.CreateIssue(r.Context(), installID, alertRepo, title, body)
+					if createErr != nil {
+						logger.Error("failed to create alert issue", "error", createErr, "metric", alert.Metric)
+						continue
+					}
+					logger.Info("created health alert issue", "metric", alert.Metric, "issue", issueNum, "repo", alertRepo)
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			Metrics *store.HealthMetrics `json:"metrics"`
+			Alerts  []store.HealthAlert  `json:"alerts"`
+		}{
+			Metrics: metrics,
+			Alerts:  alerts,
+		}
+		if resp.Alerts == nil {
+			resp.Alerts = []store.HealthAlert{}
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			logger.Error("encoding health check response", "error", err)
+		}
+	})
+
 	// Live dashboard
 	sortedRepos := make([]string, 0, len(allowedRepos))
 	for r := range allowedRepos {

@@ -28,6 +28,13 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
             || echo "cleanup failed, continuing"
+      - name: Run health check
+        run: |
+          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          curl -sf -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            https://triage-bot-lhuutxzbnq-uc.a.run.app/health-check \
+            || echo "health-check failed, continuing"
   generate:
     runs-on: ubuntu-latest
     steps:

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
@@ -412,8 +413,19 @@ type CommentDetail struct {
 type IssueEvent struct {
 	Action       string           `json:"action"`
 	Issue        IssueDetail      `json:"issue"`
+	Changes      *IssueChanges    `json:"changes,omitempty"`
 	Repo         RepoDetail       `json:"repository"`
 	Installation InstallationInfo `json:"installation"`
+}
+
+// IssueChanges represents the changes payload sent by GitHub on issues.edited events.
+type IssueChanges struct {
+	Body *IssueChangeField `json:"body,omitempty"`
+}
+
+// IssueChangeField holds the previous value of a changed field.
+type IssueChangeField struct {
+	From string `json:"from"`
 }
 
 // InstallationInfo identifies the GitHub App installation that sent the event.
@@ -451,6 +463,49 @@ type PushEvent struct {
 // RepoDetail is the repository portion of a webhook event.
 type RepoDetail struct {
 	FullName string `json:"full_name"`
+}
+
+// IssueSearchResult represents a single issue returned from the GitHub search API.
+type IssueSearchResult struct {
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
+}
+
+// SearchIssues searches for issues in a repository using the GitHub search API.
+// The query is passed as the q parameter and URL-encoded internally.
+// Callers should include repo: and is: qualifiers as raw strings.
+func (c *Client) SearchIssues(ctx context.Context, installationID int64, query string) ([]IssueSearchResult, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/search/issues?q=%s", c.baseURL, neturl.QueryEscape(query))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Items []IssueSearchResult `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return result.Items, nil
 }
 
 // CloseIssue closes a GitHub issue by setting its state to "closed".
