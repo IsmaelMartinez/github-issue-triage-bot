@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -33,6 +35,7 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 	}
 
 	log := slog.Default()
+	var errs []error
 
 	// Confidence scores: recent 7-day average and all-time average
 	err := s.pool.QueryRow(ctx, `
@@ -46,6 +49,7 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 	`, repo).Scan(&m.ConfidenceRecent7d, &m.ConfidenceAllTime)
 	if err != nil {
 		log.Warn("health check: confidence score query failed", "error", err)
+		errs = append(errs, fmt.Errorf("confidence score query: %w", err))
 	}
 
 	// Stuck sessions: agent sessions not in terminal stage, stale for > 1 hour
@@ -58,6 +62,7 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 	`, repo).Scan(&m.StuckSessionCount, &m.TotalRecentSessions)
 	if err != nil {
 		log.Warn("health check: stuck sessions query failed", "error", err)
+		errs = append(errs, fmt.Errorf("stuck sessions query: %w", err))
 	}
 
 	// Orphaned triage sessions: no bot_comment, not closed, older than 1 hour
@@ -71,9 +76,10 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 	`, repo).Scan(&m.OrphanedTriageCount, &m.TotalTriageSessions)
 	if err != nil {
 		log.Warn("health check: orphaned triage query failed", "error", err)
+		errs = append(errs, fmt.Errorf("orphaned triage query: %w", err))
 	}
 
-	return m, nil
+	return m, errors.Join(errs...)
 }
 
 // EvaluateThresholds checks health metrics against degradation thresholds

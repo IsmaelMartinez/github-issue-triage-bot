@@ -33,7 +33,10 @@ func (s *Store) RecordFeedbackSignal(ctx context.Context, sig FeedbackSignal) er
 		INSERT INTO feedback_signals (repo, issue_number, signal_type, details)
 		VALUES ($1, $2, $3, $4)
 	`, sig.Repo, sig.IssueNumber, sig.SignalType, details)
-	return err
+	if err != nil {
+		return fmt.Errorf("insert feedback signal: %w", err)
+	}
+	return nil
 }
 
 // GetFeedbackStats returns aggregated feedback statistics for the dashboard.

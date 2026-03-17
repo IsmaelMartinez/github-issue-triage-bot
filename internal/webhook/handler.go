@@ -591,6 +591,7 @@ func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo s
 	}
 
 	oldResult := phases.Phase1(changes.Body.From)
+	newResult := phases.Phase1(issue.Body)
 	if err := h.store.RecordFeedbackSignal(ctx, store.FeedbackSignal{
 		Repo:        repo,
 		IssueNumber: issue.Number,
@@ -598,7 +599,7 @@ func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo s
 		Details: map[string]any{
 			"filled_items":  filled,
 			"total_flagged": len(oldResult.MissingItems),
-			"remaining":     len(oldResult.MissingItems) - len(filled),
+			"remaining":     len(newResult.MissingItems),
 		},
 	}); err != nil {
 		log.Error("recording edit feedback signal", "error", err)

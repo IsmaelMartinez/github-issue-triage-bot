@@ -193,7 +193,9 @@ func main() {
 
 		metrics, err := s.GetHealthMetrics(r.Context(), repo)
 		if err != nil {
-			logger.Error("failed to get health metrics", "error", err, "repo", repo)
+			logger.Warn("partial health metrics returned", "error", err, "repo", repo)
+		}
+		if metrics == nil {
 			http.Error(w, "failed to get health metrics", http.StatusInternalServerError)
 			return
 		}
@@ -208,7 +210,7 @@ func main() {
 			} else {
 				installID := installations[0]
 				for _, alert := range alerts {
-					title := fmt.Sprintf("[Health Alert] %s", alert.Metric)
+					title := fmt.Sprintf("[Health Alert] %s (%s)", alert.Metric, repo)
 					// Check for existing open alert issue to avoid duplicates
 					query := fmt.Sprintf("repo:%s is:open \"%s\" in:title", alertRepo, title)
 					existing, searchErr := ghClient.SearchIssues(r.Context(), installID, query)

@@ -1,5 +1,7 @@
 # Phase Q3: Health Monitor
 
+Status: Implemented (PR #65)
+
 ## Summary
 
 A lightweight `/health-check` endpoint that queries operational metrics from the database and returns a structured health report. When any metric crosses a degradation threshold, the endpoint creates a GitHub issue on the bot's own repository to alert the maintainer. This catches silent regressions — such as declining confidence scores or rising agent error rates — that the dashboard only surfaces when someone actively looks at it.
