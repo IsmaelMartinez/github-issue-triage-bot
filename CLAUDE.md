@@ -59,11 +59,11 @@ gh workflow run seed.yml -f seed_type=features -f data_file=data/feature-index.j
 
 ## Architecture
 
-The service receives GitHub webhook events (issue opened/closed/reopened, issue comments) and runs a focused triage pipeline. Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed in favour of GitHub native tooling — see `docs/plans/2026-03-15-lean-bot-pivot-design.md`.
+The service receives GitHub webhook events (issue opened/closed/reopened, issue comments, issue edits) and runs a focused triage pipeline. Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed in favour of GitHub native tooling — see `docs/plans/2026-03-15-lean-bot-pivot-design.md`.
 
 Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): for enhancement requests, searches roadmap/ADR/research documents for related context.
 
-All phase results are consolidated into a single markdown comment by the comment builder (concise format: no greeting, compact footer with feedback hint). When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue.
+All phase results are consolidated into a single markdown comment by the comment builder (concise format: no greeting, compact footer with feedback hint). When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue. The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends, stuck sessions, and orphaned triage, creating GitHub alert issues when thresholds are violated.
 
 The vector store includes upstream dependency docs (Electron release notes, changelogs) in addition to project-specific docs, so Phase 2 can surface relevant upstream changes when triaging bug reports.
 
@@ -72,7 +72,7 @@ For enhancement issues with a configured shadow repo, the bot also starts an age
 ## Project Structure
 
 ```
-cmd/server/main.go           # HTTP server entry point (/webhook, /health, /report, /dashboard)
+cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /report, /dashboard)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
 cmd/server/template.html      # Dashboard v2 template (sidebar layout, shared with static generator)
 cmd/seed/main.go              # CLI to import JSON indexes into database
@@ -89,6 +89,8 @@ internal/mirror/              # Shadow repo mirroring (push events)
 internal/store/postgres.go    # PostgreSQL + pgvector queries
 internal/store/agent.go       # Agent session, audit log, and approval gate queries
 internal/store/report.go      # Dashboard stats queries
+internal/store/health.go      # Health monitor queries and threshold evaluation
+internal/store/feedback.go    # Feedback signal storage and stats
 internal/store/models.go      # Shared data types (includes agent stage/gate constants)
 internal/agent/handler.go     # Agent handler: context brief (default) and research flows
 internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
@@ -100,10 +102,10 @@ internal/runner/inprocess.go  # In-process runner (goroutines with context timeo
 scripts/generate-feature-index.sh # Generate seed JSON from teams-for-linux ADRs/research/roadmap
 scripts/generate-upstream-index.sh # Generate seed JSON from upstream dependency releases/changelogs
 data/                         # Seed data (feature index, Electron upstream docs)
-migrations/                   # Database migrations (001-009)
+migrations/                   # Database migrations (001-010)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
-.github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages + stale cleanup
+.github/workflows/dashboard.yml # Daily dashboard generation + GitHub Pages + stale cleanup + health check
 .github/workflows/seed.yml    # Manual seed workflow (workflow_dispatch)
 docs/decisions/               # Architecture decision records
 docs/plans/                   # Implementation plans and design docs
