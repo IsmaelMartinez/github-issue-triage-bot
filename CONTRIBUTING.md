@@ -54,10 +54,8 @@ The project follows standard Go conventions. A few specifics:
 The triage pipeline runs in phases when a new GitHub issue is opened:
 
 - Phase 1 (parsing): Checks for missing information in bug reports by matching template headers.
-- Phase 2 (vector search + LLM): Finds similar troubleshooting docs and generates solution suggestions.
-- Phase 3 (vector search + LLM): Finds similar past issues to detect potential duplicates.
+- Phase 2 (vector search + LLM): Finds similar troubleshooting docs, upstream release notes, and past issues, then generates solution suggestions.
 - Phase 4a (vector search + LLM): For enhancements, finds related roadmap/ADR/research context.
-- Phase 4b (LLM): Checks for misclassification (bug vs enhancement vs question).
 
 For enhancement issues with a configured shadow repo, the bot also starts an Enhancement Researcher agent session. The agent creates a mirror issue in a private shadow repository, synthesizes a research document using vector search context, and progresses through a state machine (clarifying questions, research, review). A maintainer controls the flow via comment signals: `lgtm` to approve, `revise` for changes, `reject` to discard, and `publish` to post a curated summary on the original public issue. All agent outputs pass through two safety layers — a structural validator and an LLM reviewer — and the agent escalates to a human after 4 round-trips without reaching review. See `internal/agent/` for the implementation and `docs/decisions/` for the relevant ADRs.
 
