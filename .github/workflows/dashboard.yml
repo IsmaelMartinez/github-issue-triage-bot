@@ -28,6 +28,19 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
             || echo "cleanup failed, continuing"
+      - name: Run health check
+        env:
+          DASHBOARD_REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo' }}
+        run: |
+          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
+          for repo in "${REPO_LIST[@]}"; do
+            repo=$(echo "$repo" | xargs)
+            curl -sf -X POST \
+              -H "Authorization: Bearer $TOKEN" \
+              "https://triage-bot-lhuutxzbnq-uc.a.run.app/health-check?repo=$repo" \
+              || echo "health-check failed for $repo, continuing"
+          done
   generate:
     runs-on: ubuntu-latest
     steps:

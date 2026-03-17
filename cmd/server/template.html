@@ -93,6 +93,7 @@
                 <div class="health-cards" id="triage-cards"></div>
                 <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
                 <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
+                <div class="panel"><h3>Recent Feedback</h3><table id="feedback-table"><thead><tr><th>Issue</th><th>Type</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
             <div id="view-agent" class="view">
                 <h2>Enhancement Agent</h2>
@@ -191,10 +192,14 @@
     fillTbl('sys-vector-table', vr);
 
     /* Triage view */
+    var fb = stats.feedback_stats || {total_edit_signals:0, total_mentions:0, fill_rate:null, recent_feedback:[]};
+    var fillPct = fb.fill_rate != null ? (fb.fill_rate * 100).toFixed(0) + '%' : 'N/A';
+    var fillCls = fb.fill_rate == null ? 'hc-neutral' : fb.fill_rate >= 0.5 ? 'hc-green' : fb.fill_rate >= 0.25 ? 'hc-yellow' : 'hc-red';
     addCards('triage-cards', [
         {label: 'Total', value: ts.total, cls: 'hc-neutral'},
         {label: 'Promoted', value: ts.promoted, sub: 'via lgtm', cls: 'hc-green'},
-        {label: 'Pending', value: ts.pending, cls: ts.pending > 0 ? 'hc-yellow' : 'hc-neutral'}
+        {label: 'Pending', value: ts.pending, cls: ts.pending > 0 ? 'hc-yellow' : 'hc-neutral'},
+        {label: 'P1 Fill Rate', value: fillPct, sub: fb.total_edit_signals + ' edits, ' + fb.total_mentions + ' mentions', cls: fillCls}
     ]);
     var barsEl = document.getElementById('phase-bars');
     var pkeys = Object.keys(phr).sort();
@@ -204,6 +209,11 @@
         var st = t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending');
         var sl = t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue});
         return [iLink(t.repo, t.issue_number), sl, st, fDate(t.created_at)];
+    }));
+    fillTbl('feedback-table', (fb.recent_feedback || []).map(function(f) {
+        var tc = f.signal_type === 'issue_edit_filled' ? 'tag-promoted' : 'tag-default';
+        var label = f.signal_type === 'issue_edit_filled' ? 'edit' : 'mention';
+        return [iLink(f.repo, f.issue_number), mkTag(label, tc), fDate(f.created_at)];
     }));
 
     /* Agent view */
