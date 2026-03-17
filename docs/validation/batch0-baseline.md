@@ -1,3 +1,5 @@
+> **Historical baseline** — this document records the initial deployment validation (pre-lean-pivot, 111 issues, 18 docs). The system has since evolved significantly: Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed, the vector store grew to ~406 documents, and per-category relevance thresholds were introduced. Kept for reference.
+
 # Batch 0: Baseline Validation
 
 Date: 2026-03-03
