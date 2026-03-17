@@ -618,6 +618,111 @@ func scanDailyBuckets(rows interface {
 	return buckets, nil
 }
 
+// TriageDetail holds full detail for a single triage session.
+type TriageDetail struct {
+	ID            int64    `json:"id"`
+	Repo          string   `json:"repo"`
+	IssueNumber   int      `json:"issue_number"`
+	ShadowRepo    string   `json:"shadow_repo"`
+	ShadowIssue   int      `json:"shadow_issue"`
+	TriageComment string   `json:"triage_comment"`
+	PhasesRun     []string `json:"phases_run"`
+	Promoted      bool     `json:"promoted"`
+	CreatedAt     string   `json:"created_at"`
+}
+
+// AuditLogEntry records a single action taken by the agent, for dashboard drill-down.
+// Named AuditLogEntry to avoid collision with the AuditEntry type in models.go.
+type AuditLogEntry struct {
+	ActionType      string  `json:"action_type"`
+	OutputSummary   string  `json:"output_summary"`
+	SafetyPassed    bool    `json:"safety_passed"`
+	ConfidenceScore float64 `json:"confidence_score"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// AgentDetail holds full detail for a single agent session including its audit log.
+type AgentDetail struct {
+	ID             int64           `json:"id"`
+	Repo           string          `json:"repo"`
+	IssueNumber    int             `json:"issue_number"`
+	ShadowRepo     string          `json:"shadow_repo"`
+	ShadowIssue    int             `json:"shadow_issue"`
+	Stage          string          `json:"stage"`
+	RoundTripCount int             `json:"round_trip_count"`
+	AuditLog       []AuditLogEntry `json:"audit_log"`
+	CreatedAt      string          `json:"created_at"`
+}
+
+// GetTriageSessionDetail returns full detail for the triage session matching repo+issueNumber.
+// It returns nil if no session is found.
+func (s *Store) GetTriageSessionDetail(ctx context.Context, repo string, issueNumber int) (*TriageDetail, error) {
+	d := &TriageDetail{}
+	var createdAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT t.id, t.repo, t.issue_number, t.shadow_repo, t.shadow_issue_number,
+			t.triage_comment, t.phases_run,
+			EXISTS(SELECT 1 FROM bot_comments b WHERE b.repo = t.repo AND b.issue_number = t.issue_number) AS promoted,
+			t.created_at
+		FROM triage_sessions t
+		WHERE t.repo = $1 AND t.issue_number = $2
+	`, repo, issueNumber).Scan(
+		&d.ID, &d.Repo, &d.IssueNumber, &d.ShadowRepo, &d.ShadowIssue,
+		&d.TriageComment, &d.PhasesRun, &d.Promoted, &createdAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	d.CreatedAt = createdAt.Format(time.RFC3339)
+	return d, nil
+}
+
+// GetAgentSessionDetail returns full detail for the agent session matching repo+issueNumber,
+// including all audit log entries. It returns nil if no session is found.
+func (s *Store) GetAgentSessionDetail(ctx context.Context, repo string, issueNumber int) (*AgentDetail, error) {
+	d := &AgentDetail{}
+	var createdAt time.Time
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, repo, issue_number, shadow_repo, shadow_issue_number,
+			stage, round_trip_count, created_at
+		FROM agent_sessions
+		WHERE repo = $1 AND issue_number = $2
+	`, repo, issueNumber).Scan(
+		&d.ID, &d.Repo, &d.IssueNumber, &d.ShadowRepo, &d.ShadowIssue,
+		&d.Stage, &d.RoundTripCount, &createdAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	d.CreatedAt = createdAt.Format(time.RFC3339)
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT action_type, output_summary, safety_check_passed, confidence_score, created_at
+		FROM agent_audit_log
+		WHERE session_id = $1
+		ORDER BY created_at ASC
+	`, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	d.AuditLog = []AuditLogEntry{}
+	for rows.Next() {
+		var entry AuditLogEntry
+		var entryCreatedAt time.Time
+		if err := rows.Scan(&entry.ActionType, &entry.OutputSummary, &entry.SafetyPassed, &entry.ConfidenceScore, &entryCreatedAt); err != nil {
+			return nil, err
+		}
+		entry.CreatedAt = entryCreatedAt.Format(time.RFC3339)
+		d.AuditLog = append(d.AuditLog, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return d, nil
+}
+
 // ListBotComments returns all bot comments for a given repo.
 func (s *Store) ListBotComments(ctx context.Context, repo string) ([]BotComment, error) {
 	rows, err := s.pool.Query(ctx, `
