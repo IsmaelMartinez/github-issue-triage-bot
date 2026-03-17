@@ -26,6 +26,9 @@ type DashboardStats struct {
 	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
 	PhaseHitRate          map[string]float64 `json:"phase_hit_rate"`
 	FeedbackStats         *FeedbackStats     `json:"feedback_stats"`
+	DailyTriageCounts     []DailyBucket      `json:"daily_triage_counts"`
+	DailyAgentCounts      []DailyBucket      `json:"daily_agent_counts"`
+	DailyFeedbackCounts   []DailyBucket      `json:"daily_feedback_counts"`
 }
 
 // TriageStats tracks shadow repo triage outcomes.
@@ -93,6 +96,12 @@ type SafetyStats struct {
 type RoundTripBucket struct {
 	RoundTrips int `json:"round_trips"`
 	Count      int `json:"count"`
+}
+
+// DailyBucket holds a date string and an event count for time-series charts.
+type DailyBucket struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
 }
 
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
@@ -251,6 +260,25 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 		}
 	} else {
 		stats.FeedbackStats = feedbackStats
+	}
+
+	// Daily time-series counts (non-fatal)
+	if dailyTriage, err := s.GetDailyTriageCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily triage counts", "error", err)
+	} else {
+		stats.DailyTriageCounts = dailyTriage
+	}
+
+	if dailyAgent, err := s.GetDailyAgentCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily agent counts", "error", err)
+	} else {
+		stats.DailyAgentCounts = dailyAgent
+	}
+
+	if dailyFeedback, err := s.GetDailyFeedbackCounts(ctx, repo); err != nil {
+		slog.Warn("failed to get daily feedback counts", "error", err)
+	} else {
+		stats.DailyFeedbackCounts = dailyFeedback
 	}
 
 	return stats, nil
@@ -500,6 +528,94 @@ func (s *Store) UpdateReactions(ctx context.Context, repo string, issueNumber, t
 		WHERE repo = $1 AND issue_number = $2
 	`, repo, issueNumber, thumbsUp, thumbsDown)
 	return err
+}
+
+// GetDailyTriageCounts returns a 30-day time series of triage session counts.
+func (s *Store) GetDailyTriageCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date AS date, COALESCE(COUNT(t.id), 0) AS count
+		FROM generate_series(
+			NOW() - INTERVAL '29 days',
+			NOW(),
+			INTERVAL '1 day'
+		) AS d
+		LEFT JOIN triage_sessions t
+			ON t.repo = $1 AND t.created_at::date = d::date
+		GROUP BY d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// GetDailyAgentCounts returns a 30-day time series of agent session counts.
+func (s *Store) GetDailyAgentCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date AS date, COALESCE(COUNT(a.id), 0) AS count
+		FROM generate_series(
+			NOW() - INTERVAL '29 days',
+			NOW(),
+			INTERVAL '1 day'
+		) AS d
+		LEFT JOIN agent_sessions a
+			ON a.repo = $1 AND a.created_at::date = d::date
+		GROUP BY d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// GetDailyFeedbackCounts returns a 30-day time series of feedback signal counts.
+func (s *Store) GetDailyFeedbackCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT d::date AS date, COALESCE(COUNT(f.id), 0) AS count
+		FROM generate_series(
+			NOW() - INTERVAL '29 days',
+			NOW(),
+			INTERVAL '1 day'
+		) AS d
+		LEFT JOIN feedback_signals f
+			ON f.repo = $1 AND f.created_at::date = d::date
+		GROUP BY d::date
+		ORDER BY d::date
+	`, repo)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDailyBuckets(rows)
+}
+
+// scanDailyBuckets reads rows of (date, count) into a []DailyBucket slice.
+func scanDailyBuckets(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}) ([]DailyBucket, error) {
+	var buckets []DailyBucket
+	for rows.Next() {
+		var b DailyBucket
+		var d time.Time
+		if err := rows.Scan(&d, &b.Count); err != nil {
+			return nil, err
+		}
+		b.Date = d.Format("2006-01-02")
+		buckets = append(buckets, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if buckets == nil {
+		buckets = []DailyBucket{}
+	}
+	return buckets, nil
 }
 
 // ListBotComments returns all bot comments for a given repo.
