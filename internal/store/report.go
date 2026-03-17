@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -671,6 +672,9 @@ func (s *Store) GetTriageSessionDetail(ctx context.Context, repo string, issueNu
 		&d.TriageComment, &d.PhasesRun, &d.Promoted, &createdAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	d.CreatedAt = createdAt.Format(time.RFC3339)
@@ -692,6 +696,9 @@ func (s *Store) GetAgentSessionDetail(ctx context.Context, repo string, issueNum
 		&d.Stage, &d.RoundTripCount, &createdAt,
 	)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 	d.CreatedAt = createdAt.Format(time.RFC3339)

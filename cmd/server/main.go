@@ -301,6 +301,11 @@ func main() {
 		}
 		detail, err := s.GetTriageSessionDetail(r.Context(), repo, issueNum)
 		if err != nil {
+			logger.Error("fetching triage detail", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if detail == nil {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}
@@ -326,6 +331,11 @@ func main() {
 		}
 		detail, err := s.GetAgentSessionDetail(r.Context(), repo, issueNum)
 		if err != nil {
+			logger.Error("fetching agent detail", "error", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if detail == nil {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
 		}

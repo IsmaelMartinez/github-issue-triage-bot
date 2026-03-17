@@ -14,4 +14,5 @@ This directory records significant architecture decisions for the GitHub Issue T
 | [008](008-llm-security-defenses.md) | Prompt Injection Defenses for LLM Integration | Implemented |
 | [009](009-webhook-replay-protection.md) | Webhook Replay Protection via Delivery ID Tracking | Implemented |
 | [010](010-cicd-workload-identity.md) | CI/CD with GitHub Actions and Workload Identity Federation | Implemented |
-| [011](011-public-dashboard.md) | Public Dashboard with GitHub Pages | Implemented |
+| [011](011-public-dashboard.md) | Public Dashboard with GitHub Pages | Superseded by ADR 012 |
+| [012](012-dashboard-consolidation.md) | Dashboard Consolidation — Live Endpoint Only | Implemented |

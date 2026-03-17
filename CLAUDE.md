@@ -70,7 +70,7 @@ For enhancement issues with a configured shadow repo, the bot also starts an age
 ```
 cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /report, /dashboard)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
-cmd/server/template.html      # Dashboard v2 template (sidebar layout, shared with static generator)
+cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js charts, drill-down)
 cmd/seed/main.go              # CLI to import JSON indexes into database
 cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
 cmd/backfill/main.go          # One-time backfill of triage results for historical issues
