@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"log/slog"
 	"time"
 )
 
@@ -236,12 +237,13 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 	}
 	stats.PhaseHitRate = phaseHitRate
 
-	// Feedback stats
+	// Feedback stats (non-fatal: table may not exist before migration 010)
 	feedbackStats, err := s.GetFeedbackStats(ctx, repo)
 	if err != nil {
-		return nil, err
+		slog.Warn("feedback stats unavailable, skipping", "error", err)
+	} else {
+		stats.FeedbackStats = feedbackStats
 	}
-	stats.FeedbackStats = feedbackStats
 
 	return stats, nil
 }

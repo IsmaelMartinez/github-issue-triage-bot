@@ -23,7 +23,7 @@ jobs:
           service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
       - name: Close stale shadow issues
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          TOKEN=$(gcloud auth print-identity-token --impersonate-service-account=triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
           curl -sf -X POST \
             -H "Authorization: Bearer $TOKEN" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
@@ -32,7 +32,7 @@ jobs:
         env:
           DASHBOARD_REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo' }}
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          TOKEN=$(gcloud auth print-identity-token --impersonate-service-account=triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
           IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
           for repo in "${REPO_LIST[@]}"; do
             repo=$(echo "$repo" | xargs)
