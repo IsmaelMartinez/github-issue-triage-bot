@@ -190,10 +190,14 @@ func main() {
 		if alertRepo == "" {
 			alertRepo = "IsmaelMartinez/github-issue-triage-bot"
 		}
+		if !allowedRepos[alertRepo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 
-		metrics, err := s.GetHealthMetrics(r.Context(), repo)
-		if err != nil {
-			logger.Warn("partial health metrics returned", "error", err, "repo", repo)
+		metrics, metricsErr := s.GetHealthMetrics(r.Context(), repo)
+		if metricsErr != nil {
+			logger.Warn("partial health metrics returned", "error", metricsErr, "repo", repo)
 		}
 		if metrics == nil {
 			http.Error(w, "failed to get health metrics", http.StatusInternalServerError)
@@ -238,9 +242,11 @@ func main() {
 		resp := struct {
 			Metrics *store.HealthMetrics `json:"metrics"`
 			Alerts  []store.HealthAlert  `json:"alerts"`
+			Partial bool                 `json:"partial"`
 		}{
 			Metrics: metrics,
 			Alerts:  alerts,
+			Partial: metricsErr != nil,
 		}
 		if resp.Alerts == nil {
 			resp.Alerts = []store.HealthAlert{}

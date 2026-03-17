@@ -52,11 +52,13 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 		errs = append(errs, fmt.Errorf("confidence score query: %w", err))
 	}
 
-	// Stuck sessions: agent sessions not in terminal stage, stale for > 1 hour
+	// Stuck sessions: only count sessions in 'new' stage (should auto-advance immediately).
+	// Sessions in context_brief, review_pending, researching, revision are legitimately
+	// waiting for maintainer review in shadow repos.
 	err = s.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM agent_sessions
-			 WHERE repo = $1 AND stage NOT IN ('complete') AND updated_at < now() - interval '1 hour'),
+			 WHERE repo = $1 AND stage = 'new' AND updated_at < now() - interval '1 hour'),
 			(SELECT COUNT(*) FROM agent_sessions
 			 WHERE repo = $1 AND created_at > now() - interval '30 days')
 	`, repo).Scan(&m.StuckSessionCount, &m.TotalRecentSessions)
@@ -65,12 +67,14 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 		errs = append(errs, fmt.Errorf("stuck sessions query: %w", err))
 	}
 
-	// Orphaned triage sessions: no bot_comment, not closed, older than 1 hour
+	// Orphaned triage sessions: no bot_comment, not closed, older than 14 days.
+	// Shadow triage sessions legitimately wait for maintainer review (lgtm/reject),
+	// so 14 days matches the stale cleanup threshold.
 	err = s.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM triage_sessions t
 			 LEFT JOIN bot_comments b ON t.repo = b.repo AND t.issue_number = b.issue_number
-			 WHERE t.repo = $1 AND b.id IS NULL AND t.closed_at IS NULL AND t.created_at < now() - interval '1 hour'),
+			 WHERE t.repo = $1 AND b.id IS NULL AND t.closed_at IS NULL AND t.created_at < now() - interval '14 days'),
 			(SELECT COUNT(*) FROM triage_sessions
 			 WHERE repo = $1 AND created_at > now() - interval '30 days')
 	`, repo).Scan(&m.OrphanedTriageCount, &m.TotalTriageSessions)

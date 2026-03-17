@@ -43,9 +43,10 @@ func (s *Store) RecordFeedbackSignal(ctx context.Context, sig FeedbackSignal) er
 func (s *Store) GetFeedbackStats(ctx context.Context, repo string) (*FeedbackStats, error) {
 	fs := &FeedbackStats{RecentFeedback: []RecentFeedback{}}
 
-	// Count by signal type
+	// Count distinct issues by signal type (multiple edits/mentions per issue are valid
+	// events, but metrics should reflect unique issues affected)
 	rows, err := s.pool.Query(ctx, `
-		SELECT signal_type, COUNT(*) FROM feedback_signals
+		SELECT signal_type, COUNT(DISTINCT issue_number) FROM feedback_signals
 		WHERE repo = $1 GROUP BY signal_type
 	`, repo)
 	if err != nil {

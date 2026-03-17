@@ -568,19 +568,15 @@ func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Check whether this issue was ever triaged
+	// Only track edits on issues where the bot has posted a public comment.
+	// Shadow-only triage sessions don't count — users haven't seen the bot's feedback yet.
 	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
 	if err != nil {
 		log.Error("checking bot comment for edit feedback", "error", err)
 		return
 	}
-	triaged, err := h.store.HasTriageSession(ctx, repo, issue.Number)
-	if err != nil {
-		log.Error("checking triage session for edit feedback", "error", err)
-		return
-	}
-	if !commented && !triaged {
-		log.Debug("edited issue was never triaged, skipping feedback check")
+	if !commented {
+		log.Debug("edited issue has no public bot comment, skipping feedback check")
 		return
 	}
 
@@ -615,18 +611,13 @@ func (h *Handler) checkMentionFeedback(ctx context.Context, repo string, issueNu
 
 	log := h.logger.With("repo", repo, "issue", issueNumber)
 
-	// Only record if this issue was triaged
+	// Only record if the bot has posted a public comment on this issue
 	commented, err := h.store.HasBotCommented(ctx, repo, issueNumber)
 	if err != nil {
 		log.Error("checking bot comment for mention feedback", "error", err)
 		return
 	}
-	triaged, err := h.store.HasTriageSession(ctx, repo, issueNumber)
-	if err != nil {
-		log.Error("checking triage session for mention feedback", "error", err)
-		return
-	}
-	if !commented && !triaged {
+	if !commented {
 		return
 	}
 
