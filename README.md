@@ -1,65 +1,36 @@
 # GitHub Issue Triage Bot
 
-An automated issue triage assistant for the [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux) project. When a new issue is opened, the bot analyzes its content and posts a helpful comment with relevant context: known solutions from documentation, potential duplicates from issue history, related roadmap items, and missing information prompts.
+Helps maintainers of [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux) triage GitHub issues faster by checking bug reports for completeness and surfacing relevant project documentation. When a new issue is opened, the bot analyzes its content and provides useful context drawn from troubleshooting guides, upstream Electron release notes, architecture decisions, and past issues.
 
-## How it works
+## What the bot does
 
-The bot runs as a Go service on Google Cloud Run, receiving GitHub webhook events. When an issue is opened, it runs a multi-phase triage pipeline:
+### Missing information check
 
-- Phase 1 checks if the bug report is missing key information (reproduction steps, debug logs, expected behavior) by parsing the issue body against the project's form template.
-- Phase 2 searches the troubleshooting documentation using vector similarity (pgvector) to find known solutions, then uses Gemini to generate targeted suggestions with links.
-- Phase 3 searches past issues for potential duplicates, again using vector similarity followed by LLM-based semantic comparison.
-- Phase 4a (enhancements only) searches roadmap items, architecture decisions, and research documents to surface existing context about similar feature requests.
-- Phase 4b checks whether the issue might be miscategorized (e.g., a question labeled as a bug).
+When a bug report is missing key details — reproduction steps, debug logs, expected behavior, or web app reproducibility — the bot flags exactly what's missing and shows how to provide it. This is pure template parsing with no AI involved; it compares the issue body against the project's bug report form and identifies unfilled sections.
 
-All phase results are consolidated into a single markdown comment. The bot identifies itself as automated and notes that a maintainer will review.
+### Known solutions
 
-### Enhancement Researcher Agent
+The bot searches project documentation for content that might help resolve the bug. This includes troubleshooting guides, configuration docs, upstream Electron release notes, and similar past issues. Matches above a relevance threshold are suggested with direct links. This phase uses Gemini AI for semantic matching against embedded documents stored in a vector database.
 
-For enhancement issues with a configured shadow repo, the bot starts an agent session that runs alongside the triage pipeline. It creates a mirror issue in a private shadow repository and posts a context brief: a short summary of the enhancement request plus relevant ADRs, roadmap items, and similar past issues surfaced via vector search. The maintainer can reply `research` to trigger full Gemini-powered research synthesis (with multiple approaches, trade-offs, and recommendations), `use as context` to acknowledge the brief, or `reject` to discard. The full research pipeline supports revision cycles, PR creation, and promotion to the public issue.
+### Related context for enhancements
 
-All agent outputs pass through two safety layers before being posted — a structural validator (length limits, URL allowlists, mention blocking, control character detection) and an LLM reviewer (relevance, tone, prompt injection detection). If the agent reaches 4 round-trips without progressing to review, it escalates to a human.
+For feature requests, the bot searches architecture decision records, roadmap items, and research documents to surface existing context about similar ideas. A maintainer reviews the context brief in a private shadow repository before any output reaches the public issue. The maintainer can request deeper research synthesis, acknowledge the context, or discard it.
 
-### Silent Mode
+All bot output passes through two quality layers — a structural validator (length limits, URL allowlists, mention blocking) and an LLM reviewer (relevance, tone, prompt injection detection). The bot escalates to a human if it cannot produce useful output within 4 attempts.
 
-The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` environment variable (default: `"true"`). In silent mode, triage results are stored in the database for dashboard review but no comments are posted on GitHub issues. Set `SILENT_MODE=false` to enable public commenting. Agent sessions in shadow repos are unaffected by this setting. See `docs/decisions/002-silent-mode.md` for the full rationale.
+### What the bot doesn't do
 
-### Dashboard
+The bot doesn't detect duplicate issues — GitHub's native search and issue templates handle that adequately. It doesn't auto-label, auto-close, or auto-assign issues. Suggestions are grounded in project-specific documentation, not general knowledge, so it won't answer questions outside the scope of teams-for-linux.
 
-A daily-generated dashboard at https://ismaelmartinez.github.io/github-issue-triage-bot/ shows triage activity, phase hit rates, reaction metrics, and agent session status. It is built by `cmd/dashboard` and deployed to GitHub Pages via `.github/workflows/dashboard.yml`.
+## Feedback
 
-## Architecture
+React with a thumbs up or thumbs down on bot comments, or mention @ismael-triage-bot with specific feedback in a reply. When you edit your bug report to fill in sections the bot flagged as missing, that's tracked automatically as a positive signal.
 
-```
-GitHub Webhook (issue + comment events)
-        |
-        v
-Cloud Run (Go binary)
-        |
-        +-- Triage Pipeline
-        |       +-- Phase 1: Template parsing (no LLM)
-        |       +-- Phase 2: pgvector search + Gemini (bugs)
-        |       +-- Phase 3: pgvector search + Gemini (bugs)
-        |       +-- Phase 4a: pgvector search + Gemini (enhancements)
-        |       +-- Phase 4b: Gemini classification (all)
-        |       |
-        |       v
-        |   Post comment / store for dashboard (silent mode)
-        |
-        +-- Enhancement Researcher Agent (if shadow repo configured)
-                |
-                +-- Create mirror issue in shadow repo
-                +-- Post context brief (pgvector + Gemini summary)
-                +-- Maintainer signals: research / use as context / reject
-                +-- Full research pipeline (if research signal)
-                +-- Safety layers (structural + LLM)
-                +-- Publish summary to public issue
-        |
-        v
-Neon PostgreSQL + pgvector             GitHub Pages Dashboard
-(documents, issues, bot_comments,      (daily via cmd/dashboard)
- agent_sessions, agent_audit_log)
-```
+## Dashboard
+
+A live dashboard showing triage activity, phase hit rates, and agent session status is available at https://triage-bot-lhuutxzbnq-uc.a.run.app/dashboard. A daily snapshot is also published to [GitHub Pages](https://ismaelmartinez.github.io/github-issue-triage-bot/).
+
+---
 
 ## Development
 
@@ -79,6 +50,49 @@ docker-compose up -d
 # Run the server
 DATABASE_URL="..." GEMINI_API_KEY="..." GITHUB_APP_ID="..." GITHUB_PRIVATE_KEY="..." WEBHOOK_SECRET="..." go run ./cmd/server
 ```
+
+### Architecture
+
+```
+GitHub Webhook (issue + comment + edit events)
+        |
+        v
+Cloud Run (Go binary)
+        |
+        +-- Triage Pipeline
+        |       +-- Missing info check: template parsing (no LLM)
+        |       +-- Known solutions: pgvector search + Gemini (bugs)
+        |       +-- Related context: pgvector search + Gemini (enhancements)
+        |       |
+        |       v
+        |   Post comment / store for dashboard (silent mode)
+        |
+        +-- Enhancement Researcher Agent (if shadow repo configured)
+        |       +-- Create mirror issue in shadow repo
+        |       +-- Post context brief (pgvector + Gemini summary)
+        |       +-- Maintainer signals: research / use as context / reject
+        |       +-- Full research pipeline (if research signal)
+        |       +-- Safety layers (structural + LLM)
+        |       +-- Publish summary to public issue
+        |
+        +-- Feedback Tracking
+        |       +-- Issue edit detection (Phase 1 fill rate)
+        |       +-- @mention capture (qualitative feedback)
+        |
+        +-- Health Monitor (/health-check)
+                +-- Confidence score trends
+                +-- Stuck session detection
+                +-- Orphaned triage detection
+        |
+        v
+Neon PostgreSQL + pgvector             GitHub Pages Dashboard
+(documents, issues, bot_comments,      (daily via cmd/dashboard)
+ agent_sessions, feedback_signals)
+```
+
+### Silent mode
+
+The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` environment variable (default: `"true"`). In silent mode, triage results are stored in the database for dashboard review but no comments are posted on GitHub issues. Set `SILENT_MODE=false` to enable public commenting. Agent sessions in shadow repos are unaffected by this setting. See `docs/decisions/002-silent-mode.md` for the full rationale.
 
 ### Environment variables
 
@@ -110,9 +124,12 @@ go run ./cmd/seed issues path/to/issue-index.json
 
 # Seed feature index (roadmap, ADRs, research)
 go run ./cmd/seed features path/to/feature-index.json
+
+# Seed upstream dependency docs (e.g. Electron release notes)
+go run ./cmd/seed upstream path/to/electron-v39-releases.json
 ```
 
-After the initial seed, the webhook handler keeps issue data up to date in real-time.
+After the initial seed, the webhook handler keeps issue data up to date in real-time. A `workflow_dispatch` seed workflow also enables re-seeding from the GitHub Actions UI.
 
 ## Infrastructure
 
@@ -124,7 +141,7 @@ See `docs/decisions/` for architecture decision records and `docs/plans/` for im
 
 To use this bot on your own repository:
 
-1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write), Contents (read & write), Pull requests (read & write). Subscribe to "Issues" and "Issue comments" webhook events. Set the webhook URL to your Cloud Run service URL + `/webhook`.
+1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write), Contents (read & write), Pull requests (read & write). Subscribe to "Issues", "Issue comments", and "Issue edits" webhook events. Set the webhook URL to your Cloud Run service URL + `/webhook`.
 2. Generate and download a private key PEM file from the App settings.
 3. Install the App on the target repository. If using the Enhancement Researcher agent, also install it on the shadow repository so the bot can create mirror issues and respond to approval signals there.
 4. Set the environment variables: `GITHUB_APP_ID` (numeric App ID from settings), `GITHUB_PRIVATE_KEY` (base64-encoded PEM or raw PEM content), and `WEBHOOK_SECRET` (the secret you configured when creating the App).
