@@ -60,7 +60,18 @@
             .sidebar-footer { display: none; }
             .two-col { grid-template-columns: 1fr; }
         }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #fff; border-radius: 10px; padding: 20px; max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto; position: relative; }
+        .modal-close { position: absolute; top: 10px; right: 14px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #555; }
+        .modal h3 { margin-bottom: 12px; }
+        .modal pre { background: #f6f8fa; padding: 12px; border-radius: 6px; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto; }
+        .audit-entry { border-left: 3px solid #e1e4e8; padding: 8px 12px; margin-bottom: 8px; font-size: 0.82rem; }
+        .audit-entry.passed { border-left-color: #2ea44f; }
+        .audit-entry.failed { border-left-color: #da3633; }
+        tr.clickable { cursor: pointer; } tr.clickable:hover { background: #f6f8fa; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="layout">
@@ -83,6 +94,7 @@
             <div id="view-overview" class="view active">
                 <h2>Overview</h2>
                 <div class="health-cards" id="overview-cards"></div>
+                <div class="panel"><h3>Activity (30 days)</h3><canvas id="activity-chart" height="180"></canvas></div>
                 <div class="two-col">
                     <div class="panel"><h3>Recent Activity</h3><div id="activity-feed"></div></div>
                     <div class="panel"><h3>Vector Store</h3><table id="vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
@@ -92,6 +104,7 @@
                 <h2>Bug Triage</h2>
                 <div class="health-cards" id="triage-cards"></div>
                 <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
+                <div class="panel"><h3>Feedback Trend (30 days)</h3><canvas id="feedback-chart" height="150"></canvas></div>
                 <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
                 <div class="panel"><h3>Recent Feedback</h3><table id="feedback-table"><thead><tr><th>Issue</th><th>Type</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
@@ -113,6 +126,12 @@
                 </div>
             </div>
         </main>
+    </div>
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div id="modal-content"></div>
+        </div>
     </div>
     <script>
     var stats = {{.StatsJSON}};
@@ -191,6 +210,106 @@
     fillTbl('vector-table', vr);
     fillTbl('sys-vector-table', vr);
 
+    /* Charts */
+    var dtc = stats.daily_triage_counts || [];
+    var dac = stats.daily_agent_counts || [];
+    var dfc = stats.daily_feedback_counts || [];
+
+    if (dtc.length > 0 && typeof Chart !== 'undefined') {
+        new Chart(document.getElementById('activity-chart'), {
+            type: 'line',
+            data: {
+                labels: dtc.map(function(d) { return d.date.substring(5); }),
+                datasets: [
+                    { label: 'Triage', data: dtc.map(function(d) { return d.count; }), borderColor: '#2ea44f', backgroundColor: 'rgba(46,164,79,0.1)', fill: true, tension: 0.3 },
+                    { label: 'Agent', data: dac.map(function(d) { return d.count; }), borderColor: '#0366d6', backgroundColor: 'rgba(3,102,214,0.1)', fill: true, tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+    }
+
+    if (dfc.length > 0 && typeof Chart !== 'undefined') {
+        new Chart(document.getElementById('feedback-chart'), {
+            type: 'bar',
+            data: {
+                labels: dfc.map(function(d) { return d.date.substring(5); }),
+                datasets: [{ label: 'Feedback signals', data: dfc.map(function(d) { return d.count; }), backgroundColor: '#d29922' }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+    }
+
+    /* Modal drill-down */
+    function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+    document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+    function showTriageDetail(repo, issue) {
+        fetch('/api/triage/' + issue + '?repo=' + encodeURIComponent(repo))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var mc = document.getElementById('modal-content');
+                mc.textContent = '';
+                var h = el('h3', {text: 'Triage: #' + d.issue_number});
+                var meta = el('p');
+                meta.appendChild(el('strong', {text: 'Repo: '}));
+                meta.appendChild(document.createTextNode(d.repo + ' | '));
+                meta.appendChild(el('strong', {text: 'Shadow: '}));
+                meta.appendChild(document.createTextNode(d.shadow_repo + '#' + d.shadow_issue + ' | '));
+                meta.appendChild(el('strong', {text: 'Status: '}));
+                meta.appendChild(document.createTextNode(d.promoted ? 'Promoted' : 'Pending'));
+                meta.appendChild(document.createTextNode(' | '));
+                meta.appendChild(el('strong', {text: 'Date: '}));
+                meta.appendChild(document.createTextNode(fDate(d.created_at)));
+                var phases = el('p');
+                phases.appendChild(el('strong', {text: 'Phases: '}));
+                phases.appendChild(document.createTextNode((d.phases_run || []).join(', ')));
+                var commentH = el('h4', {text: 'Triage Comment'});
+                var pre = el('pre', {text: d.triage_comment || ''});
+                mc.appendChild(h);
+                mc.appendChild(meta);
+                mc.appendChild(phases);
+                mc.appendChild(commentH);
+                mc.appendChild(pre);
+                document.getElementById('modal-overlay').classList.add('open');
+            });
+    }
+
+    function showAgentDetail(repo, issue) {
+        fetch('/api/agent/' + issue + '?repo=' + encodeURIComponent(repo))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                var mc = document.getElementById('modal-content');
+                mc.textContent = '';
+                var h = el('h3', {text: 'Agent: #' + d.issue_number});
+                var meta = el('p');
+                meta.appendChild(el('strong', {text: 'Repo: '}));
+                meta.appendChild(document.createTextNode(d.repo + ' | '));
+                meta.appendChild(el('strong', {text: 'Shadow: '}));
+                meta.appendChild(document.createTextNode(d.shadow_repo + '#' + d.shadow_issue + ' | '));
+                meta.appendChild(el('strong', {text: 'Stage: '}));
+                meta.appendChild(document.createTextNode(d.stage + ' | '));
+                meta.appendChild(el('strong', {text: 'Round trips: '}));
+                meta.appendChild(document.createTextNode(d.round_trip_count));
+                meta.appendChild(document.createTextNode(' | '));
+                meta.appendChild(el('strong', {text: 'Date: '}));
+                meta.appendChild(document.createTextNode(fDate(d.created_at)));
+                var logH = el('h4', {text: 'Audit Log'});
+                mc.appendChild(h);
+                mc.appendChild(meta);
+                mc.appendChild(logH);
+                (d.audit_log || []).forEach(function(ae) {
+                    var entry = el('div', {cls: 'audit-entry ' + (ae.safety_passed ? 'passed' : 'failed')});
+                    entry.appendChild(el('strong', {text: ae.action_type}));
+                    entry.appendChild(document.createTextNode(' \u2014 ' + fDate(ae.created_at) + ' (confidence: ' + (ae.confidence_score * 100).toFixed(0) + '%, safety: ' + (ae.safety_passed ? 'pass' : 'fail') + ')'));
+                    entry.appendChild(el('br'));
+                    entry.appendChild(document.createTextNode((ae.output_summary || '').substring(0, 500)));
+                    mc.appendChild(entry);
+                });
+                document.getElementById('modal-overlay').classList.add('open');
+            });
+    }
+
     /* Triage view */
     var fb = stats.feedback_stats || {total_edit_signals:0, total_mentions:0, fill_rate:null, recent_feedback:[]};
     var fillPct = fb.fill_rate != null ? (fb.fill_rate * 100).toFixed(0) + '%' : 'N/A';
@@ -205,11 +324,13 @@
     var pkeys = Object.keys(phr).sort();
     if (pkeys.length === 0) barsEl.appendChild(el('div', {text: 'No triage data yet', style: 'color:#8b949e;font-size:0.85rem'}));
     pkeys.forEach(function(p) { var pct = (phr[p] * 100).toFixed(0); barsEl.appendChild(el('div', {cls: 'bar-row'}, [el('span', {cls: 'bar-label', text: p}), el('div', {cls: 'bar-track'}, [el('div', {cls: 'bar-fill', style: 'width:' + pct + '%'})]), el('span', {cls: 'bar-pct', text: pct + '%'})])); });
-    fillTbl('triage-table', (ts.recent || []).map(function(t) {
-        var st = t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending');
-        var sl = t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue});
-        return [iLink(t.repo, t.issue_number), sl, st, fDate(t.created_at)];
-    }));
+    (ts.recent || []).forEach(function(t) {
+        var tr = el('tr', {cls: 'clickable'});
+        tr.onclick = function() { showTriageDetail(t.repo, t.issue_number); };
+        var cells = [iLink(t.repo, t.issue_number), t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue}), t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending'), fDate(t.created_at)];
+        cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
+        document.querySelector('#triage-table tbody').appendChild(tr);
+    });
     fillTbl('feedback-table', (fb.recent_feedback || []).map(function(f) {
         var tc = f.signal_type === 'issue_edit_filled' ? 'tag-promoted' : 'tag-default';
         var label = f.signal_type === 'issue_edit_filled' ? 'edit' : 'mention';
@@ -233,7 +354,13 @@
         gEl.appendChild(row);
     });
     fillTbl('rt-table', rt.map(function(b) { return [b.round_trips, b.count]; }));
-    fillTbl('agent-table', (ag.recent || []).map(function(a) { var sl = a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}); return [iLink(a.repo, a.issue_number), sl, stageTag(a.stage), fDate(a.created_at)]; }));
+    (ag.recent || []).forEach(function(a) {
+        var tr = el('tr', {cls: 'clickable'});
+        tr.onclick = function() { showAgentDetail(a.repo, a.issue_number); };
+        var cells = [iLink(a.repo, a.issue_number), a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}), stageTag(a.stage), fDate(a.created_at)];
+        cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
+        document.querySelector('#agent-table tbody').appendChild(tr);
+    });
 
     /* System view */
     var avgC = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
@@ -252,6 +379,9 @@
         (c.phases_run || []).forEach(function(p) { ph.appendChild(el('span', {cls: 'phase-tag', text: p})); });
         return [lk, ph, c.thumbs_up, c.thumbs_down];
     }));
+
+    /* Auto-refresh every 60 seconds */
+    setTimeout(function() { location.reload(); }, 60000);
     </script>
 </body>
 </html>
