@@ -285,6 +285,10 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/api/triage/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
 			repo = "IsmaelMartinez/teams-for-linux"
@@ -315,6 +319,10 @@ func main() {
 		}
 	})
 	mux.HandleFunc("/api/agent/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
 			repo = "IsmaelMartinez/teams-for-linux"

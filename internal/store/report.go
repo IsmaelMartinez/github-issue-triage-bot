@@ -534,15 +534,14 @@ func (s *Store) UpdateReactions(ctx context.Context, repo string, issueNumber, t
 // GetDailyTriageCounts returns a 30-day time series of triage session counts.
 func (s *Store) GetDailyTriageCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d::date AS date, COALESCE(COUNT(t.id), 0) AS count
-		FROM generate_series(
-			NOW() - INTERVAL '29 days',
-			NOW(),
-			INTERVAL '1 day'
-		) AS d
-		LEFT JOIN triage_sessions t
-			ON t.repo = $1 AND t.created_at::date = d::date
-		GROUP BY d::date
+		SELECT d::date::text AS date, COALESCE(t.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM triage_sessions
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) t ON t.day = d::date
 		ORDER BY d::date
 	`, repo)
 	if err != nil {
@@ -555,15 +554,14 @@ func (s *Store) GetDailyTriageCounts(ctx context.Context, repo string) ([]DailyB
 // GetDailyAgentCounts returns a 30-day time series of agent session counts.
 func (s *Store) GetDailyAgentCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d::date AS date, COALESCE(COUNT(a.id), 0) AS count
-		FROM generate_series(
-			NOW() - INTERVAL '29 days',
-			NOW(),
-			INTERVAL '1 day'
-		) AS d
-		LEFT JOIN agent_sessions a
-			ON a.repo = $1 AND a.created_at::date = d::date
-		GROUP BY d::date
+		SELECT d::date::text AS date, COALESCE(a.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM agent_sessions
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) a ON a.day = d::date
 		ORDER BY d::date
 	`, repo)
 	if err != nil {
@@ -576,15 +574,14 @@ func (s *Store) GetDailyAgentCounts(ctx context.Context, repo string) ([]DailyBu
 // GetDailyFeedbackCounts returns a 30-day time series of feedback signal counts.
 func (s *Store) GetDailyFeedbackCounts(ctx context.Context, repo string) ([]DailyBucket, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d::date AS date, COALESCE(COUNT(f.id), 0) AS count
-		FROM generate_series(
-			NOW() - INTERVAL '29 days',
-			NOW(),
-			INTERVAL '1 day'
-		) AS d
-		LEFT JOIN feedback_signals f
-			ON f.repo = $1 AND f.created_at::date = d::date
-		GROUP BY d::date
+		SELECT d::date::text AS date, COALESCE(f.count, 0) AS count
+		FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, 1) AS d
+		LEFT JOIN (
+			SELECT created_at::date AS day, COUNT(*) AS count
+			FROM feedback_signals
+			WHERE repo = $1 AND created_at >= CURRENT_DATE - 29 AND created_at < CURRENT_DATE + 1
+			GROUP BY created_at::date
+		) f ON f.day = d::date
 		ORDER BY d::date
 	`, repo)
 	if err != nil {

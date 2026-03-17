@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       repos:
-        description: 'Comma-separated list of repos to generate dashboards for'
+        description: 'Comma-separated list of repos for maintenance (cleanup, health check, reaction sync)'
         default: 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo'
         required: false
 permissions:
@@ -27,7 +27,7 @@ jobs:
       - name: Close stale shadow issues
         run: |
           TOKEN=$(gcloud auth print-identity-token --impersonate-service-account=triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
-          curl -sf -X POST \
+          curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
             -H "Authorization: Bearer $TOKEN" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
             || echo "cleanup failed, continuing"
@@ -39,7 +39,7 @@ jobs:
           IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
           for repo in "${REPO_LIST[@]}"; do
             repo=$(echo "$repo" | xargs)
-            curl -sf -X POST \
+            curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
               -H "Authorization: Bearer $TOKEN" \
               "https://triage-bot-lhuutxzbnq-uc.a.run.app/health-check?repo=$repo" \
               || echo "health-check failed for $repo, continuing"

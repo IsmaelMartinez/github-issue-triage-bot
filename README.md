@@ -10,7 +10,7 @@ The bot runs as a Go service on Google Cloud Run, receiving GitHub webhook event
 - Phase 2 searches the troubleshooting documentation, upstream Electron release notes, and similar past issues using vector similarity (pgvector) to find known solutions, then uses Gemini to generate targeted suggestions with links.
 - Phase 4a (enhancements only) searches roadmap items, architecture decisions, and research documents to surface existing context about similar feature requests.
 
-All phase results are consolidated into a single concise comment with a compact footer and feedback hint.
+When not running in silent mode, all phase results are consolidated into a single concise comment with a compact footer and feedback hint.
 
 ### Enhancement Researcher Agent
 

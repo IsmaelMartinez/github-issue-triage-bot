@@ -128,8 +128,8 @@
         </main>
     </div>
     <div class="modal-overlay" id="modal-overlay">
-        <div class="modal">
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+            <button class="modal-close" aria-label="Close details modal" onclick="closeModal()">&times;</button>
             <div id="modal-content"></div>
         </div>
     </div>
@@ -243,14 +243,26 @@
     /* Modal drill-down */
     function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
     document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+    function fetchJSON(url) {
+        return fetch(url).then(function(r) {
+            if (!r.ok) { return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); }); }
+            return r.json();
+        });
+    }
+    function openModalError(title, msg) {
+        var mc = document.getElementById('modal-content');
+        mc.textContent = '';
+        mc.appendChild(el('h3', {text: title, id: 'modal-title'}));
+        mc.appendChild(el('p', {text: msg || 'Request failed'}));
+        document.getElementById('modal-overlay').classList.add('open');
+    }
 
     function showTriageDetail(repo, issue) {
-        fetch('/api/triage/' + issue + '?repo=' + encodeURIComponent(repo))
-            .then(function(r) { return r.json(); })
+        fetchJSON('/api/triage/' + issue + '?repo=' + encodeURIComponent(repo))
             .then(function(d) {
                 var mc = document.getElementById('modal-content');
                 mc.textContent = '';
-                var h = el('h3', {text: 'Triage: #' + d.issue_number});
+                var h = el('h3', {text: 'Triage: #' + d.issue_number, id: 'modal-title'});
                 var meta = el('p');
                 meta.appendChild(el('strong', {text: 'Repo: '}));
                 meta.appendChild(document.createTextNode(d.repo + ' | '));
@@ -272,16 +284,16 @@
                 mc.appendChild(commentH);
                 mc.appendChild(pre);
                 document.getElementById('modal-overlay').classList.add('open');
-            });
+            })
+            .catch(function(err) { openModalError('Triage detail error', err.message); });
     }
 
     function showAgentDetail(repo, issue) {
-        fetch('/api/agent/' + issue + '?repo=' + encodeURIComponent(repo))
-            .then(function(r) { return r.json(); })
+        fetchJSON('/api/agent/' + issue + '?repo=' + encodeURIComponent(repo))
             .then(function(d) {
                 var mc = document.getElementById('modal-content');
                 mc.textContent = '';
-                var h = el('h3', {text: 'Agent: #' + d.issue_number});
+                var h = el('h3', {text: 'Agent: #' + d.issue_number, id: 'modal-title'});
                 var meta = el('p');
                 meta.appendChild(el('strong', {text: 'Repo: '}));
                 meta.appendChild(document.createTextNode(d.repo + ' | '));
@@ -307,7 +319,8 @@
                     mc.appendChild(entry);
                 });
                 document.getElementById('modal-overlay').classList.add('open');
-            });
+            })
+            .catch(function(err) { openModalError('Agent detail error', err.message); });
     }
 
     /* Triage view */
@@ -325,8 +338,9 @@
     if (pkeys.length === 0) barsEl.appendChild(el('div', {text: 'No triage data yet', style: 'color:#8b949e;font-size:0.85rem'}));
     pkeys.forEach(function(p) { var pct = (phr[p] * 100).toFixed(0); barsEl.appendChild(el('div', {cls: 'bar-row'}, [el('span', {cls: 'bar-label', text: p}), el('div', {cls: 'bar-track'}, [el('div', {cls: 'bar-fill', style: 'width:' + pct + '%'})]), el('span', {cls: 'bar-pct', text: pct + '%'})])); });
     (ts.recent || []).forEach(function(t) {
-        var tr = el('tr', {cls: 'clickable'});
+        var tr = el('tr', {cls: 'clickable', tabindex: '0', role: 'button', 'aria-label': 'Open triage details for issue ' + t.issue_number});
         tr.onclick = function() { showTriageDetail(t.repo, t.issue_number); };
+        tr.onkeydown = function(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showTriageDetail(t.repo, t.issue_number); } };
         var cells = [iLink(t.repo, t.issue_number), t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue}), t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending'), fDate(t.created_at)];
         cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
         document.querySelector('#triage-table tbody').appendChild(tr);
@@ -355,8 +369,9 @@
     });
     fillTbl('rt-table', rt.map(function(b) { return [b.round_trips, b.count]; }));
     (ag.recent || []).forEach(function(a) {
-        var tr = el('tr', {cls: 'clickable'});
+        var tr = el('tr', {cls: 'clickable', tabindex: '0', role: 'button', 'aria-label': 'Open agent details for issue ' + a.issue_number});
         tr.onclick = function() { showAgentDetail(a.repo, a.issue_number); };
+        tr.onkeydown = function(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showAgentDetail(a.repo, a.issue_number); } };
         var cells = [iLink(a.repo, a.issue_number), a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}), stageTag(a.stage), fDate(a.created_at)];
         cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
         document.querySelector('#agent-table tbody').appendChild(tr);
@@ -380,8 +395,12 @@
         return [lk, ph, c.thumbs_up, c.thumbs_down];
     }));
 
-    /* Auto-refresh every 60 seconds */
-    setTimeout(function() { location.reload(); }, 60000);
+    /* Auto-refresh every 60 seconds, skip when modal is open or page hidden */
+    setInterval(function() {
+        if (document.hidden) return;
+        if (document.getElementById('modal-overlay').classList.contains('open')) return;
+        location.reload();
+    }, 60000);
     </script>
 </body>
 </html>

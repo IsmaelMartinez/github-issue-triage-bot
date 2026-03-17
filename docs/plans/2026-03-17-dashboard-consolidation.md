@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.26, html/template, Chart.js 4.x (CDN), pgx/v5, PostgreSQL with pgvector
 
-**Security note:** The drill-down modal uses `textContent` via the `escHtml()` helper to sanitize all database content before DOM insertion. All data originates from our own database (not user input), and the dashboard is an internal maintainer tool.
+**Security note:** The drill-down modal constructs content using DOM-safe APIs (`createTextNode`, `element.textContent`) which prevent HTML injection. All data originates from our own database (not user input), and the dashboard is an internal maintainer tool.
 
 ---
 
