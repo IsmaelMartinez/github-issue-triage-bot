@@ -456,8 +456,16 @@ type LabelInfo struct {
 // PushEvent represents a GitHub push webhook event payload.
 type PushEvent struct {
 	Ref          string           `json:"ref"`
+	Commits      []PushCommit     `json:"commits"`
 	Repo         RepoDetail       `json:"repository"`
 	Installation InstallationInfo `json:"installation"`
+}
+
+// PushCommit represents a single commit in a push event.
+type PushCommit struct {
+	Added    []string `json:"added"`
+	Modified []string `json:"modified"`
+	Removed  []string `json:"removed"`
 }
 
 // RepoDetail is the repository portion of a webhook event.
