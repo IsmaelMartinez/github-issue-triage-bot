@@ -1498,9 +1498,11 @@ git commit -m "feat: wire per-repo butler config into webhook handler"
 
 ---
 
-## Batch 2: Pattern Detection Engine (Month 2)
+## Batch 2: Pattern Detection Engine (Month 2) [DONE]
 
-### Task 11: Synthesis Engine Skeleton — Types, Runner, Briefing Builder
+All 5 tasks (11-15) completed in PR #TBD. Synthesis engine with three synthesizers, /synthesize endpoint, and weekly cron workflow.
+
+### Task 11: Synthesis Engine Skeleton — Types, Runner, Briefing Builder [DONE]
 
 **Files:**
 - Create: `internal/synthesis/types.go`
