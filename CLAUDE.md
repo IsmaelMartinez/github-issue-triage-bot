@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-GitHub Issue Triage Bot: a doc-grounded triage and enhancement research service for IsmaelMartinez/teams-for-linux. Searches project-specific documentation (troubleshooting guides, ADRs, roadmap, research docs) via vector similarity to help with bug reports and enhancement requests. Deployed as a serverless container on Google Cloud Run, backed by Neon PostgreSQL with pgvector, and Gemini 2.5 Flash for LLM generation and embeddings.
+Repository Strategist: a GitHub App that maintains institutional memory for software projects and uses it to provide doc-grounded triage and strategic intelligence. Currently deployed against IsmaelMartinez/teams-for-linux. Searches project-specific documentation (troubleshooting guides, ADRs, roadmap, research docs, upstream dependency releases) via vector similarity to help with bug reports and enhancement requests. Evolving to add proactive pattern detection, roadmap suggestions, and project health briefings (see `docs/plans/2026-03-18-repository-strategist-design.md`). Deployed as a serverless container on Google Cloud Run, backed by Neon PostgreSQL with pgvector, and Gemini 2.5 Flash for LLM generation and embeddings.
 
 ## Essential Commands
 
