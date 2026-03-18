@@ -42,6 +42,8 @@ func (c *Cache) Get() (ButlerConfig, error) {
 
 	data, err := c.fetch()
 	if err != nil {
+		// On fetch error, return stale cache if available, otherwise defaults.
+		// Do NOT update fetchAt — retry on next call.
 		if c.fetched {
 			return c.cfg, nil
 		}
@@ -50,16 +52,21 @@ func (c *Cache) Get() (ButlerConfig, error) {
 
 	if data == nil {
 		c.cfg = DefaultConfig()
+		c.fetched = true
+		c.fetchAt = time.Now()
 	} else {
 		cfg, parseErr := Parse(data)
 		if parseErr != nil {
-			c.cfg = DefaultConfig()
-		} else {
-			c.cfg = cfg
+			// Parse error: return defaults but don't cache — retry next call.
+			if c.fetched {
+				return c.cfg, nil
+			}
+			return DefaultConfig(), nil
 		}
+		c.cfg = cfg
+		c.fetched = true
+		c.fetchAt = time.Now()
 	}
-	c.fetched = true
-	c.fetchAt = time.Now()
 	return c.cfg, nil
 }
 

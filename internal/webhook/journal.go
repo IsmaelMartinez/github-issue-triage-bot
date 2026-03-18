@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"unicode/utf8"
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
@@ -25,7 +26,11 @@ func issueToRepoEvent(repo, action string, issue gh.IssueDetail) store.RepoEvent
 func commentToRepoEvent(repo string, issueNumber int, user, body string) store.RepoEvent {
 	summary := body
 	if len(summary) > 200 {
-		summary = summary[:200]
+		cut := 200
+		for cut > 0 && !utf8.RuneStart(summary[cut]) {
+			cut--
+		}
+		summary = summary[:cut]
 	}
 	return store.RepoEvent{
 		Repo:      repo,

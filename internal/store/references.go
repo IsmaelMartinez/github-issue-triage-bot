@@ -100,5 +100,5 @@ func (s *Store) CountReferencesTo(ctx context.Context, repo, targetType, targetI
 	if err != nil {
 		return 0, fmt.Errorf("count references to: %w", err)
 	}
-	return count, err
+	return count, nil
 }

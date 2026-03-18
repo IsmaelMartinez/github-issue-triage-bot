@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -273,6 +274,7 @@ func main() {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, 5<<20) // 5 MB limit
 		var events []store.RepoEvent
 		if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -432,7 +434,7 @@ func validateIngestAuth(authHeader, secret string) bool {
 	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
 		return false
 	}
-	return authHeader[len(prefix):] == secret
+	return subtle.ConstantTimeCompare([]byte(authHeader[len(prefix):]), []byte(secret)) == 1
 }
 
 func parseShadowRepos(s string) map[string]string {

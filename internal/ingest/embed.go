@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
@@ -27,7 +28,11 @@ func DocFromRawContent(repo, path, content string) store.Document {
 func EmbedAndUpsert(ctx context.Context, s *store.Store, l llm.Provider, doc store.Document) error {
 	text := fmt.Sprintf("%s\n%s", doc.Title, doc.Content)
 	if len(text) > 2000 {
-		text = text[:2000]
+		cut := 2000
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut]
 	}
 	embedding, err := l.Embed(ctx, text)
 	if err != nil {
@@ -38,10 +43,12 @@ func EmbedAndUpsert(ctx context.Context, s *store.Store, l llm.Provider, doc sto
 		return fmt.Errorf("upsert %q: %w", doc.Title, err)
 	}
 
-	// Extract and record cross-references
+	// Extract and record cross-references (best-effort — don't fail the upsert)
 	refs := store.ExtractReferences(doc.Content)
 	if len(refs) > 0 {
-		_ = s.RecordReferences(ctx, doc.Repo, "document", doc.Title, refs)
+		if refErr := s.RecordReferences(ctx, doc.Repo, "document", doc.Title, refs); refErr != nil {
+			return fmt.Errorf("record references for %q: %w", doc.Title, refErr)
+		}
 	}
 	return nil
 }
