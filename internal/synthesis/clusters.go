@@ -61,7 +61,10 @@ func (c *ClusterSynthesizer) Analyze(ctx context.Context, repo string, window ti
 		}
 
 		// Check if there's ADR/roadmap coverage
-		hasCoverage, _ := c.store.CountReferencesTo(ctx, repo, "issue", evidence[0])
+		hasCoverage, refErr := c.store.CountReferencesTo(ctx, repo, "issue", evidence[0])
+		if refErr != nil {
+			return nil, fmt.Errorf("counting references for issue %s: %w", evidence[0], refErr)
+		}
 
 		severity := "warning"
 		suggestion := fmt.Sprintf("%d issues opened in the last %d days share a common theme. Topics: %s.",

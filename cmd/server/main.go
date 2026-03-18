@@ -311,9 +311,13 @@ func main() {
 		}
 
 		installations, instErr := ghClient.ListInstallations(r.Context())
-		if instErr != nil || len(installations) == 0 {
+		if instErr != nil {
 			logger.Error("failed to get installations for synthesis", "error", instErr)
 			http.Error(w, "failed to get installations", http.StatusInternalServerError)
+			return
+		}
+		if len(installations) == 0 {
+			http.Error(w, "no installations found", http.StatusInternalServerError)
 			return
 		}
 		installID := installations[0]
@@ -323,7 +327,8 @@ func main() {
 		upstreamSynth := synthesis.NewUpstreamSynthesizer(s)
 		runner := synthesis.NewRunner(ghClient, logger, clusterSynth, driftSynth, upstreamSynth)
 
-		window := 7 * 24 * time.Hour // 1 week lookback
+		const weeklyLookback = 7 * 24 * time.Hour
+		window := weeklyLookback
 		findingCount, runErr := runner.Run(r.Context(), installID, repo, shadowRepo, window)
 		if runErr != nil {
 			logger.Error("synthesis run failed", "error", runErr, "repo", repo)
