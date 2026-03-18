@@ -14,7 +14,7 @@
 
 ## Batch 1: Institutional Memory (Month 1)
 
-### Task 1: Per-Repo Config — Butler YAML Parser
+### Task 1: Per-Repo Config — Butler JSON Parser
 
 **Files:**
 - Create: `internal/config/butler.go`
@@ -39,7 +39,7 @@ func TestParseButlerConfig(t *testing.T) {
 	}{
 		{
 			name:  "full config",
-			input: "capabilities:\n  triage: true\n  synthesis: true\n  auto_ingest: true\ndoc_paths:\n  - \"docs/**\"\nshadow_repo: owner/shadow\nmax_daily_llm_calls: 50\n",
+			input: `{"capabilities":{"triage":true,"synthesis":true,"auto_ingest":true},"doc_paths":["docs/**"],"shadow_repo":"owner/shadow","max_daily_llm_calls":50}`,
 			want: ButlerConfig{
 				Capabilities: Capabilities{Triage: true, Synthesis: true, AutoIngest: true},
 				DocPaths:     []string{"docs/**"},
@@ -53,13 +53,13 @@ func TestParseButlerConfig(t *testing.T) {
 			want:  DefaultConfig(),
 		},
 		{
-			name:    "invalid YAML",
-			input:   ":\n  bad:\n---\n  yaml: [",
+			name:    "invalid JSON",
+			input:   `{"bad":"json"`,
 			wantErr: true,
 		},
 		{
 			name:  "missing capabilities uses defaults",
-			input: "shadow_repo: owner/shadow\n",
+			input: `{"shadow_repo":"owner/shadow"}`,
 			want: func() ButlerConfig {
 				c := DefaultConfig()
 				c.ShadowRepo = "owner/shadow"
@@ -117,31 +117,31 @@ package config
 import "encoding/json"
 
 type ButlerConfig struct {
-	Capabilities     Capabilities      `yaml:"capabilities"`
-	DocPaths         []string          `yaml:"doc_paths"`
-	Upstream         []UpstreamDep     `yaml:"upstream"`
-	Synthesis        SynthesisConfig   `yaml:"synthesis"`
-	ShadowRepo       string            `yaml:"shadow_repo"`
-	Thresholds       map[string]float64 `yaml:"thresholds"`
-	MaxDailyLLMCalls int               `yaml:"max_daily_llm_calls"`
+	Capabilities     Capabilities      `json:"capabilities"`
+	DocPaths         []string          `json:"doc_paths"`
+	Upstream         []UpstreamDep     `json:"upstream"`
+	Synthesis        SynthesisConfig   `json:"synthesis"`
+	ShadowRepo       string            `json:"shadow_repo"`
+	Thresholds       map[string]float64 `json:"thresholds"`
+	MaxDailyLLMCalls int               `json:"max_daily_llm_calls"`
 }
 
 type Capabilities struct {
-	Triage     bool `yaml:"triage"`
-	Research   bool `yaml:"research"`
-	Synthesis  bool `yaml:"synthesis"`
-	AutoIngest bool `yaml:"auto_ingest"`
+	Triage     bool `json:"triage"`
+	Research   bool `json:"research"`
+	Synthesis  bool `json:"synthesis"`
+	AutoIngest bool `json:"auto_ingest"`
 }
 
 type UpstreamDep struct {
-	Repo    string `yaml:"repo"`
-	DocType string `yaml:"doc_type"`
-	Track   string `yaml:"track"`
+	Repo    string `json:"repo"`
+	DocType string `json:"doc_type"`
+	Track   string `json:"track"`
 }
 
 type SynthesisConfig struct {
-	Frequency string `yaml:"frequency"`
-	Day       string `yaml:"day"`
+	Frequency string `json:"frequency"`
+	Day       string `json:"day"`
 }
 
 func DefaultConfig() ButlerConfig {
@@ -177,18 +177,18 @@ func Parse(data []byte) (ButlerConfig, error) {
 }
 ```
 
-Note: the project prefers standard library where possible, but YAML parsing has no standard library option. Use `encoding/json` instead — change the config file format to `.github/butler.json` and use `encoding/json` for parsing. Update all references from `butler.yml` to `butler.json` and from `yaml` tags to `json` tags. This avoids adding a new dependency.
+Note: the project prefers standard library where possible, but YAML parsing has no standard library option. Use `encoding/json` instead — change the config file format to `.github/butler.json` and use `encoding/json` for parsing. Update all references from `butler.json` to `butler.json` and from `yaml` tags to `json` tags. This avoids adding a new dependency.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `go get gopkg.in/yaml.v3 && go test ./internal/config/ -v`
+Run: `go test ./internal/config/ -v`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add internal/config/butler.go internal/config/butler_test.go go.mod go.sum
-git commit -m "feat: add butler.yml config parser with defaults"
+git commit -m "feat: add butler.json config parser with defaults"
 ```
 
 ---
@@ -200,7 +200,7 @@ git commit -m "feat: add butler.yml config parser with defaults"
 - Create: `internal/config/loader_test.go`
 - Modify: `internal/github/client.go` — add `GetFileContents` method
 
-The config loader fetches `.github/butler.yml` from the repo via the GitHub Contents API and caches it with a 1-hour TTL. This is called early in the webhook handler before event processing.
+The config loader fetches `.github/butler.json` from the repo via the GitHub Contents API and caches it with a 1-hour TTL. This is called early in the webhook handler before event processing.
 
 - [ ] **Step 1: Add `GetFileContents` to GitHub client**
 
@@ -267,7 +267,7 @@ func TestConfigCache(t *testing.T) {
 	calls := 0
 	fetcher := func() ([]byte, error) {
 		calls++
-		return []byte("capabilities:\n  synthesis: true\n"), nil
+		return []byte(`{"capabilities":{"synthesis":true}}`), nil
 	}
 
 	cache := NewCache(1*time.Hour, fetcher)
@@ -1821,11 +1821,11 @@ package synthesis
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
-	"github.com/pgvector/pgvector-go"
 )
 
 type ClusterSynthesizer struct {
@@ -1962,8 +1962,7 @@ func cosineDistance(a, b []float32) float64 {
 }
 ```
 
-Add `"math"` to the imports. Do NOT add a package-level `min` function — Go 1.21+ provides `min` as a builtin. Remove the unused `pgvector` import from this file.
-```
+Note: `"math"` is already in the import block above. Do NOT add a package-level `min` function — Go 1.21+ provides `min` as a builtin.
 
 - [ ] **Step 4: Run tests**
 
@@ -2154,8 +2153,8 @@ git commit -m "feat: add monthly state-of-the-project briefing"
 ### Task 19: Dashboard — Synthesis Metrics
 
 **Files:**
-- Modify: `internal/store/report.go` — add synthesis stats (briefings posted, findings by type, proposals accepted/rejected)
-- Modify: `cmd/server/template.html` — add synthesis section to dashboard
+- Modify: `internal/store/report.go` — add synthesis stats (briefings posted, findings by type, proposals accepted/rejected) and storage usage metrics (total rows per table, estimated size)
+- Modify: `cmd/server/template.html` — add synthesis section and storage health card to dashboard
 
 - [ ] **Step 1-5: Implement, test, commit**
 
@@ -2168,7 +2167,7 @@ git commit -m "feat: add synthesis metrics to dashboard"
 ### Task 20: Multi-Repo Hardening and Documentation
 
 **Files:**
-- Modify: `README.md` — strategist framing, getting-started guide, butler.yml schema docs
+- Modify: `README.md` — strategist framing, getting-started guide, butler.json schema docs
 - Create: `internal/config/validate.go` — config validation with helpful error messages
 - Create: `internal/config/validate_test.go`
 
@@ -2178,7 +2177,7 @@ Validate that `shadow_repo` is set when `synthesis` is enabled, that `max_daily_
 
 - [ ] **Step 2: Update README**
 
-Add sections: "What is the Repository Strategist?", "Getting Started" (install App → add butler.yml → seed docs → wait for briefing), "butler.yml Reference", "Architecture".
+Add sections: "What is the Repository Strategist?", "Getting Started" (install App → add butler.json → seed docs → wait for briefing), "butler.json Reference", "Architecture".
 
 - [ ] **Step 3: Run full test suite**
 
@@ -2214,7 +2213,7 @@ git commit -m "feat: add LLM daily usage budget tracker"
 
 | Batch | Tasks | Key Deliverables |
 |-------|-------|------------------|
-| 1 (Month 1) | 1-10 | butler.yml config, event journal, auto-ingest, cross-reference index |
+| 1 (Month 1) | 1-10 | butler.json config, event journal, auto-ingest, cross-reference index |
 | 2 (Month 2) | 11-15 | Synthesis engine, cluster detection, drift detection, upstream impact, weekly briefings |
 | 3 (Month 3) | 16-21 | Roadmap proposals, ADR lifecycle, monthly briefings, dashboard, multi-repo docs |
 

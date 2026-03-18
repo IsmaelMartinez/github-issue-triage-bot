@@ -36,7 +36,7 @@ Two new concepts are added on top of everything that exists today.
 
 ### Multi-Repo Model
 
-The system is deployed as a single GitHub App instance. A new repo adopts it by: installing the GitHub App, adding a `.github/butler.yml` config file, seeding their initial docs into the vector store, and waiting. The butler starts accumulating institutional memory from day one.
+The system is deployed as a single GitHub App instance. A new repo adopts it by: installing the GitHub App, adding a `.github/butler.json` config file, seeding their initial docs into the vector store, and waiting. The butler starts accumulating institutional memory from day one.
 
 The `repo_events` table is keyed by repo. The synthesis engine runs per-repo on its configured schedule. The per-repo config controls which capabilities are enabled, what thresholds to use, doc paths to watch, and upstream dependencies to track. Repos without a config file get no butler behaviour — the App installation alone doesn't activate anything.
 
@@ -106,7 +106,7 @@ Files:
 
 ### Week 3: Automatic Document Ingestion
 
-When a push event includes changes to doc paths (configurable in `butler.yml`, defaulting to `docs/**`, `*.md`, `ADR-*`), the system automatically re-embeds the changed documents into the vector store. This requires extracting the core embedding and document upsert logic from `cmd/seed/main.go` into a shared `internal/ingest/` package that both the seed CLI and the server can import. The seed CLI becomes a thin wrapper around this package. The webhook handler calls the same package to embed changed files inline.
+When a push event includes changes to doc paths (configurable in `butler.json`, defaulting to `docs/**`, `*.md`, `ADR-*`), the system automatically re-embeds the changed documents into the vector store. This requires extracting the core embedding and document upsert logic from `cmd/seed/main.go` into a shared `internal/ingest/` package that both the seed CLI and the server can import. The seed CLI becomes a thin wrapper around this package. The webhook handler calls the same package to embed changed files inline.
 
 For upstream dependencies, a weekly GitHub Action checks for new releases of configured dependencies and seeds them automatically.
 
@@ -146,48 +146,36 @@ Files:
 
 ### Per-Repo Config File
 
-`.github/butler.yml` schema:
+`.github/butler.json` schema:
 
-```yaml
-# Which capabilities are enabled
-capabilities:
-  triage: true           # existing triage pipeline
-  research: true         # existing enhancement research
-  synthesis: true        # new: weekly briefings
-  auto_ingest: true      # new: auto-embed docs on push
-
-# Document paths to watch for auto-ingestion
-doc_paths:
-  - "docs/**"
-  - "*.md"
-  - "ADR-*"
-
-# Upstream dependencies to track
-upstream:
-  - repo: electron/electron
-    doc_type: upstream_release
-    track: releases
-
-# Synthesis schedule
-synthesis:
-  frequency: weekly      # daily or weekly
-  day: monday            # for weekly
-
-# Shadow repo for all butler output
-shadow_repo: owner/shadow-repo
-
-# Relevance thresholds (override defaults)
-thresholds:
-  troubleshooting: 0.70
-  adr: 0.55
-  roadmap: 0.55
-  research: 0.55
-  configuration: 0.50
-  upstream_release: 0.45
-  upstream_issue: 0.45
-
-# Cost guardrails
-max_daily_llm_calls: 50
+```json
+{
+  "capabilities": {
+    "triage": true,
+    "research": true,
+    "synthesis": true,
+    "auto_ingest": true
+  },
+  "doc_paths": ["docs/**", "*.md", "ADR-*"],
+  "upstream": [
+    {"repo": "electron/electron", "doc_type": "upstream_release", "track": "releases"}
+  ],
+  "synthesis": {
+    "frequency": "weekly",
+    "day": "monday"
+  },
+  "shadow_repo": "owner/shadow-repo",
+  "thresholds": {
+    "troubleshooting": 0.70,
+    "adr": 0.55,
+    "roadmap": 0.55,
+    "research": 0.55,
+    "configuration": 0.50,
+    "upstream_release": 0.45,
+    "upstream_issue": 0.45
+  },
+  "max_daily_llm_calls": 50
+}
 ```
 
 The system reads this file via the GitHub Contents API on first webhook event per repo (cached with 1-hour TTL). This requires the GitHub App to have `contents: read` permission, which must be added to the App's permission set. Existing installations will need to accept the updated permissions. If the file is missing or the permission is not granted, the system falls back to default config (triage only, no synthesis, no auto-ingest) — the same behaviour as today.
@@ -346,7 +334,7 @@ Files:
 The final week focuses on making all of this robust for a second repo to adopt.
 
 - Integration tests that verify the full pipeline (event ingestion, journal, synthesis, briefing, shadow issue) using a test repo
-- Documentation of the `butler.yml` config schema
+- Documentation of the `butler.json` config schema
 - A "getting started" guide: install the App, add the config, seed your initial docs, wait a week, read your first briefing
 - Rate limiting and cost guardrails to ensure the synthesis engine stays within Gemini free tier limits across multiple repos
 - Dashboard updates to show synthesis findings and briefing history alongside existing triage metrics
@@ -361,7 +349,7 @@ Files:
 
 **Gemini API unavailable.** The triage pipeline already handles this (warns and skips LLM-dependent phases). The synthesis engine follows the same pattern: event-driven synthesizers (cluster detection, roadmap staleness) that use only SQL queries run normally. LLM-dependent synthesizers (drift detection embedding, briefing prose generation) are skipped, and the briefing notes which sections were omitted. The next scheduled run retries.
 
-**Malformed `butler.yml`.** If the YAML is unparseable or uses unknown fields, the system logs a warning and falls back to default config (triage only). A health alert issue is created in the shadow repo: "[Config Error] butler.yml failed validation — using defaults." The config is re-read on the next webhook event (1-hour cache TTL means the fix takes effect within an hour of a push correcting the file).
+**Malformed `butler.json`.** If the YAML is unparseable or uses unknown fields, the system logs a warning and falls back to default config (triage only). A health alert issue is created in the shadow repo: "[Config Error] butler.json failed validation — using defaults." The config is re-read on the next webhook event (1-hour cache TTL means the fix takes effect within an hour of a push correcting the file).
 
 **Event journal grows too large.** The 180-day retention policy (see Storage Budget section) prevents unbounded growth. A cleanup job runs alongside the existing webhook_deliveries cleanup. If Neon storage approaches the limit despite retention, the system logs an alert and pauses event journal writes (triage continues unaffected). The dashboard displays current storage usage as a health metric.
 
