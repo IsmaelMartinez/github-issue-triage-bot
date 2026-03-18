@@ -21,16 +21,17 @@
         .content { flex: 1; padding: 24px; overflow-y: auto; }
         .content h2 { font-size: 1.2rem; font-weight: 600; color: #1a1a1a; margin-bottom: 16px; }
         .content h3 { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; margin: 16px 0 8px; }
-        .health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
-        .health-card { border-radius: 8px; padding: 16px; text-align: center; }
-        .health-card .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-        .health-card .value { font-size: 1.8rem; font-weight: 700; }
-        .health-card .sub { font-size: 0.75rem; margin-top: 2px; }
+        .health-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .health-card { border-radius: 8px; padding: 12px 10px; text-align: center; }
+        .health-card .label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+        .health-card .value { font-size: 1.4rem; font-weight: 700; }
+        .health-card .sub { font-size: 0.7rem; margin-top: 2px; }
         .hc-green { background: #dcffe4; } .hc-green .label, .hc-green .sub { color: #155724; } .hc-green .value { color: #155724; }
         .hc-yellow { background: #fff3cd; } .hc-yellow .label, .hc-yellow .sub { color: #664d03; } .hc-yellow .value { color: #664d03; }
         .hc-red { background: #ffd7d5; } .hc-red .label, .hc-red .sub { color: #721c24; } .hc-red .value { color: #721c24; }
         .hc-neutral { background: #f0f0f0; } .hc-neutral .label, .hc-neutral .sub { color: #555; } .hc-neutral .value { color: #1a1a1a; }
         .panel { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .chart-container { position: relative; height: 160px; }
         .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; font-size: 0.85rem; }
@@ -94,7 +95,7 @@
             <div id="view-overview" class="view active">
                 <h2>Overview</h2>
                 <div class="health-cards" id="overview-cards"></div>
-                <div class="panel"><h3>Activity (30 days)</h3><canvas id="activity-chart" height="180"></canvas></div>
+                <div class="panel"><h3>Activity (30 days)</h3><div class="chart-container"><canvas id="activity-chart"></canvas></div></div>
                 <div class="two-col">
                     <div class="panel"><h3>Recent Activity</h3><div id="activity-feed"></div></div>
                     <div class="panel"><h3>Vector Store</h3><table id="vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
@@ -104,7 +105,7 @@
                 <h2>Bug Triage</h2>
                 <div class="health-cards" id="triage-cards"></div>
                 <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
-                <div class="panel"><h3>Feedback Trend (30 days)</h3><canvas id="feedback-chart" height="150"></canvas></div>
+                <div class="panel"><h3>Feedback Trend (30 days)</h3><div class="chart-container"><canvas id="feedback-chart"></canvas></div></div>
                 <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
                 <div class="panel"><h3>Recent Feedback</h3><table id="feedback-table"><thead><tr><th>Issue</th><th>Type</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
@@ -155,7 +156,7 @@
     function hCls(v, g, y, hi) { if (v == null) return 'hc-neutral'; if (hi) return v >= g ? 'hc-green' : v >= y ? 'hc-yellow' : 'hc-red'; return v <= g ? 'hc-green' : v <= y ? 'hc-yellow' : 'hc-red'; }
     function addCards(id, cards) { var c = document.getElementById(id); cards.forEach(function(d) { c.appendChild(el('div', {cls: 'health-card ' + d.cls}, [el('div', {cls: 'label', text: d.label}), el('div', {cls: 'value', text: d.value}), d.sub ? el('div', {cls: 'sub', text: d.sub}) : null])); }); }
     function fillTbl(id, rows) { var tb = document.querySelector('#' + id + ' tbody'); rows.forEach(function(r) { var tr = el('tr'); r.forEach(function(c) { var td = el('td'); if (typeof c === 'string' || typeof c === 'number') td.textContent = c; else td.appendChild(c); tr.appendChild(td); }); tb.appendChild(tr); }); }
-    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); }
+    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); if (n === 'triage' && typeof initFeedbackChart === 'function') initFeedbackChart(); }
 
     /* Data */
     var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
@@ -221,22 +222,26 @@
             data: {
                 labels: dtc.map(function(d) { return d.date.substring(5); }),
                 datasets: [
-                    { label: 'Triage', data: dtc.map(function(d) { return d.count; }), borderColor: '#2ea44f', backgroundColor: 'rgba(46,164,79,0.1)', fill: true, tension: 0.3 },
-                    { label: 'Agent', data: dac.map(function(d) { return d.count; }), borderColor: '#0366d6', backgroundColor: 'rgba(3,102,214,0.1)', fill: true, tension: 0.3 }
+                    { label: 'Triage', data: dtc.map(function(d) { return d.count; }), borderColor: '#2ea44f', backgroundColor: 'rgba(46,164,79,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
+                    { label: 'Agent', data: dac.map(function(d) { return d.count; }), borderColor: '#0366d6', backgroundColor: 'rgba(3,102,214,0.1)', fill: true, tension: 0.3, pointRadius: 2 }
                 ]
             },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } }, scales: { x: { ticks: { maxTicksAutoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
 
-    if (dfc.length > 0 && typeof Chart !== 'undefined') {
+    /* Feedback chart — deferred until Triage view is shown (canvas must be visible for Chart.js to measure) */
+    var feedbackChartInit = false;
+    function initFeedbackChart() {
+        if (feedbackChartInit || dfc.length === 0 || typeof Chart === 'undefined') return;
+        feedbackChartInit = true;
         new Chart(document.getElementById('feedback-chart'), {
             type: 'bar',
             data: {
                 labels: dfc.map(function(d) { return d.date.substring(5); }),
                 datasets: [{ label: 'Feedback signals', data: dfc.map(function(d) { return d.count; }), backgroundColor: '#d29922' }]
             },
-            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksAutoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
         });
     }
 
