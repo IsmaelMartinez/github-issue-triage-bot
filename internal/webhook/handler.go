@@ -190,6 +190,8 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 		return
 	}
 
+	h.recordEvent(ctx, commentToRepoEvent(repo, issueNumber, commentUser, commentBody))
+
 	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
 	log.Info("processing comment event")
 
@@ -265,6 +267,8 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 	repo := event.Repo.FullName
 	issue := event.Issue
 	installationID := event.Installation.ID
+
+	h.recordEvent(ctx, issueToRepoEvent(repo, event.Action, issue))
 
 	switch event.Action {
 	case "opened":
@@ -495,6 +499,8 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 func (h *Handler) handlePush(ctx context.Context, event gh.PushEvent) {
 	repo := event.Repo.FullName
 	log := h.logger.With("repo", repo, "ref", event.Ref)
+
+	h.recordEvent(ctx, pushToRepoEvent(repo, event.Ref))
 
 	shadowRepo, ok := h.shadowRepos[repo]
 	if !ok {
