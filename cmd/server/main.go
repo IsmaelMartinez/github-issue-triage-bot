@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -46,6 +47,7 @@ func main() {
 	webhookSecret := requireEnv("WEBHOOK_SECRET")
 
 	sourceRepo := os.Getenv("SOURCE_REPO")
+	ingestSecret := os.Getenv("INGEST_SECRET")
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -75,6 +77,13 @@ func main() {
 		logger.Error("cleanup old deliveries failed", "error", err)
 	} else if deleted > 0 {
 		logger.Info("cleaned up old deliveries", "deleted", deleted)
+	}
+
+	// Clean up old event journal entries (180-day retention)
+	if deleted, err := s.CleanupOldEvents(ctx, 180*24*time.Hour); err != nil {
+		logger.Error("cleanup old events failed", "error", err)
+	} else if deleted > 0 {
+		logger.Info("cleaned up old events", "deleted", deleted)
 	}
 
 	// Initialize clients
@@ -256,6 +265,30 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/ingest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 5<<20) // 5 MB limit
+		var events []store.RepoEvent
+		if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if err := s.RecordEvents(r.Context(), events); err != nil {
+			logger.Error("ingesting events", "error", err)
+			http.Error(w, "ingest failed", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"ingested":%d}`, len(events))
+	})
+
 	// Live dashboard
 	sortedRepos := make([]string, 0, len(allowedRepos))
 	for r := range allowedRepos {
@@ -391,6 +424,17 @@ func requireEnv(key string) string {
 		os.Exit(1)
 	}
 	return val
+}
+
+func validateIngestAuth(authHeader, secret string) bool {
+	if secret == "" {
+		return true
+	}
+	const prefix = "Bearer "
+	if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(authHeader[len(prefix):]), []byte(secret)) == 1
 }
 
 func parseShadowRepos(s string) map[string]string {

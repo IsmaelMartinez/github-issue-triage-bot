@@ -456,8 +456,16 @@ type LabelInfo struct {
 // PushEvent represents a GitHub push webhook event payload.
 type PushEvent struct {
 	Ref          string           `json:"ref"`
+	Commits      []PushCommit     `json:"commits"`
 	Repo         RepoDetail       `json:"repository"`
 	Installation InstallationInfo `json:"installation"`
+}
+
+// PushCommit represents a single commit in a push event.
+type PushCommit struct {
+	Added    []string `json:"added"`
+	Modified []string `json:"modified"`
+	Removed  []string `json:"removed"`
 }
 
 // RepoDetail is the repository portion of a webhook event.
@@ -506,6 +514,48 @@ func (c *Client) SearchIssues(ctx context.Context, installationID int64, query s
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	return result.Items, nil
+}
+
+// GetFileContents reads a file's contents from a repository via the Contents API.
+// Returns the decoded content bytes and nil error, or nil bytes with nil error if the file does not exist (404).
+func (c *Client) GetFileContents(ctx context.Context, installationID int64, repo, path string) ([]byte, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/contents/%s", c.baseURL, repo, path)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	if result.Encoding != "base64" {
+		return nil, fmt.Errorf("unexpected encoding: %s", result.Encoding)
+	}
+	return base64.StdEncoding.DecodeString(result.Content)
 }
 
 // CloseIssue closes a GitHub issue by setting its state to "closed".

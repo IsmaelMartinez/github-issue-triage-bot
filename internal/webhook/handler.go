@@ -14,6 +14,7 @@ import (
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/agent"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/config"
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
@@ -41,6 +42,8 @@ type Handler struct {
 	agentHandler  *agent.AgentHandler
 	shadowRepos   map[string]string
 	mirror        *mirror.Service
+	configCaches  map[string]*config.Cache
+	configMu      sync.Mutex
 }
 
 // New creates a new webhook Handler.
@@ -65,6 +68,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		agentHandler:  agentHandler,
 		shadowRepos:   shadowRepos,
 		mirror:        mirrorSvc,
+		configCaches:  make(map[string]*config.Cache),
 	}
 }
 
@@ -190,6 +194,8 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 		return
 	}
 
+	h.recordEvent(ctx, commentToRepoEvent(repo, issueNumber, commentUser, commentBody))
+
 	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
 	log.Info("processing comment event")
 
@@ -265,6 +271,8 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 	repo := event.Repo.FullName
 	issue := event.Issue
 	installationID := event.Installation.ID
+
+	h.recordEvent(ctx, issueToRepoEvent(repo, event.Action, issue))
 
 	switch event.Action {
 	case "opened":
@@ -492,27 +500,43 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	issueLog.Info("retriage complete, posted to shadow repo", "shadowIssue", shadowNumber)
 }
 
+func (h *Handler) getConfig(ctx context.Context, installationID int64, repo string) config.ButlerConfig {
+	h.configMu.Lock()
+	cache, ok := h.configCaches[repo]
+	if !ok {
+		cache = config.NewCache(1*time.Hour, func() ([]byte, error) {
+			fetchCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			return h.github.GetFileContents(fetchCtx, installationID, repo, ".github/butler.json")
+		})
+		h.configCaches[repo] = cache
+	}
+	h.configMu.Unlock()
+
+	cfg, _ := cache.Get()
+	return cfg
+}
+
 func (h *Handler) handlePush(ctx context.Context, event gh.PushEvent) {
 	repo := event.Repo.FullName
 	log := h.logger.With("repo", repo, "ref", event.Ref)
 
+	h.recordEvent(ctx, pushToRepoEvent(repo, event.Ref))
+
 	shadowRepo, ok := h.shadowRepos[repo]
-	if !ok {
-		log.Info("no shadow repo configured, skipping mirror sync")
-		return
+	if ok && h.mirror != nil {
+		log.Info("triggering mirror sync for push event")
+		if err := h.mirror.Sync(ctx, event.Installation.ID, repo, shadowRepo); err != nil {
+			log.Error("mirror sync failed", "error", err)
+		} else {
+			log.Info("mirror sync completed successfully")
+		}
 	}
 
-	if h.mirror == nil {
-		log.Warn("mirror service not configured, skipping sync")
-		return
+	cfg := h.getConfig(ctx, event.Installation.ID, repo)
+	if cfg.Capabilities.AutoIngest {
+		h.autoIngestDocs(ctx, event.Installation.ID, repo, event.Commits, cfg.DocPaths)
 	}
-
-	log.Info("triggering mirror sync for push event")
-	if err := h.mirror.Sync(ctx, event.Installation.ID, repo, shadowRepo); err != nil {
-		log.Error("mirror sync failed", "error", err)
-		return
-	}
-	log.Info("mirror sync completed successfully")
 }
 
 func (h *Handler) handleStateChange(ctx context.Context, repo string, issue gh.IssueDetail) {

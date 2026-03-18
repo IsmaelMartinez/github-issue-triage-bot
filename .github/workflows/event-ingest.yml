@@ -1,0 +1,58 @@
+name: Daily Event Ingest
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Fetch recent events from GitHub API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REPO: IsmaelMartinez/teams-for-linux
+        run: |
+          # Fetch PRs merged in last 24 hours
+          gh api "repos/${TARGET_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=50" \
+            --jq '[.[] | select(.merged_at != null) | select((.merged_at | fromdateiso8601) > (now - 86400)) | {
+              repo: env.TARGET_REPO,
+              event_type: "pr_merged",
+              source_ref: ("#" + (.number | tostring)),
+              summary: .title,
+              areas: [.head.ref],
+              metadata: {pr_number: .number, changed_files: .changed_files, user: .user.login}
+            }]' > /tmp/events.json
+
+          # Fetch releases published in last 24 hours
+          gh api "repos/${TARGET_REPO}/releases?per_page=10" \
+            --jq '[.[] | select((.published_at | fromdateiso8601) > (now - 86400)) | {
+              repo: env.TARGET_REPO,
+              event_type: "release_published",
+              source_ref: .tag_name,
+              summary: .name,
+              metadata: {tag: .tag_name, prerelease: .prerelease}
+            }]' > /tmp/releases.json
+
+          # Combine
+          jq -s 'add // []' /tmp/events.json /tmp/releases.json > /tmp/all_events.json
+          echo "Events to ingest: $(jq length /tmp/all_events.json)"
+
+      - name: Post events to ingest endpoint
+        env:
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          CLOUD_RUN_URL: ${{ secrets.CLOUD_RUN_URL }}
+        run: |
+          EVENT_COUNT=$(jq length /tmp/all_events.json)
+          if [ "$EVENT_COUNT" -eq 0 ]; then
+            echo "No events to ingest"
+            exit 0
+          fi
+          curl -sf -X POST "${CLOUD_RUN_URL}/ingest" \
+            -H "Authorization: Bearer ${INGEST_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d @/tmp/all_events.json
