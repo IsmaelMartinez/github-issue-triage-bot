@@ -27,6 +27,11 @@ func New(pool *pgxpool.Pool) *Store {
 	return &Store{pool: pool}
 }
 
+// Pool returns the underlying connection pool. Used by integration tests for cleanup.
+func (s *Store) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
 const EmbeddingDim = 768
 
 // UpsertDocument inserts or updates a document and its embedding.
