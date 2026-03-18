@@ -20,6 +20,7 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/synthesis"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/webhook"
 )
 
@@ -287,6 +288,51 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"ingested":%d}`, len(events))
+	})
+
+	mux.HandleFunc("/synthesize", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		repo := r.URL.Query().Get("repo")
+		if repo == "" || !allowedRepos[repo] {
+			http.Error(w, "invalid or missing repo parameter", http.StatusBadRequest)
+			return
+		}
+		shadowRepo, hasShadow := shadowRepos[repo]
+		if !hasShadow {
+			http.Error(w, "no shadow repo configured for this repo", http.StatusBadRequest)
+			return
+		}
+
+		installations, instErr := ghClient.ListInstallations(r.Context())
+		if instErr != nil || len(installations) == 0 {
+			logger.Error("failed to get installations for synthesis", "error", instErr)
+			http.Error(w, "failed to get installations", http.StatusInternalServerError)
+			return
+		}
+		installID := installations[0]
+
+		clusterSynth := synthesis.NewClusterSynthesizer(s)
+		driftSynth := synthesis.NewDriftSynthesizer(s)
+		upstreamSynth := synthesis.NewUpstreamSynthesizer(s)
+		runner := synthesis.NewRunner(ghClient, logger, clusterSynth, driftSynth, upstreamSynth)
+
+		window := 7 * 24 * time.Hour // 1 week lookback
+		findingCount, runErr := runner.Run(r.Context(), installID, repo, shadowRepo, window)
+		if runErr != nil {
+			logger.Error("synthesis run failed", "error", runErr, "repo", repo)
+			http.Error(w, "synthesis failed", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","findings":%d}`, findingCount)
 	})
 
 	// Live dashboard

@@ -1,0 +1,39 @@
+name: Weekly Synthesis
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
+          token_format: access_token
+
+      - name: Trigger synthesis
+        env:
+          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
+          CLOUD_RUN_URL: ${{ secrets.CLOUD_RUN_URL }}
+        run: |
+          echo "Triggering weekly synthesis..."
+          HTTP_CODE=$(curl -sf -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${CLOUD_RUN_URL}/synthesize?repo=IsmaelMartinez/teams-for-linux" \
+            -H "Authorization: Bearer ${INGEST_SECRET}" \
+            -H "Content-Type: application/json" 2>/dev/null) || true
+
+          echo "Response: $(cat /tmp/response.json 2>/dev/null) (HTTP ${HTTP_CODE})"
+
+          if [ "${HTTP_CODE}" -ne 200 ]; then
+            echo "::error::Synthesis failed with HTTP ${HTTP_CODE}"
+            exit 1
+          fi

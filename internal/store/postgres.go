@@ -193,6 +193,90 @@ func (s *Store) FindSimilarIssues(ctx context.Context, repo string, embedding []
 	return results, tx.Commit(ctx)
 }
 
+// RecentIssuesWithEmbeddings returns issues opened within the time window that have embeddings.
+func (s *Store) RecentIssuesWithEmbeddings(ctx context.Context, repo string, since time.Time) ([]Issue, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, repo, number, title, summary, state, labels,
+		       embedding, created_at, updated_at
+		FROM issues
+		WHERE repo = $1 AND created_at >= $2 AND embedding IS NOT NULL
+		ORDER BY created_at DESC
+	`, repo, since)
+	if err != nil {
+		return nil, fmt.Errorf("query recent issues: %w", err)
+	}
+	defer rows.Close()
+
+	var results []Issue
+	for rows.Next() {
+		var i Issue
+		var vec pgvector.Vector
+		if err := rows.Scan(&i.ID, &i.Repo, &i.Number, &i.Title, &i.Summary,
+			&i.State, &i.Labels, &vec, &i.CreatedAt, &i.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan recent issue: %w", err)
+		}
+		i.Embedding = vec.Slice()
+		results = append(results, i)
+	}
+	return results, rows.Err()
+}
+
+// ListDocumentsByType returns all documents of the given types for a repo.
+func (s *Store) ListDocumentsByType(ctx context.Context, repo string, docTypes []string) ([]Document, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, repo, doc_type, title, content, metadata, created_at, updated_at
+		FROM documents
+		WHERE repo = $1 AND doc_type = ANY($2)
+		ORDER BY updated_at DESC
+	`, repo, docTypes)
+	if err != nil {
+		return nil, fmt.Errorf("query documents by type: %w", err)
+	}
+	defer rows.Close()
+
+	var results []Document
+	for rows.Next() {
+		var d Document
+		var meta []byte
+		if err := rows.Scan(&d.ID, &d.Repo, &d.DocType, &d.Title, &d.Content,
+			&meta, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan document: %w", err)
+		}
+		_ = json.Unmarshal(meta, &d.Metadata)
+		results = append(results, d)
+	}
+	return results, rows.Err()
+}
+
+// RecentDocumentsByType returns documents of the given types ingested since the given time.
+func (s *Store) RecentDocumentsByType(ctx context.Context, repo string, docTypes []string, since time.Time) ([]Document, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, repo, doc_type, title, content, metadata, embedding, created_at, updated_at
+		FROM documents
+		WHERE repo = $1 AND doc_type = ANY($2) AND updated_at >= $3
+		ORDER BY updated_at DESC
+	`, repo, docTypes, since)
+	if err != nil {
+		return nil, fmt.Errorf("query recent documents: %w", err)
+	}
+	defer rows.Close()
+
+	var results []Document
+	for rows.Next() {
+		var d Document
+		var meta []byte
+		var vec pgvector.Vector
+		if err := rows.Scan(&d.ID, &d.Repo, &d.DocType, &d.Title, &d.Content,
+			&meta, &vec, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan recent document: %w", err)
+		}
+		_ = json.Unmarshal(meta, &d.Metadata)
+		d.Embedding = vec.Slice()
+		results = append(results, d)
+	}
+	return results, rows.Err()
+}
+
 // HasBotCommented checks if the bot has already commented on the given issue.
 func (s *Store) HasBotCommented(ctx context.Context, repo string, issueNumber int) (bool, error) {
 	var exists bool
