@@ -63,12 +63,16 @@ All phase results are consolidated into a single markdown comment by the comment
 
 The vector store includes upstream dependency docs (Electron release notes, changelogs) in addition to project-specific docs, so Phase 2 can surface relevant upstream changes when triaging bug reports.
 
+The event journal (`repo_events` table) records all webhook events (issues, comments, pushes) and daily-scraped events (merged PRs, releases) for temporal analysis. On push to the default branch, auto-ingest detects changed documentation files matching the per-repo `butler.json` config's `doc_paths` patterns, fetches their content via the GitHub Contents API, embeds them, and upserts into the vector store. A cross-reference index (`doc_references` table) tracks `#NNN` issue and `ADR-NNN` document references extracted from content via regex.
+
+The synthesis engine (`internal/synthesis/`) runs three analysers weekly: cluster detection (groups recent issues by embedding cosine similarity via union-find), decision drift detection (flags ADRs contradicted by merged PRs and stale roadmap items), and upstream impact analysis (cross-references new upstream releases against existing ADRs/roadmap). Findings are combined into a `[Briefing]` shadow issue posted to the shadow repo. The `/synthesize` POST endpoint triggers synthesis on demand; a Monday cron workflow triggers it weekly.
+
 For enhancement issues with a configured shadow repo, the bot also starts an agent session. The agent creates a mirror issue and posts a context brief with relevant ADRs, roadmap items, and similar past issues from vector search, plus a short LLM-generated summary. The maintainer can reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge and close the session, or `reject` to discard. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
 
 ## Project Structure
 
 ```
-cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /report, /dashboard)
+cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /ingest, /synthesize, /report, /dashboard)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
 cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js charts, drill-down)
 cmd/seed/main.go              # CLI to import JSON indexes into database
@@ -87,9 +91,20 @@ internal/store/report.go      # Dashboard stats queries
 internal/store/health.go      # Health monitor queries and threshold evaluation
 internal/store/feedback.go    # Feedback signal storage and stats
 internal/store/models.go      # Shared data types (includes agent stage/gate constants)
+internal/store/events.go      # Event journal (repo_events) queries
+internal/store/references.go  # Cross-reference index (doc_references) queries
 internal/agent/handler.go     # Agent handler: context brief (default) and research flows
 internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
 internal/agent/research.go    # Enhancement analysis and research synthesis prompts
+internal/synthesis/types.go   # Synthesizer interface and Finding type
+internal/synthesis/runner.go  # Orchestrates synthesizers, posts briefing to shadow repo
+internal/synthesis/clusters.go # Issue cluster detection (cosine similarity, union-find)
+internal/synthesis/drift.go   # Decision drift and roadmap staleness detection
+internal/synthesis/upstream.go # Upstream impact analysis (release-vs-ADR cross-reference)
+internal/synthesis/briefing.go # Markdown briefing generator
+internal/config/butler.go     # Per-repo butler.json config parser
+internal/config/loader.go     # Config cache with TTL and GitHub Contents API reader
+internal/ingest/embed.go      # Shared document embedding and upsert logic
 internal/safety/structural.go # Deterministic safety validator (length, URLs, mentions)
 internal/safety/llm_validator.go # LLM-based safety reviewer (relevance, tone, injection)
 internal/runner/runner.go     # Runner interface for task execution abstraction
@@ -97,11 +112,15 @@ internal/runner/inprocess.go  # In-process runner (goroutines with context timeo
 scripts/generate-feature-index.sh # Generate seed JSON from teams-for-linux ADRs/research/roadmap
 scripts/generate-upstream-index.sh # Generate seed JSON from upstream dependency releases/changelogs
 data/                         # Seed data (feature index, Electron upstream docs)
-migrations/                   # Database migrations (001-010)
+internal/webhook/journal.go   # Event journal writes from webhook events
+internal/webhook/autoingest.go # Auto-ingest changed docs on push
+migrations/                   # Database migrations (001-012)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
 .github/workflows/dashboard.yml # Daily maintenance: stale cleanup, health check, reaction sync
 .github/workflows/seed.yml    # Manual seed workflow (workflow_dispatch)
+.github/workflows/event-ingest.yml # Daily event ingestion from GitHub API
+.github/workflows/synthesis.yml    # Weekly synthesis briefing cron (Monday 06:00 UTC)
 docs/decisions/               # Architecture decision records
 docs/plans/                   # Implementation plans and design docs
 .golangci.yml                 # Linter configuration
@@ -137,7 +156,7 @@ Phase 1 is pure string parsing (no network calls) and has the most comprehensive
 
 The comment builder produces concise output: no greeting line, a compact footer with a feedback hint. Keep builder output minimal — avoid padding or preamble.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), INGEST_SECRET (optional, authenticates /ingest and /synthesize endpoints; empty disables auth), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
 
 ## Issue Template Headers
 
