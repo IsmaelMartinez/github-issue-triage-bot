@@ -325,7 +325,7 @@ func main() {
 		clusterSynth := synthesis.NewClusterSynthesizer(s)
 		driftSynth := synthesis.NewDriftSynthesizer(s)
 		upstreamSynth := synthesis.NewUpstreamSynthesizer(s)
-		runner := synthesis.NewRunner(ghClient, logger, clusterSynth, driftSynth, upstreamSynth)
+		runner := synthesis.NewRunner(ghClient, s, logger, clusterSynth, driftSynth, upstreamSynth)
 
 		const weeklyLookback = 7 * 24 * time.Hour
 		window := weeklyLookback
@@ -366,6 +366,36 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(stats); err != nil {
 			logger.Error("encoding stats response", "error", err)
+		}
+	})
+	mux.HandleFunc("/report/trends", func(w http.ResponseWriter, r *http.Request) {
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			repo = "IsmaelMartinez/teams-for-linux"
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		weeks := parseWeeksParam(r.URL.Query().Get("weeks"))
+		trends, trendsErr := s.GetWeeklyTrends(r.Context(), repo, weeks)
+		if trends == nil {
+			http.Error(w, "failed to get trends", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			*store.WeeklyTrends
+			Partial bool `json:"partial"`
+		}{
+			WeeklyTrends: trends,
+			Partial:      trendsErr != nil,
+		}
+		if trendsErr != nil {
+			logger.Warn("partial weekly trends", "error", trendsErr, "repo", repo)
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			logger.Error("encoding trends response", "error", err)
 		}
 	})
 	mux.HandleFunc("/api/triage/", func(w http.ResponseWriter, r *http.Request) {
@@ -486,6 +516,17 @@ func validateIngestAuth(authHeader, secret string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(authHeader[len(prefix):]), []byte(secret)) == 1
+}
+
+func parseWeeksParam(s string) int {
+	if s == "" {
+		return store.ClampWeeks(0)
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return store.ClampWeeks(0)
+	}
+	return store.ClampWeeks(n)
 }
 
 func parseShadowRepos(s string) map[string]string {
