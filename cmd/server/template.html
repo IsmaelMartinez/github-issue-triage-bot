@@ -88,6 +88,7 @@
                 <a href="#triage" onclick="showView('triage',this);return false"><span class="dot" id="dot-triage"></span> Triage</a>
                 <a href="#agent" onclick="showView('agent',this);return false"><span class="dot" id="dot-agent"></span> Agent</a>
                 <a href="#system" onclick="showView('system',this);return false"><span class="dot" id="dot-system"></span> System</a>
+                <a href="#trends" onclick="showView('trends',this);return false"><span class="dot" id="dot-trends"></span> Trends</a>
             </nav>
             <div class="sidebar-footer">Updated {{.Generated}}</div>
         </aside>
@@ -126,6 +127,41 @@
                     <div class="panel"><h3>Recent Comments</h3><table id="comments-table"><thead><tr><th>Issue</th><th>Phases</th><th>&#x1F44D;</th><th>&#x1F44E;</th></tr></thead><tbody></tbody></table></div>
                 </div>
             </div>
+            <div id="view-trends" class="view">
+                <h2>12-Week Trends</h2>
+
+                <div class="panel">
+                    <h3>Triage Readiness</h3>
+                    <div class="chart-container" style="height:200px"><canvas id="chart-triage-trend"></canvas></div>
+                    <div id="triage-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No triage data yet</div>
+                </div>
+
+                <div class="two-col">
+                    <div class="panel">
+                        <h3>Phase Hit Rates</h3>
+                        <div class="chart-container"><canvas id="chart-phase-trend"></canvas></div>
+                        <div id="phase-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No phase data yet</div>
+                    </div>
+                    <div class="panel">
+                        <h3>Avg Response Time</h3>
+                        <div class="chart-container"><canvas id="chart-response-trend"></canvas></div>
+                        <div id="response-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No response data yet</div>
+                    </div>
+                </div>
+
+                <div class="two-col">
+                    <div class="panel">
+                        <h3>Agent Sessions</h3>
+                        <div class="chart-container"><canvas id="chart-agent-trend"></canvas></div>
+                        <div id="agent-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No agent data yet</div>
+                    </div>
+                    <div class="panel">
+                        <h3>Synthesis &amp; Feedback</h3>
+                        <div class="chart-container"><canvas id="chart-synth-trend"></canvas></div>
+                        <div id="synth-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No synthesis or feedback data yet</div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
     <div class="modal-overlay" id="modal-overlay">
@@ -156,7 +192,7 @@
     function hCls(v, g, y, hi) { if (v == null) return 'hc-neutral'; if (hi) return v >= g ? 'hc-green' : v >= y ? 'hc-yellow' : 'hc-red'; return v <= g ? 'hc-green' : v <= y ? 'hc-yellow' : 'hc-red'; }
     function addCards(id, cards) { var c = document.getElementById(id); cards.forEach(function(d) { c.appendChild(el('div', {cls: 'health-card ' + d.cls}, [el('div', {cls: 'label', text: d.label}), el('div', {cls: 'value', text: d.value}), d.sub ? el('div', {cls: 'sub', text: d.sub}) : null])); }); }
     function fillTbl(id, rows) { var tb = document.querySelector('#' + id + ' tbody'); rows.forEach(function(r) { var tr = el('tr'); r.forEach(function(c) { var td = el('td'); if (typeof c === 'string' || typeof c === 'number') td.textContent = c; else td.appendChild(c); tr.appendChild(td); }); tb.appendChild(tr); }); }
-    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); if (n === 'triage' && typeof initFeedbackChart === 'function') initFeedbackChart(); }
+    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); if (n === 'triage' && typeof initFeedbackChart === 'function') initFeedbackChart(); if (n === 'trends' && typeof loadTrends === 'function') loadTrends(); }
 
     /* Data */
     var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
@@ -180,6 +216,7 @@
     var pendAg = Object.keys(ag.stage_breakdown).reduce(function(n, k) { return k !== 'complete' ? n + ag.stage_breakdown[k] : n; }, 0);
     setDot('dot-agent', pendAg > 0 ? '#d29922' : '#2ea44f');
     setDot('dot-system', safeRate == null ? '#484f58' : safeRate >= 95 ? '#2ea44f' : safeRate >= 80 ? '#d29922' : '#da3633');
+    setDot('dot-trends', '#484f58');
 
     /* Overview cards */
     addCards('overview-cards', [
@@ -406,6 +443,119 @@
         if (document.getElementById('modal-overlay').classList.contains('open')) return;
         location.reload();
     }, 60000);
+
+    var trendsLoaded = false;
+    function loadTrends() {
+        if (trendsLoaded) return;
+        var repo = document.getElementById('repo-select') ? document.getElementById('repo-select').value : '{{.Repo}}';
+        fetch('/report/trends?repo=' + encodeURIComponent(repo) + '&weeks=12')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                trendsLoaded = true;
+                renderTriageTrend(data.triage);
+                renderPhaseTrend(data.phases);
+                renderResponseTrend(data.response_time);
+                renderAgentTrend(data.agents);
+                renderSynthTrend(data.synthesis, data.feedback);
+            })
+            .catch(function(e) { console.error('Failed to load trends:', e); });
+    }
+
+    function fmtWeek(iso) {
+        var d = new Date(iso + 'T00:00:00');
+        return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+    }
+
+    function isAllZero(arr, keys) {
+        return arr.every(function(row) { return keys.every(function(k) { return (row[k] || 0) === 0; }); });
+    }
+
+    function showEmpty(chartId, emptyId, isEmpty) {
+        document.getElementById(chartId).parentElement.style.display = isEmpty ? 'none' : 'block';
+        document.getElementById(emptyId).style.display = isEmpty ? 'block' : 'none';
+    }
+
+    function renderTriageTrend(data) {
+        if (isAllZero(data, ['total'])) { showEmpty('chart-triage-trend', 'triage-trend-empty', true); return; }
+        showEmpty('chart-triage-trend', 'triage-trend-empty', false);
+        new Chart(document.getElementById('chart-triage-trend'), {
+            data: {
+                labels: data.map(function(d) { return fmtWeek(d.week); }),
+                datasets: [
+                    { type: 'bar', label: 'Sessions', data: data.map(function(d) { return d.total; }), backgroundColor: 'rgba(46,164,79,0.5)', yAxisID: 'y' },
+                    { type: 'line', label: 'Promotion %', data: data.map(function(d) { return Math.round(d.rate * 100); }), borderColor: '#0366d6', yAxisID: 'y1', tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Sessions' } }, y1: { position: 'right', beginAtZero: true, max: 100, title: { display: true, text: '%' }, grid: { drawOnChartArea: false } } } }
+        });
+    }
+
+    function renderPhaseTrend(data) {
+        if (isAllZero(data, ['phase1', 'phase2', 'phase4a'])) { showEmpty('chart-phase-trend', 'phase-trend-empty', true); return; }
+        showEmpty('chart-phase-trend', 'phase-trend-empty', false);
+        new Chart(document.getElementById('chart-phase-trend'), {
+            type: 'line',
+            data: {
+                labels: data.map(function(d) { return fmtWeek(d.week); }),
+                datasets: [
+                    { label: 'Phase 1', data: data.map(function(d) { return Math.round(d.phase1 * 100); }), borderColor: '#2ea44f', tension: 0.3 },
+                    { label: 'Phase 2', data: data.map(function(d) { return Math.round(d.phase2 * 100); }), borderColor: '#0366d6', tension: 0.3 },
+                    { label: 'Phase 4a', data: data.map(function(d) { return Math.round(d.phase4a * 100); }), borderColor: '#6f42c1', tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Hit Rate %' } } } }
+        });
+    }
+
+    function renderResponseTrend(data) {
+        if (isAllZero(data, ['avg_seconds'])) { showEmpty('chart-response-trend', 'response-trend-empty', true); return; }
+        showEmpty('chart-response-trend', 'response-trend-empty', false);
+        new Chart(document.getElementById('chart-response-trend'), {
+            type: 'line',
+            data: {
+                labels: data.map(function(d) { return fmtWeek(d.week); }),
+                datasets: [{ label: 'Avg (seconds)', data: data.map(function(d) { return Math.round(d.avg_seconds * 10) / 10; }), borderColor: '#e36209', fill: true, backgroundColor: 'rgba(227,98,9,0.1)', tension: 0.3 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Seconds' } } } }
+        });
+    }
+
+    function renderAgentTrend(data) {
+        if (isAllZero(data, ['total'])) { showEmpty('chart-agent-trend', 'agent-trend-empty', true); return; }
+        showEmpty('chart-agent-trend', 'agent-trend-empty', false);
+        new Chart(document.getElementById('chart-agent-trend'), {
+            type: 'bar',
+            data: {
+                labels: data.map(function(d) { return fmtWeek(d.week); }),
+                datasets: [
+                    { label: 'Approved', data: data.map(function(d) { return d.approved; }), backgroundColor: '#2ea44f' },
+                    { label: 'Complete', data: data.map(function(d) { return d.complete; }), backgroundColor: '#0366d6' },
+                    { label: 'Pending', data: data.map(function(d) { return d.pending; }), backgroundColor: '#dbab09' },
+                    { label: 'Rejected', data: data.map(function(d) { return d.rejected; }), backgroundColor: '#da3633' }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+        });
+    }
+
+    function renderSynthTrend(synthData, fbData) {
+        var allEmpty = isAllZero(synthData, ['briefings', 'findings']) && isAllZero(fbData, ['edit_fills', 'mentions']);
+        if (allEmpty) { showEmpty('chart-synth-trend', 'synth-trend-empty', true); return; }
+        showEmpty('chart-synth-trend', 'synth-trend-empty', false);
+        new Chart(document.getElementById('chart-synth-trend'), {
+            type: 'line',
+            data: {
+                labels: synthData.map(function(d) { return fmtWeek(d.week); }),
+                datasets: [
+                    { label: 'Briefings', data: synthData.map(function(d) { return d.briefings; }), borderColor: '#6f42c1', tension: 0.3 },
+                    { label: 'Findings', data: synthData.map(function(d) { return d.findings; }), borderColor: '#0366d6', tension: 0.3 },
+                    { label: 'Edit Fills', data: fbData.map(function(d) { return d.edit_fills; }), borderColor: '#2ea44f', borderDash: [5,5], tension: 0.3 },
+                    { label: 'Mentions', data: fbData.map(function(d) { return d.mentions; }), borderColor: '#e36209', borderDash: [5,5], tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+    }
     </script>
 </body>
 </html>
