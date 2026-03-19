@@ -328,8 +328,7 @@ func main() {
 		runner := synthesis.NewRunner(ghClient, s, logger, clusterSynth, driftSynth, upstreamSynth)
 
 		const weeklyLookback = 7 * 24 * time.Hour
-		window := weeklyLookback
-		findingCount, runErr := runner.Run(r.Context(), installID, repo, shadowRepo, window)
+		findingCount, runErr := runner.Run(r.Context(), installID, repo, shadowRepo, weeklyLookback)
 		if runErr != nil {
 			logger.Error("synthesis run failed", "error", runErr, "repo", repo)
 			http.Error(w, "synthesis failed", http.StatusInternalServerError)
