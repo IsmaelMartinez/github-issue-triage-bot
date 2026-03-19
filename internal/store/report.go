@@ -105,6 +105,75 @@ type DailyBucket struct {
 	Count int    `json:"count"`
 }
 
+// ClampWeeks normalises a week count to [1, 52], defaulting 0 or negative to 12.
+func ClampWeeks(w int) int {
+	if w <= 0 {
+		return 12
+	}
+	if w > 52 {
+		return 52
+	}
+	return w
+}
+
+// WeeklyTrends holds multi-metric weekly time-series data for trend reports.
+type WeeklyTrends struct {
+	Repo      string            `json:"repo"`
+	Weeks     int               `json:"weeks"`
+	Triage    []WeeklyTriage    `json:"triage"`
+	Phases    []WeeklyPhases    `json:"phases"`
+	Response  []WeeklyResponse  `json:"response_time"`
+	Agents    []WeeklyAgents    `json:"agents"`
+	Synthesis []WeeklySynthesis `json:"synthesis"`
+	Feedback  []WeeklyFeedback  `json:"feedback"`
+}
+
+// WeeklyTriage tracks triage volume and promotion rate per week.
+type WeeklyTriage struct {
+	Week     string  `json:"week"`
+	Total    int     `json:"total"`
+	Promoted int     `json:"promoted"`
+	Rate     float64 `json:"rate"`
+}
+
+// WeeklyPhases tracks phase hit rates per week.
+type WeeklyPhases struct {
+	Week    string  `json:"week"`
+	Phase1  float64 `json:"phase1"`
+	Phase2  float64 `json:"phase2"`
+	Phase4a float64 `json:"phase4a"`
+}
+
+// WeeklyResponse tracks average response time per week.
+type WeeklyResponse struct {
+	Week       string  `json:"week"`
+	AvgSeconds float64 `json:"avg_seconds"`
+}
+
+// WeeklyAgents tracks agent session outcomes per week.
+type WeeklyAgents struct {
+	Week     string `json:"week"`
+	Total    int    `json:"total"`
+	Approved int    `json:"approved"`
+	Rejected int    `json:"rejected"`
+	Pending  int    `json:"pending"`
+	Complete int    `json:"complete"`
+}
+
+// WeeklySynthesis tracks synthesis output per week.
+type WeeklySynthesis struct {
+	Week      string `json:"week"`
+	Briefings int    `json:"briefings"`
+	Findings  int    `json:"findings"`
+}
+
+// WeeklyFeedback tracks feedback signals per week.
+type WeeklyFeedback struct {
+	Week      string `json:"week"`
+	EditFills int    `json:"edit_fills"`
+	Mentions  int    `json:"mentions"`
+}
+
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
 func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardStats, error) {
 	stats := &DashboardStats{
