@@ -883,7 +883,7 @@ func (s *Store) GetWeeklyTrends(ctx context.Context, repo string, weeks int) (*W
 		LEFT JOIN (
 			SELECT date_trunc('week', created_at) AS week,
 				COUNT(*) AS briefings,
-				COALESCE(SUM((metadata->>'findings')::int), 0) AS findings
+				COALESCE(SUM(CASE WHEN metadata->>'findings' ~ '^\d+$' THEN (metadata->>'findings')::int ELSE 0 END), 0) AS findings
 			FROM repo_events
 			WHERE repo = $2 AND event_type = 'briefing_posted' AND created_at >= $1::timestamptz
 			GROUP BY date_trunc('week', created_at)
