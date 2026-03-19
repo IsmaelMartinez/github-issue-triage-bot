@@ -79,7 +79,7 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <h1>Triage Bot</h1>
-                <select onchange="location.href=this.value">
+                <select id="repo-select" onchange="location.href=this.value">
                     {{range .Repos}}<option value="{{.Href}}"{{if .Active}} selected{{end}}>{{.Label}}</option>{{end}}
                 </select>
             </div>
