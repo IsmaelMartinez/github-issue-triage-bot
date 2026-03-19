@@ -789,6 +789,167 @@ func (s *Store) GetWeeklyTrends(ctx context.Context, repo string, weeks int) (*W
 		}
 	}
 
+	// Query 3: Average response time
+	rows3, err := s.pool.Query(ctx, `
+		SELECT w.week::date, COALESCE(r.avg_secs, 0)
+		FROM generate_series(
+			date_trunc('week', $1::timestamptz),
+			date_trunc('week', NOW()),
+			'1 week'::interval
+		) AS w(week)
+		LEFT JOIN (
+			SELECT date_trunc('week', t.created_at) AS week,
+				AVG(EXTRACT(EPOCH FROM (t.created_at - i.created_at))) AS avg_secs
+			FROM triage_sessions t
+			INNER JOIN issues i ON t.repo = i.repo AND t.issue_number = i.number
+			WHERE t.repo = $2 AND t.created_at >= $1::timestamptz AND t.created_at > i.created_at
+			GROUP BY date_trunc('week', t.created_at)
+		) r ON r.week = w.week
+		ORDER BY w.week
+	`, cutoff, repo)
+	if err != nil {
+		log.Warn("weekly trends: response query failed", "error", err)
+		errs = append(errs, fmt.Errorf("response query: %w", err))
+	} else {
+		defer rows3.Close()
+		for rows3.Next() {
+			var wr WeeklyResponse
+			var d time.Time
+			if err := rows3.Scan(&d, &wr.AvgSeconds); err != nil {
+				log.Warn("weekly trends: response scan failed", "error", err)
+				errs = append(errs, fmt.Errorf("response scan: %w", err))
+				break
+			}
+			wr.Week = d.Format("2006-01-02")
+			result.Response = append(result.Response, wr)
+		}
+		if err := rows3.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("response rows: %w", err))
+		}
+	}
+
+	// Query 4: Agent sessions (stage breakdown)
+	rows4, err := s.pool.Query(ctx, `
+		SELECT w.week::date,
+			COALESCE(a.total, 0), COALESCE(a.approved, 0), COALESCE(a.rejected, 0),
+			COALESCE(a.pending, 0), COALESCE(a.complete, 0)
+		FROM generate_series(
+			date_trunc('week', $1::timestamptz),
+			date_trunc('week', NOW()),
+			'1 week'::interval
+		) AS w(week)
+		LEFT JOIN (
+			SELECT date_trunc('week', created_at) AS week,
+				COUNT(*) AS total,
+				COUNT(CASE WHEN stage = 'approved' THEN 1 END) AS approved,
+				COUNT(CASE WHEN stage = 'revision' THEN 1 END) AS rejected,
+				COUNT(CASE WHEN stage IN ('new', 'clarifying', 'researching', 'review_pending', 'context_brief') THEN 1 END) AS pending,
+				COUNT(CASE WHEN stage = 'complete' THEN 1 END) AS complete
+			FROM agent_sessions
+			WHERE repo = $2 AND created_at >= $1::timestamptz
+			GROUP BY date_trunc('week', created_at)
+		) a ON a.week = w.week
+		ORDER BY w.week
+	`, cutoff, repo)
+	if err != nil {
+		log.Warn("weekly trends: agents query failed", "error", err)
+		errs = append(errs, fmt.Errorf("agents query: %w", err))
+	} else {
+		defer rows4.Close()
+		for rows4.Next() {
+			var wa WeeklyAgents
+			var d time.Time
+			if err := rows4.Scan(&d, &wa.Total, &wa.Approved, &wa.Rejected, &wa.Pending, &wa.Complete); err != nil {
+				log.Warn("weekly trends: agents scan failed", "error", err)
+				errs = append(errs, fmt.Errorf("agents scan: %w", err))
+				break
+			}
+			wa.Week = d.Format("2006-01-02")
+			result.Agents = append(result.Agents, wa)
+		}
+		if err := rows4.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("agents rows: %w", err))
+		}
+	}
+
+	// Query 5: Synthesis briefings (from repo_events)
+	rows5, err := s.pool.Query(ctx, `
+		SELECT w.week::date, COALESCE(b.briefings, 0), COALESCE(b.findings, 0)
+		FROM generate_series(
+			date_trunc('week', $1::timestamptz),
+			date_trunc('week', NOW()),
+			'1 week'::interval
+		) AS w(week)
+		LEFT JOIN (
+			SELECT date_trunc('week', created_at) AS week,
+				COUNT(*) AS briefings,
+				COALESCE(SUM((metadata->>'findings')::int), 0) AS findings
+			FROM repo_events
+			WHERE repo = $2 AND event_type = 'briefing_posted' AND created_at >= $1::timestamptz
+			GROUP BY date_trunc('week', created_at)
+		) b ON b.week = w.week
+		ORDER BY w.week
+	`, cutoff, repo)
+	if err != nil {
+		log.Warn("weekly trends: synthesis query failed", "error", err)
+		errs = append(errs, fmt.Errorf("synthesis query: %w", err))
+	} else {
+		defer rows5.Close()
+		for rows5.Next() {
+			var ws WeeklySynthesis
+			var d time.Time
+			if err := rows5.Scan(&d, &ws.Briefings, &ws.Findings); err != nil {
+				log.Warn("weekly trends: synthesis scan failed", "error", err)
+				errs = append(errs, fmt.Errorf("synthesis scan: %w", err))
+				break
+			}
+			ws.Week = d.Format("2006-01-02")
+			result.Synthesis = append(result.Synthesis, ws)
+		}
+		if err := rows5.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("synthesis rows: %w", err))
+		}
+	}
+
+	// Query 6: Feedback signals
+	rows6, err := s.pool.Query(ctx, `
+		SELECT w.week::date, COALESCE(f.edit_fills, 0), COALESCE(f.mentions, 0)
+		FROM generate_series(
+			date_trunc('week', $1::timestamptz),
+			date_trunc('week', NOW()),
+			'1 week'::interval
+		) AS w(week)
+		LEFT JOIN (
+			SELECT date_trunc('week', created_at) AS week,
+				COUNT(CASE WHEN signal_type = 'issue_edit_filled' THEN 1 END) AS edit_fills,
+				COUNT(CASE WHEN signal_type = 'user_mention' THEN 1 END) AS mentions
+			FROM feedback_signals
+			WHERE repo = $2 AND created_at >= $1::timestamptz
+			GROUP BY date_trunc('week', created_at)
+		) f ON f.week = w.week
+		ORDER BY w.week
+	`, cutoff, repo)
+	if err != nil {
+		log.Warn("weekly trends: feedback query failed", "error", err)
+		errs = append(errs, fmt.Errorf("feedback query: %w", err))
+	} else {
+		defer rows6.Close()
+		for rows6.Next() {
+			var wf WeeklyFeedback
+			var d time.Time
+			if err := rows6.Scan(&d, &wf.EditFills, &wf.Mentions); err != nil {
+				log.Warn("weekly trends: feedback scan failed", "error", err)
+				errs = append(errs, fmt.Errorf("feedback scan: %w", err))
+				break
+			}
+			wf.Week = d.Format("2006-01-02")
+			result.Feedback = append(result.Feedback, wf)
+		}
+		if err := rows6.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("feedback rows: %w", err))
+		}
+	}
+
 	return result, errors.Join(errs...)
 }
 
