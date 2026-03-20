@@ -13,6 +13,7 @@ import (
 type TriageResult struct {
 	IsBug         bool
 	IsEnhancement bool
+	IsDocBug      bool // documentation/meta bug — skip PWA note and debug log prompt
 	Phase1        phases.Phase1Result
 	Phase2        []phases.Suggestion
 	Phase4a       []phases.ContextMatch
@@ -32,8 +33,8 @@ func Build(r TriageResult) string {
 
 	var parts []string
 
-	// PWA reproducibility note (bugs only, before anything else)
-	if r.IsBug && r.Phase1.IsPwaReproducible {
+	// PWA reproducibility note (bugs only, skip for documentation bugs)
+	if r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible {
 		parts = append(parts,
 			"> This bug also occurs on the [Teams web app](https://teams.microsoft.com), "+
 				"which suggests a Microsoft-side issue. Consider reporting to the "+
@@ -97,26 +98,41 @@ func Build(r TriageResult) string {
 	}
 
 	// Missing information checklist (bugs only)
+	// For documentation bugs, skip debug logs and PWA reproducibility — they're irrelevant.
 	if r.IsBug && len(r.Phase1.MissingItems) > 0 {
-		parts = append(parts, "**Missing information:**")
-		for _, item := range r.Phase1.MissingItems {
-			parts = append(parts, fmt.Sprintf("- [ ] **%s** \u2014 %s", item.Label, item.Detail))
+		items := r.Phase1.MissingItems
+		if r.IsDocBug {
+			var filtered []phases.MissingItem
+			for _, item := range items {
+				if item.Label != "Debug console output" && item.Label != "PWA reproducibility" {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
 		}
-		parts = append(parts, "")
+		if len(items) > 0 {
+			parts = append(parts, "**Missing information:**")
+			for _, item := range items {
+				parts = append(parts, fmt.Sprintf("- [ ] **%s** \u2014 %s", item.Label, item.Detail))
+			}
+			parts = append(parts, "")
+		}
 	}
 
-	// Debug instructions (collapsible, only when debug output is missing)
-	for _, item := range r.Phase1.MissingItems {
-		if item.Label == "Debug console output" {
-			parts = append(parts,
-				"<details>\n"+
-					"<summary>How to get debug logs</summary>\n\n"+
-					"```bash\n"+
-					"ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n"+
-					"```\n"+
-					"Reproduce the issue and copy the relevant output.\n\n"+
-					"</details>\n")
-			break
+	// Debug instructions (collapsible, only when debug output is missing and not a doc bug)
+	if !r.IsDocBug {
+		for _, item := range r.Phase1.MissingItems {
+			if item.Label == "Debug console output" {
+				parts = append(parts,
+					"<details>\n"+
+						"<summary>How to get debug logs</summary>\n\n"+
+						"```bash\n"+
+						"ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n"+
+						"```\n"+
+						"Reproduce the issue and copy the relevant output.\n\n"+
+						"</details>\n")
+				break
+			}
 		}
 	}
 

@@ -115,3 +115,30 @@ func TestBuild_Enhancement(t *testing.T) {
 		t.Error("missing roadmap tip link")
 	}
 }
+
+func TestBuild_DocBugSkipsPwaAndDebug(t *testing.T) {
+	r := TriageResult{
+		IsBug:    true,
+		IsDocBug: true,
+		Phase1: phases.Phase1Result{
+			IsPwaReproducible: true,
+			MissingItems: []phases.MissingItem{
+				{Label: "Debug console output", Detail: "Log output"},
+				{Label: "Reproduction steps", Detail: "Steps to trigger"},
+			},
+		},
+	}
+	got := Build(r)
+	if strings.Contains(got, "web app") {
+		t.Error("doc bug should not include PWA note")
+	}
+	if strings.Contains(got, "Debug console output") {
+		t.Error("doc bug should not ask for debug logs")
+	}
+	if strings.Contains(got, "ELECTRON_ENABLE_LOGGING") {
+		t.Error("doc bug should not include debug instructions")
+	}
+	if !strings.Contains(got, "Reproduction steps") {
+		t.Error("doc bug should still include reproduction steps")
+	}
+}
