@@ -447,7 +447,7 @@
     var trendsLoaded = false;
     function loadTrends() {
         if (trendsLoaded) return;
-        var repo = document.getElementById('repo-select') ? document.getElementById('repo-select').value : '{{.Repo}}';
+        var repo = '{{.Repo}}';
         fetch('/report/trends?repo=' + encodeURIComponent(repo) + '&weeks=12')
             .then(function(r) { return r.json(); })
             .then(function(data) {
@@ -462,7 +462,7 @@
     }
 
     function fmtWeek(iso) {
-        var d = new Date(iso + 'T00:00:00');
+        var d = new Date(iso + 'T00:00:00Z');
         return d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
     }
 
