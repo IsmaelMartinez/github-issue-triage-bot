@@ -1,4 +1,4 @@
-> **DEPRECATED**: This design document has been superseded by `docs/plans/2026-03-03-consolidated-design.md`. Do not use this document for planning or implementation.
+> **SUPERSEDED**: This design document has been superseded by `docs/plans/2026-03-03-consolidated-design.md`. Do not use this document for planning or implementation.
 
 # Next Phase Design: Infrastructure, Data Strategy, and Public Dashboard
 
