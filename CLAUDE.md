@@ -72,7 +72,7 @@ For enhancement issues with a configured shadow repo, the bot also starts an age
 ## Project Structure
 
 ```
-cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /ingest, /synthesize, /report, /dashboard)
+cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /ingest, /synthesize, /report, /report/trends, /dashboard)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
 cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js charts, drill-down)
 cmd/seed/main.go              # CLI to import JSON indexes into database
