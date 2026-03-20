@@ -142,3 +142,19 @@ func TestBuild_DocBugSkipsPwaAndDebug(t *testing.T) {
 		t.Error("doc bug should still include reproduction steps")
 	}
 }
+
+func TestBuild_DocBugAllFilteredReturnsEmpty(t *testing.T) {
+	r := TriageResult{
+		IsBug:    true,
+		IsDocBug: true,
+		Phase1: phases.Phase1Result{
+			MissingItems: []phases.MissingItem{
+				{Label: "Debug console output", Detail: "Log output"},
+			},
+		},
+	}
+	got := Build(r)
+	if got != "" {
+		t.Errorf("doc bug with only filtered items should return empty, got: %q", got)
+	}
+}
