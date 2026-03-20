@@ -1,3 +1,5 @@
+> **SUPERSEDED**: The Enhancement Researcher agent was implemented, then simplified by the context brief design (`2026-03-05-enhancement-context-brief.md`) and lean bot pivot (`2026-03-15-lean-bot-pivot-design.md`).
+
 # Dark AI Factory: Enhancement Researcher Agent Design
 
 Date: 2026-03-04

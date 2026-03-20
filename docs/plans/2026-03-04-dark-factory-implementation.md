@@ -1,3 +1,5 @@
+> **SUPERSEDED**: Implemented, then partially superseded by the context brief and lean bot pivot. See current agent code in `internal/agent/`.
+
 # Dark AI Factory: Enhancement Researcher Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

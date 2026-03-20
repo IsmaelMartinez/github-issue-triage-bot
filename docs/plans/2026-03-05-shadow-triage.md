@@ -1,3 +1,5 @@
+> **IMPLEMENTED**: Shadow repo triage is live. All triage comments route through shadow issues for maintainer review before public posting.
+
 # Shadow Triage Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

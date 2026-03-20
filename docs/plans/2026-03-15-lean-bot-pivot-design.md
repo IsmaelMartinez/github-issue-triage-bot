@@ -1,3 +1,5 @@
+> **IMPLEMENTED**: Phases 3 (duplicate detection) and 4b (misclassification) removed in PR #60. Bot focuses on doc-grounded intelligence.
+
 # Lean Bot Pivot: Remove Commodity Phases, Focus on Doc-Grounded Intelligence
 
 Date: 2026-03-15

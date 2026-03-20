@@ -1,3 +1,5 @@
+> **IMPLEMENTED**: All 36 tasks across 9 batches are complete. See the Repository Strategist implementation plan for current work.
+
 # Consolidated Implementation Plan
 
 **Goal:** Harden the triage bot's security, seed the full issue dataset, add a public dashboard, convert to a GitHub App, and cut over to production on teams-for-linux — validating everything iteratively on triage-bot-test-repo.

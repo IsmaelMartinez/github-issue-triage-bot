@@ -1,3 +1,5 @@
+> **IMPLEMENTED**: Live dashboard consolidated in PR #70. Available at /dashboard on Cloud Run.
+
 # Dashboard Consolidation Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.

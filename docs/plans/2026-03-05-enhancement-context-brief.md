@@ -1,3 +1,5 @@
+> **IMPLEMENTED**: Context brief flow is live. Enhancement issues get a lightweight brief with opt-in `research` signal for full synthesis.
+
 # Enhancement Context Brief Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

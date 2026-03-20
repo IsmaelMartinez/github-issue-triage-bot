@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This design has been superseded by the Repository Strategist design (`2026-03-18-repository-strategist-design.md`). All 36 tasks were completed.
+
 # Consolidated Design: Security Hardening, Data, Dashboard, GitHub App, and Cutover
 
 Date: 2026-03-03
