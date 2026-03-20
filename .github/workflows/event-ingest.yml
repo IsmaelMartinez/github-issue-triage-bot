@@ -47,6 +47,9 @@ jobs:
         with:
           workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
           service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
+          token_format: 'id_token'
+          id_token_audience: https://triage-bot-lhuutxzbnq-uc.a.run.app
+          id_token_include_email: true
       - name: Post events to ingest endpoint
         run: |
           EVENT_COUNT=$(jq length /tmp/all_events.json)
@@ -54,8 +57,7 @@ jobs:
             echo "No events to ingest"
             exit 0
           fi
-          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
           curl -sf -X POST "https://triage-bot-lhuutxzbnq-uc.a.run.app/ingest" \
-            -H "Authorization: Bearer $TOKEN" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.id_token }}" \
             -H "Content-Type: application/json" \
             -d @/tmp/all_events.json

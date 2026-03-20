@@ -14,21 +14,20 @@ jobs:
     steps:
       - name: Authenticate to Google Cloud
         id: auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2
         with:
-          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github
+          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
           service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
-          token_format: access_token
+          token_format: 'id_token'
+          id_token_audience: https://triage-bot-lhuutxzbnq-uc.a.run.app
+          id_token_include_email: true
 
       - name: Trigger synthesis
-        env:
-          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
-          CLOUD_RUN_URL: ${{ secrets.CLOUD_RUN_URL }}
         run: |
           echo "Triggering weekly synthesis..."
           HTTP_CODE=$(curl -sf -o /tmp/response.json -w "%{http_code}" \
-            -X POST "${CLOUD_RUN_URL}/synthesize?repo=IsmaelMartinez/teams-for-linux" \
-            -H "Authorization: Bearer ${INGEST_SECRET}" \
+            -X POST "https://triage-bot-lhuutxzbnq-uc.a.run.app/synthesize?repo=IsmaelMartinez/teams-for-linux" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.id_token }}" \
             -H "Content-Type: application/json" 2>/dev/null) || true
 
           echo "Response: $(cat /tmp/response.json 2>/dev/null) (HTTP ${HTTP_CODE})"

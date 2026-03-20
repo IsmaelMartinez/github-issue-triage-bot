@@ -24,23 +24,24 @@ jobs:
         with:
           workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
           service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
+          token_format: 'id_token'
+          id_token_audience: https://triage-bot-lhuutxzbnq-uc.a.run.app
+          id_token_include_email: true
       - name: Close stale shadow issues
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
           curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
-            -H "Authorization: Bearer $TOKEN" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.id_token }}" \
             https://triage-bot-lhuutxzbnq-uc.a.run.app/cleanup \
             || echo "cleanup failed, continuing"
       - name: Run health check
         env:
           DASHBOARD_REPOS: ${{ inputs.repos || 'IsmaelMartinez/teams-for-linux,IsmaelMartinez/triage-bot-test-repo' }}
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
           IFS=',' read -ra REPO_LIST <<< "$DASHBOARD_REPOS"
           for repo in "${REPO_LIST[@]}"; do
             repo=$(echo "$repo" | xargs)
             curl -sf --connect-timeout 10 --max-time 30 --retry 3 --retry-delay 3 --retry-connrefused -X POST \
-              -H "Authorization: Bearer $TOKEN" \
+              -H "Authorization: Bearer ${{ steps.auth.outputs.id_token }}" \
               "https://triage-bot-lhuutxzbnq-uc.a.run.app/health-check?repo=$repo" \
               || echo "health-check failed for $repo, continuing"
           done
