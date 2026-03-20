@@ -42,17 +42,20 @@ jobs:
           jq -s 'add // []' /tmp/events.json /tmp/releases.json > /tmp/all_events.json
           echo "Events to ingest: $(jq length /tmp/all_events.json)"
 
+      - id: auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2
+        with:
+          workload_identity_provider: projects/62054333602/locations/global/workloadIdentityPools/github-actions/providers/github-repo
+          service_account: triage-bot-deploy@gen-lang-client-0421325030.iam.gserviceaccount.com
       - name: Post events to ingest endpoint
-        env:
-          INGEST_SECRET: ${{ secrets.INGEST_SECRET }}
-          CLOUD_RUN_URL: ${{ secrets.CLOUD_RUN_URL }}
         run: |
           EVENT_COUNT=$(jq length /tmp/all_events.json)
           if [ "$EVENT_COUNT" -eq 0 ]; then
             echo "No events to ingest"
             exit 0
           fi
-          curl -sf -X POST "${CLOUD_RUN_URL}/ingest" \
-            -H "Authorization: Bearer ${INGEST_SECRET}" \
+          TOKEN=$(gcloud auth print-identity-token --audiences=https://triage-bot-lhuutxzbnq-uc.a.run.app)
+          curl -sf -X POST "https://triage-bot-lhuutxzbnq-uc.a.run.app/ingest" \
+            -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d @/tmp/all_events.json
