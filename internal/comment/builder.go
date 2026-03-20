@@ -13,6 +13,7 @@ import (
 type TriageResult struct {
 	IsBug         bool
 	IsEnhancement bool
+	IsDocBug      bool // documentation/meta bug — skip PWA note and debug log prompt
 	Phase1        phases.Phase1Result
 	Phase2        []phases.Suggestion
 	Phase4a       []phases.ContextMatch
@@ -21,8 +22,10 @@ type TriageResult struct {
 // Build constructs the consolidated markdown comment from all phase results.
 // Returns empty string if there is nothing to report.
 func Build(r TriageResult) string {
-	hasContent := (r.IsBug && len(r.Phase1.MissingItems) > 0) ||
-		(r.IsBug && r.Phase1.IsPwaReproducible) ||
+	hasPwaNote := r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible
+	missingCount := countRelevantMissing(r)
+	hasContent := (r.IsBug && missingCount > 0) ||
+		hasPwaNote ||
 		len(r.Phase2) > 0 ||
 		len(r.Phase4a) > 0
 
@@ -32,8 +35,8 @@ func Build(r TriageResult) string {
 
 	var parts []string
 
-	// PWA reproducibility note (bugs only, before anything else)
-	if r.IsBug && r.Phase1.IsPwaReproducible {
+	// PWA reproducibility note (bugs only, skip for documentation bugs)
+	if r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible {
 		parts = append(parts,
 			"> This bug also occurs on the [Teams web app](https://teams.microsoft.com), "+
 				"which suggests a Microsoft-side issue. Consider reporting to the "+
@@ -96,18 +99,28 @@ func Build(r TriageResult) string {
 		parts = append(parts, "")
 	}
 
-	// Missing information checklist (bugs only)
+	// Missing information checklist and debug instructions (bugs only, single pass).
+	// For documentation bugs, skip debug logs and PWA reproducibility — they're irrelevant.
 	if r.IsBug && len(r.Phase1.MissingItems) > 0 {
-		parts = append(parts, "**Missing information:**")
+		var displayItems []phases.MissingItem
+		debugMissing := false
 		for _, item := range r.Phase1.MissingItems {
-			parts = append(parts, fmt.Sprintf("- [ ] **%s** \u2014 %s", item.Label, item.Detail))
+			if item.Label == "Debug console output" {
+				debugMissing = true
+			}
+			if r.IsDocBug && (item.Label == "Debug console output" || item.Label == "PWA reproducibility") {
+				continue
+			}
+			displayItems = append(displayItems, item)
 		}
-		parts = append(parts, "")
-	}
-
-	// Debug instructions (collapsible, only when debug output is missing)
-	for _, item := range r.Phase1.MissingItems {
-		if item.Label == "Debug console output" {
+		if len(displayItems) > 0 {
+			parts = append(parts, "**Missing information:**")
+			for _, item := range displayItems {
+				parts = append(parts, fmt.Sprintf("- [ ] **%s** \u2014 %s", item.Label, item.Detail))
+			}
+			parts = append(parts, "")
+		}
+		if !r.IsDocBug && debugMissing {
 			parts = append(parts,
 				"<details>\n"+
 					"<summary>How to get debug logs</summary>\n\n"+
@@ -116,7 +129,6 @@ func Build(r TriageResult) string {
 					"```\n"+
 					"Reproduce the issue and copy the relevant output.\n\n"+
 					"</details>\n")
-			break
 		}
 	}
 
@@ -132,4 +144,17 @@ func Build(r TriageResult) string {
 	}
 
 	return strings.Join(parts, "\n")
+}
+
+// countRelevantMissing returns the number of missing items that will actually
+// be displayed, accounting for doc-bug filtering.
+func countRelevantMissing(r TriageResult) int {
+	count := 0
+	for _, item := range r.Phase1.MissingItems {
+		if r.IsDocBug && (item.Label == "Debug console output" || item.Label == "PWA reproducibility") {
+			continue
+		}
+		count++
+	}
+	return count
 }

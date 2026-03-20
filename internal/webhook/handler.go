@@ -335,6 +335,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	var result comment.TriageResult
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
+	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
 
 	// Phase 1: Missing info (always runs)
 	result.Phase1 = phases.Phase1(issue.Body)
@@ -440,6 +441,7 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	var result comment.TriageResult
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
+	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
 
 	result.Phase1 = phases.Phase1(issue.Body)
 
@@ -688,6 +690,19 @@ func computeFilledSections(oldBody, newBody string) []string {
 		}
 	}
 	return filled
+}
+
+// isDocumentationBug detects bug reports about docs, website, or meta issues
+// where debug logs and PWA reproducibility are irrelevant.
+func isDocumentationBug(title string) bool {
+	lower := strings.ToLower(title)
+	keywords := []string{"documentation", "docs", "readme", "broken link", "typo", "website", "changelog", "contributing"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasLabel(labels []gh.LabelInfo, name string) bool {

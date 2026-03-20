@@ -152,3 +152,30 @@ func TestCollectPhasesRun(t *testing.T) {
 		})
 	}
 }
+
+func TestIsDocumentationBug(t *testing.T) {
+	tests := []struct {
+		title string
+		want  bool
+	}{
+		{"[Bug]: Documentation has broken links", true},
+		{"[Bug]: Docs page returns 404", true},
+		{"[Bug]: README is outdated", true},
+		{"[Bug]: Typo in configuration guide", true},
+		{"[Bug]: Website shows wrong version", true},
+		{"[Bug]: Broken link in FAQ", true},
+		{"[Bug]: CHANGELOG entry missing", true},
+		{"[Bug]: CONTRIBUTING.md is outdated", true},
+		{"[Bug]: App crashes on startup", false},
+		{"[Bug]: Can't login with SSO", false},
+		{"[Bug]: Audio broken after update", false},
+		{"[Feat]: Add dark mode", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			if got := isDocumentationBug(tt.title); got != tt.want {
+				t.Errorf("isDocumentationBug(%q) = %v, want %v", tt.title, got, tt.want)
+			}
+		})
+	}
+}
