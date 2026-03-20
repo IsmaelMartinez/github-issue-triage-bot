@@ -741,12 +741,12 @@ func sanitizeBody(body string, maxLen int) string {
 
 func collectPhasesRun(r comment.TriageResult) []string {
 	var phases []string
-	phases = append(phases, "phase1")
+	phases = append(phases, "missing_info")
 	if r.Phase2 != nil {
-		phases = append(phases, "phase2")
+		phases = append(phases, "doc_search")
 	}
 	if r.Phase4a != nil {
-		phases = append(phases, "phase4a")
+		phases = append(phases, "enhancement_context")
 	}
 	return phases
 }

@@ -202,12 +202,12 @@ func hasLabel(labels []ghLabel, name string) bool {
 
 func collectPhasesRun(r commentpkg.TriageResult) []string {
 	var p []string
-	p = append(p, "phase1")
+	p = append(p, "missing_info")
 	if r.Phase2 != nil {
-		p = append(p, "phase2")
+		p = append(p, "doc_search")
 	}
 	if r.Phase4a != nil {
-		p = append(p, "phase4a")
+		p = append(p, "enhancement_context")
 	}
 	return p
 }

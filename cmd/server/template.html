@@ -491,16 +491,16 @@
     }
 
     function renderPhaseTrend(data) {
-        if (isAllZero(data, ['phase1', 'phase2', 'phase4a'])) { showEmpty('chart-phase-trend', 'phase-trend-empty', true); return; }
+        if (isAllZero(data, ['missing_info', 'doc_search', 'enhancement_context'])) { showEmpty('chart-phase-trend', 'phase-trend-empty', true); return; }
         showEmpty('chart-phase-trend', 'phase-trend-empty', false);
         new Chart(document.getElementById('chart-phase-trend'), {
             type: 'line',
             data: {
                 labels: data.map(function(d) { return fmtWeek(d.week); }),
                 datasets: [
-                    { label: 'Phase 1', data: data.map(function(d) { return Math.round(d.phase1 * 100); }), borderColor: '#2ea44f', tension: 0.3 },
-                    { label: 'Phase 2', data: data.map(function(d) { return Math.round(d.phase2 * 100); }), borderColor: '#0366d6', tension: 0.3 },
-                    { label: 'Phase 4a', data: data.map(function(d) { return Math.round(d.phase4a * 100); }), borderColor: '#6f42c1', tension: 0.3 }
+                    { label: 'Missing Info', data: data.map(function(d) { return Math.round(d.missing_info * 100); }), borderColor: '#2ea44f', tension: 0.3 },
+                    { label: 'Doc Search', data: data.map(function(d) { return Math.round(d.doc_search * 100); }), borderColor: '#0366d6', tension: 0.3 },
+                    { label: 'Enhancement Context', data: data.map(function(d) { return Math.round(d.enhancement_context * 100); }), borderColor: '#6f42c1', tension: 0.3 }
                 ]
             },
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Hit Rate %' } } } }

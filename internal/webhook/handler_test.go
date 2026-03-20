@@ -116,9 +116,9 @@ func TestCollectPhasesRun(t *testing.T) {
 		want   []string
 	}{
 		{
-			name:   "phase1 always included",
+			name:   "missing_info always included",
 			result: comment.TriageResult{},
-			want:   []string{"phase1"},
+			want:   []string{"missing_info"},
 		},
 		{
 			name: "all active phases",
@@ -126,7 +126,7 @@ func TestCollectPhasesRun(t *testing.T) {
 				Phase2:  []phases.Suggestion{{}},
 				Phase4a: []phases.ContextMatch{{}},
 			},
-			want: []string{"phase1", "phase2", "phase4a"},
+			want: []string{"missing_info", "doc_search", "enhancement_context"},
 		},
 		{
 			name: "bug phases only",
@@ -134,7 +134,7 @@ func TestCollectPhasesRun(t *testing.T) {
 				IsBug:  true,
 				Phase2: []phases.Suggestion{{}},
 			},
-			want: []string{"phase1", "phase2"},
+			want: []string{"missing_info", "doc_search"},
 		},
 	}
 

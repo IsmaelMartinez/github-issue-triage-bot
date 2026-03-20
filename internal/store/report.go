@@ -139,10 +139,10 @@ type WeeklyTriage struct {
 
 // WeeklyPhases tracks phase hit rates per week.
 type WeeklyPhases struct {
-	Week    string  `json:"week"`
-	Phase1  float64 `json:"phase1"`
-	Phase2  float64 `json:"phase2"`
-	Phase4a float64 `json:"phase4a"`
+	Week              string  `json:"week"`
+	MissingInfo       float64 `json:"missing_info"`
+	DocSearch         float64 `json:"doc_search"`
+	EnhancementContext float64 `json:"enhancement_context"`
 }
 
 // WeeklyResponse tracks average response time per week.
@@ -751,7 +751,7 @@ func (s *Store) GetWeeklyTrends(ctx context.Context, repo string, weeks int) (*W
 
 	// Query 2: Phase hit rates
 	rows2, err := s.pool.Query(ctx, `
-		SELECT w.week::date, COALESCE(p.phase1, 0), COALESCE(p.phase2, 0), COALESCE(p.phase4a, 0)
+		SELECT w.week::date, COALESCE(p.missing_info, 0), COALESCE(p.doc_search, 0), COALESCE(p.enhancement_context, 0)
 		FROM generate_series(
 			date_trunc('week', $1::timestamptz),
 			date_trunc('week', NOW()),
@@ -759,9 +759,9 @@ func (s *Store) GetWeeklyTrends(ctx context.Context, repo string, weeks int) (*W
 		) AS w(week)
 		LEFT JOIN (
 			SELECT date_trunc('week', ts.created_at) AS week,
-				COUNT(CASE WHEN 'phase1' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS phase1,
-				COUNT(CASE WHEN 'phase2' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS phase2,
-				COUNT(CASE WHEN 'phase4a' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS phase4a
+				COUNT(CASE WHEN 'missing_info' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS missing_info,
+				COUNT(CASE WHEN 'doc_search' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS doc_search,
+				COUNT(CASE WHEN 'enhancement_context' = ANY(ts.phases_run) THEN 1 END)::float / NULLIF(COUNT(*), 0) AS enhancement_context
 			FROM triage_sessions ts
 			WHERE ts.repo = $2 AND ts.created_at >= $1::timestamptz
 			GROUP BY date_trunc('week', ts.created_at)
@@ -776,7 +776,7 @@ func (s *Store) GetWeeklyTrends(ctx context.Context, repo string, weeks int) (*W
 		for rows2.Next() {
 			var wp WeeklyPhases
 			var d time.Time
-			if err := rows2.Scan(&d, &wp.Phase1, &wp.Phase2, &wp.Phase4a); err != nil {
+			if err := rows2.Scan(&d, &wp.MissingInfo, &wp.DocSearch, &wp.EnhancementContext); err != nil {
 				log.Warn("weekly trends: phases scan failed", "error", err)
 				errs = append(errs, fmt.Errorf("phases scan: %w", err))
 				break
