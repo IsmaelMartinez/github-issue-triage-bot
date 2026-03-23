@@ -76,10 +76,6 @@ func (c *Client) doWithRetry(ctx context.Context, method, url string, requestBod
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			// If the caller's context was cancelled, don't retry.
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("send request: %w", err)
-			}
 			if isTransientError(err) {
 				lastErr = err
 				continue
@@ -101,13 +97,21 @@ func (c *Client) doWithRetry(ctx context.Context, method, url string, requestBod
 }
 
 // isTransientError returns true for network errors that are worth retrying:
-// timeouts, connection resets, DNS failures. Caller-initiated context
-// cancellation is excluded via ctx.Err() check in doWithRetry before calling
-// this function; http.Client.Timeout errors satisfy DeadlineExceeded but are
-// transient and should be retried, so we only check net.Error here.
+// timeouts, connection resets, DNS failures. Context cancellation is not
+// transient.
 func isTransientError(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	var netErr net.Error
-	return errors.As(err, &netErr)
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	return false
 }
 
 // GenerateJSON sends a prompt to Gemini and returns the raw JSON response text.

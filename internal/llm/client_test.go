@@ -25,7 +25,7 @@ func TestEmbed_RetriesOnTransientError(t *testing.T) {
 			Embedding: embeddingValues{Values: []float32{0.1, 0.2, 0.3}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -84,7 +84,7 @@ func TestGenerateJSON_RetriesOn429(t *testing.T) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
