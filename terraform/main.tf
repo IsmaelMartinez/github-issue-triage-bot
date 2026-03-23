@@ -342,7 +342,7 @@ resource "google_cloud_run_v2_service" "triage_bot" {
       max_instance_count = 1
     }
 
-    timeout = "30s"
+    timeout = "130s"
   }
 
   depends_on = [google_project_service.run]
