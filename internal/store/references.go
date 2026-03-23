@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"time"
 )
 
 // DocReference represents a cross-reference between documents, issues, or PRs.
@@ -99,6 +100,24 @@ func (s *Store) CountReferencesTo(ctx context.Context, repo, targetType, targetI
 	`, repo, targetType, targetID).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count references to: %w", err)
+	}
+	return count, nil
+}
+
+// CountRecentReferencesInvolving returns the count of references created since
+// the given time where the document appears as either a source (by title) or a
+// target (by target_id). This lets callers determine whether a document is
+// actively being discussed in recent issues or PRs.
+func (s *Store) CountRecentReferencesInvolving(ctx context.Context, repo, docTitle string, since time.Time) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM doc_references
+		WHERE repo = $1
+		  AND created_at >= $2
+		  AND (source_id = $3 OR target_id = $3)
+	`, repo, since, docTitle).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count recent references involving %q: %w", docTitle, err)
 	}
 	return count, nil
 }

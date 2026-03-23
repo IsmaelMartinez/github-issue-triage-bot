@@ -3,6 +3,7 @@ package synthesis
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,7 +45,10 @@ func (d *DriftSynthesizer) Analyze(ctx context.Context, repo string, window time
 	return findings, nil
 }
 
-// detectStaleness finds roadmap and ADR documents that have no recent event references.
+// detectStaleness finds roadmap and ADR documents that haven't been updated
+// within the window but ARE actively referenced in recent issues or PRs.
+// Documents that are settled and not being discussed are left alone — they
+// don't need attention just because they haven't been edited recently.
 func (d *DriftSynthesizer) detectStaleness(ctx context.Context, repo string, window time.Duration) ([]Finding, error) {
 	docs, err := d.store.ListDocumentsByType(ctx, repo, []string{"roadmap", "adr"})
 	if err != nil {
@@ -52,28 +56,58 @@ func (d *DriftSynthesizer) detectStaleness(ctx context.Context, repo string, win
 	}
 
 	cutoff := time.Now().Add(-window)
+	since := cutoff
 	var findings []Finding
 
 	for _, doc := range docs {
-		if isStale(doc, cutoff) {
-			refCount, err := d.store.CountReferencesTo(ctx, repo, "document", fmt.Sprintf("%d", doc.ID))
-			if err != nil {
-				return nil, fmt.Errorf("count refs for doc %d: %w", doc.ID, err)
+		if !isStale(doc, cutoff) {
+			continue
+		}
+
+		// Check if this document has been referenced recently. Use the doc
+		// title as-is (it's recorded as source_id during ingest) and also
+		// try the ADR-NNN pattern (used as target_id when issues reference ADRs).
+		refCount, err := d.store.CountRecentReferencesInvolving(ctx, repo, doc.Title, since)
+		if err != nil {
+			return nil, fmt.Errorf("count recent refs for doc %d: %w", doc.ID, err)
+		}
+		if refCount == 0 {
+			// Also check for ADR-NNN pattern references extracted from the title.
+			if adrRef := extractADRRef(doc.Title); adrRef != "" {
+				adrRefCount, err := d.store.CountRecentReferencesInvolving(ctx, repo, adrRef, since)
+				if err != nil {
+					return nil, fmt.Errorf("count recent ADR refs for doc %d: %w", doc.ID, err)
+				}
+				refCount = adrRefCount
 			}
-			if refCount == 0 {
-				findings = append(findings, Finding{
-					Type:       "staleness",
-					Severity:   "info",
-					Title:      fmt.Sprintf("%s %q has no recent activity", strings.ToUpper(doc.DocType), doc.Title),
-					Evidence:   []string{fmt.Sprintf("doc_id=%d", doc.ID), fmt.Sprintf("last_updated=%s", doc.UpdatedAt.Format("2006-01-02"))},
-					Suggestion: fmt.Sprintf("Review whether this %s item is still relevant or should be archived.", doc.DocType),
-				})
-			}
+		}
+
+		// Only flag if the document is actively being discussed but not updated.
+		if refCount > 0 {
+			findings = append(findings, Finding{
+				Type:     "staleness",
+				Severity: "info",
+				Title:    fmt.Sprintf("%s %q is referenced in recent activity but has not been updated", strings.ToUpper(doc.DocType), doc.Title),
+				Evidence: []string{
+					fmt.Sprintf("doc_id=%d", doc.ID),
+					fmt.Sprintf("last_updated=%s", doc.UpdatedAt.Format("2006-01-02")),
+					fmt.Sprintf("recent_references=%d", refCount),
+				},
+				Suggestion: fmt.Sprintf("Review whether this %s needs updating to reflect recent discussions.", doc.DocType),
+			})
 		}
 	}
 
 	return findings, nil
 }
+
+// extractADRRef extracts an "ADR-NNN" reference from a document title, if present.
+func extractADRRef(title string) string {
+	match := adrTitleRe.FindString(title)
+	return match
+}
+
+var adrTitleRe = regexp.MustCompile(`ADR-\d+`)
 
 // isStale returns true if the document has not been updated since the cutoff time.
 func isStale(doc store.Document, cutoff time.Time) bool {

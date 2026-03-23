@@ -9,7 +9,11 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
-const upstreamSimilarityThreshold = 0.45
+const upstreamSimilarityThreshold = 0.30
+
+// maxFindingsPerUpstream caps how many ADR/roadmap matches a single upstream
+// change can produce, preventing one broad upstream doc from dominating the briefing.
+const maxFindingsPerUpstream = 3
 
 // UpstreamSynthesizer detects upstream dependency changes that may impact
 // project decisions (ADRs, roadmap items, research docs).
@@ -47,6 +51,7 @@ func (u *UpstreamSynthesizer) Analyze(ctx context.Context, repo string, window t
 			return nil, fmt.Errorf("finding similar docs for %q: %w", doc.Title, err)
 		}
 
+		matched := 0
 		for _, match := range similar {
 			if match.Distance >= upstreamSimilarityThreshold {
 				continue
@@ -67,6 +72,11 @@ func (u *UpstreamSynthesizer) Analyze(ctx context.Context, repo string, window t
 				},
 				Suggestion: fmt.Sprintf("Review %q in light of upstream change %q.", match.Title, doc.Title),
 			})
+
+			matched++
+			if matched >= maxFindingsPerUpstream {
+				break
+			}
 		}
 	}
 
