@@ -3,6 +3,7 @@ package config
 import "encoding/json"
 
 type ButlerConfig struct {
+	Enabled          *bool              `json:"enabled"` // nil treated as true (kill switch)
 	Capabilities     Capabilities       `json:"capabilities"`
 	DocPaths         []string           `json:"doc_paths"`
 	Upstream         []UpstreamDep      `json:"upstream"`
@@ -10,6 +11,11 @@ type ButlerConfig struct {
 	ShadowRepo       string             `json:"shadow_repo"`
 	Thresholds       map[string]float64 `json:"thresholds"`
 	MaxDailyLLMCalls int                `json:"max_daily_llm_calls"`
+}
+
+// IsEnabled returns false only when Enabled is explicitly set to false.
+func (c ButlerConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 type Capabilities struct {

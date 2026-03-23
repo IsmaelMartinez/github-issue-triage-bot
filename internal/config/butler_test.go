@@ -73,3 +73,34 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("default MaxDailyLLMCalls = %d, want 50", c.MaxDailyLLMCalls)
 	}
 }
+
+func TestIsEnabled(t *testing.T) {
+	// Default (nil Enabled) should be enabled
+	c := DefaultConfig()
+	if !c.IsEnabled() {
+		t.Error("default config should be enabled")
+	}
+
+	// Explicit true
+	trueVal := true
+	c.Enabled = &trueVal
+	if !c.IsEnabled() {
+		t.Error("explicit true should be enabled")
+	}
+
+	// Explicit false (kill switch)
+	falseVal := false
+	c.Enabled = &falseVal
+	if c.IsEnabled() {
+		t.Error("explicit false should be disabled")
+	}
+
+	// Parsed from JSON with enabled: false
+	cfg, err := Parse([]byte(`{"enabled": false}`))
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if cfg.IsEnabled() {
+		t.Error("parsed enabled:false should be disabled")
+	}
+}

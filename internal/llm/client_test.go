@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -144,5 +145,64 @@ func TestEmbed_RespectsContextCancellation(t *testing.T) {
 	_, err := c.Embed(ctx, "hello")
 	if err == nil {
 		t.Fatal("expected error on cancelled context")
+	}
+}
+
+func TestDailyLimit_BlocksAfterLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := embeddingResponse{
+			Embedding: embeddingValues{Values: []float32{0.1, 0.2, 0.3}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c := New("test-key", slog.Default())
+	c.baseURL = srv.URL
+	c.httpClient = srv.Client()
+	c.SetDailyLimit(2)
+
+	// First two calls should succeed
+	_, err := c.Embed(context.Background(), "hello")
+	if err != nil {
+		t.Fatalf("first call should succeed: %v", err)
+	}
+	_, err = c.Embed(context.Background(), "world")
+	if err != nil {
+		t.Fatalf("second call should succeed: %v", err)
+	}
+
+	// Third call should fail
+	_, err = c.Embed(context.Background(), "blocked")
+	if err != ErrDailyLimitExceeded {
+		t.Fatalf("expected ErrDailyLimitExceeded, got: %v", err)
+	}
+
+	if c.DailyCount() != 2 {
+		t.Fatalf("expected count 2, got %d", c.DailyCount())
+	}
+}
+
+func TestDailyLimit_ZeroMeansUnlimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := embeddingResponse{
+			Embedding: embeddingValues{Values: []float32{0.1, 0.2, 0.3}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c := New("test-key", slog.Default())
+	c.baseURL = srv.URL
+	c.httpClient = srv.Client()
+	// No SetDailyLimit call — default 0 means unlimited
+
+	for i := range 5 {
+		_, err := c.Embed(context.Background(), fmt.Sprintf("call %d", i))
+		if err != nil {
+			t.Fatalf("call %d should succeed with no limit: %v", i, err)
+		}
 	}
 }

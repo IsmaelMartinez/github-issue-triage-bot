@@ -10,8 +10,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
+
+// ErrDailyLimitExceeded is returned when the daily LLM call limit is reached.
+var ErrDailyLimitExceeded = errors.New("daily LLM call limit exceeded")
 
 // Provider defines the LLM operations that triage phases require.
 type Provider interface {
@@ -37,6 +41,9 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	logger     *slog.Logger
+	dailyLimit int32         // 0 means unlimited
+	dailyCount atomic.Int32
+	limitDay   atomic.Int64  // Unix day (seconds / 86400) when counter was last reset
 }
 
 // New creates a new LLM client.
@@ -48,6 +55,41 @@ func New(apiKey string, logger *slog.Logger) *Client {
 		},
 		baseURL: defaultBaseURL,
 		logger:  logger,
+	}
+}
+
+// SetDailyLimit sets the maximum number of LLM API calls per day. 0 means unlimited.
+func (c *Client) SetDailyLimit(limit int) {
+	c.dailyLimit = int32(limit)
+}
+
+// DailyCount returns the current day's LLM call count.
+func (c *Client) DailyCount() int {
+	c.resetIfNewDay()
+	return int(c.dailyCount.Load())
+}
+
+func (c *Client) checkAndIncrementDaily() error {
+	if c.dailyLimit <= 0 {
+		return nil
+	}
+	c.resetIfNewDay()
+	count := c.dailyCount.Add(1)
+	if count > c.dailyLimit {
+		c.dailyCount.Add(-1) // roll back
+		c.logger.Warn("daily LLM call limit reached", "limit", c.dailyLimit, "count", count-1)
+		return ErrDailyLimitExceeded
+	}
+	return nil
+}
+
+func (c *Client) resetIfNewDay() {
+	today := time.Now().Unix() / 86400
+	lastDay := c.limitDay.Load()
+	if today != lastDay {
+		if c.limitDay.CompareAndSwap(lastDay, today) {
+			c.dailyCount.Store(0)
+		}
 	}
 }
 
@@ -112,6 +154,9 @@ func isTransientError(err error) bool {
 
 // GenerateJSON sends a prompt to Gemini and returns the raw JSON response text.
 func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature float64, maxTokens int) (string, error) {
+	if err := c.checkAndIncrementDaily(); err != nil {
+		return "", err
+	}
 	start := time.Now()
 	c.logger.Info("llm GenerateJSON start")
 	defer func() {
@@ -161,6 +206,9 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 // GenerateJSONWithSystem sends user content to Gemini with a trusted system instruction
 // and returns the raw JSON response text.
 func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userContent string, temperature float64, maxTokens int) (string, error) {
+	if err := c.checkAndIncrementDaily(); err != nil {
+		return "", err
+	}
 	start := time.Now()
 	c.logger.Info("llm GenerateJSONWithSystem start")
 	defer func() {
@@ -212,6 +260,9 @@ func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userC
 
 // Embed generates an embedding for the given text using Gemini's embedding model.
 func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
+	if err := c.checkAndIncrementDaily(); err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	c.logger.Info("llm Embed start")
 	defer func() {
