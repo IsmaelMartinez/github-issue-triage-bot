@@ -305,7 +305,7 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		actionErr = h.retryContextBrief(ctx, installationID, sess, title, body, log)
 	case store.StageClarifying:
 		actionErr = h.handleClarifyingResponse(ctx, installationID, sess, commentBody, log)
-	case store.StageReviewPending:
+	case store.StageReviewPending, store.StageRevision:
 		actionErr = h.handleReviewResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
 	case store.StageContextBrief:
 		actionErr = h.handleContextBriefResponse(ctx, installationID, sess, signal, commentBody, commentUser, log)
