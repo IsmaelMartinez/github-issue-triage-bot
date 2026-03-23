@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 )
@@ -19,12 +21,14 @@ type Provider interface {
 }
 
 const (
-	defaultBaseURL       = "https://generativelanguage.googleapis.com/v1beta"
-	defaultHTTPTimeout   = 60 * time.Second
-	generationModel      = "gemini-2.5-flash"
-	embeddingModel       = "gemini-embedding-001"
+	defaultBaseURL          = "https://generativelanguage.googleapis.com/v1beta"
+	defaultHTTPTimeout      = 60 * time.Second
+	generationModel         = "gemini-2.5-flash"
+	embeddingModel          = "gemini-embedding-001"
 	embeddingDimensionality = 768
-	maxErrorBodyBytes    = 4096
+	maxErrorBodyBytes       = 4096
+	maxRetries              = 3
+	retryBaseDelay          = 1 * time.Second
 )
 
 // Client wraps the Gemini API for text generation and embeddings.
@@ -45,6 +49,65 @@ func New(apiKey string, logger *slog.Logger) *Client {
 		baseURL: defaultBaseURL,
 		logger:  logger,
 	}
+}
+
+// doWithRetry executes an HTTP request with retries for transient errors
+// (network timeouts, connection resets, 429, 5xx). The requestBody is re-read
+// on each attempt since the reader is consumed.
+func (c *Client) doWithRetry(ctx context.Context, method, url string, requestBody []byte) (*http.Response, error) {
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			delay := retryBaseDelay * time.Duration(1<<(attempt-1))
+			c.logger.Info("retrying request", "attempt", attempt+1, "delay", delay, "lastError", lastErr)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(requestBody))
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-goog-api-key", c.apiKey)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			// If the caller's context was cancelled, don't retry.
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("send request: %w", err)
+			}
+			if isTransientError(err) {
+				lastErr = err
+				continue
+			}
+			return nil, fmt.Errorf("send request: %w", err)
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode >= http.StatusInternalServerError {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+			resp.Body.Close()
+			lastErr = fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
+			continue
+		}
+
+		return resp, nil
+	}
+	return nil, fmt.Errorf("send request (after %d retries): %w", maxRetries, lastErr)
+}
+
+// isTransientError returns true for network errors that are worth retrying:
+// timeouts, connection resets, DNS failures. Caller-initiated context
+// cancellation is excluded via ctx.Err() check in doWithRetry before calling
+// this function; http.Client.Timeout errors satisfy DeadlineExceeded but are
+// transient and should be retried, so we only check net.Error here.
+func isTransientError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 // GenerateJSON sends a prompt to Gemini and returns the raw JSON response text.
@@ -72,16 +135,9 @@ func (c *Client) GenerateJSON(ctx context.Context, prompt string, temperature fl
 	}
 
 	url := fmt.Sprintf("%s/models/%s:generateContent", c.baseURL, generationModel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	resp, err := c.doWithRetry(ctx, http.MethodPost, url, raw)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", c.apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("send request: %w", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -131,16 +187,9 @@ func (c *Client) GenerateJSONWithSystem(ctx context.Context, systemPrompt, userC
 	}
 
 	url := fmt.Sprintf("%s/models/%s:generateContent", c.baseURL, generationModel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	resp, err := c.doWithRetry(ctx, http.MethodPost, url, raw)
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", c.apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("send request: %w", err)
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -183,16 +232,9 @@ func (c *Client) Embed(ctx context.Context, text string) ([]float32, error) {
 	}
 
 	url := fmt.Sprintf("%s/models/%s:embedContent", c.baseURL, embeddingModel)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	resp, err := c.doWithRetry(ctx, http.MethodPost, url, raw)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", c.apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
