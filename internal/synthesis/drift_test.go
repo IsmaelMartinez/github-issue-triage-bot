@@ -204,6 +204,28 @@ func TestBuildADRAreaIndex(t *testing.T) {
 	}
 }
 
+func TestExtractADRRef(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"ADR-001 Use Gemini as LLM", "ADR-001"},
+		{"ADR-012 Authentication flow", "ADR-012"},
+		{"Roadmap 2026 Q1", ""},
+		{"some adr without prefix", ""},
+		{"Contains ADR-99 in middle", "ADR-99"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			got := extractADRRef(tt.title)
+			if got != tt.want {
+				t.Errorf("extractADRRef(%q) = %q, want %q", tt.title, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTokenize(t *testing.T) {
 	tests := []struct {
 		input string

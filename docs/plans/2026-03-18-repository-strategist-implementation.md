@@ -2098,23 +2098,26 @@ git commit -m "feat: wire synthesizers into /synthesize endpoint with weekly cro
 
 ---
 
-## Batch 3: Strategic Output (Month 3)
+## Batch 3: Strategic Output (Month 3) — revised 2026-03-23
 
-### Task 16: Roadmap Task Generator
+> **Revision note:** Tasks 16 and 18 have been delegated to [repo-butler](https://github.com/IsmaelMartinez/repo-butler), which already handles roadmap proposals (IDEATE+PROPOSE phases) and portfolio reporting (ASSESS+REPORT phases). This bot focuses on the intelligence layer: synthesis analysis, ADR lifecycle, and enriching `/report/trends` so repo-butler can consume the findings. See roadmap for the full rationale.
+
+### ~~Task 16: Roadmap Task Generator~~ — DELEGATED to repo-butler
+
+Repo-butler's IDEATE+PROPOSE phases already generate LLM-powered improvement ideas as GitHub issues with priority sorting and approval gates. Instead of duplicating this, Task 16a (below) enriches `/report/trends` so repo-butler can use cluster findings as IDEATE input context.
+
+### Task 16a: Enrich /report/trends for repo-butler integration
 
 **Files:**
-- Create: `internal/synthesis/roadmap.go`
-- Create: `internal/synthesis/roadmap_test.go`
-- Modify: `internal/agent/orchestrator.go` — extend approval signals for `accept`/`revise`/`reject` on `[Roadmap Proposal]` issues
+- Modify: `internal/store/report.go` — add queries for recent cluster findings, drift signals, and upstream impacts
+- Modify: `cmd/server/main.go` — extend `/report/trends` response with structured synthesis data
 
-Builds on cluster detection. When a cluster crosses the threshold (5 issues in 30 days, no ADR/roadmap coverage), drafts a roadmap task and posts it as a shadow issue.
+Expose synthesis findings as JSON so repo-butler's ASSESS phase can incorporate them into portfolio reports and IDEATE can use cluster data as context for generating better proposals.
 
 - [ ] **Step 1-5: Implement, test, commit**
 
-Follow the synthesizer pattern. The roadmap generator calls the LLM to draft the proposal text (title + problem statement + suggested priority). Posted as `[Roadmap Proposal] ...` to the shadow repo. Approval signals (`accept`, `revise`, `reject`) are handled by extending the orchestrator's signal parsing.
-
 ```bash
-git commit -m "feat: add roadmap task generator with shadow repo approval"
+git commit -m "feat: enrich /report/trends with synthesis findings for repo-butler"
 ```
 
 ---
@@ -2135,20 +2138,9 @@ git commit -m "feat: add ADR revision proposals and gap detection"
 
 ---
 
-### Task 18: State of the Project Monthly Briefing
+### ~~Task 18: State of the Project Monthly Briefing~~ — DELEGATED to repo-butler
 
-**Files:**
-- Create: `internal/synthesis/state.go`
-- Create: `internal/synthesis/state_test.go`
-- Modify: `internal/synthesis/runner.go` — add monthly schedule support
-
-Monthly synthesis that combines all weekly findings, issue trends, roadmap progress, and upstream signals into a strategic summary. Calls the LLM to generate flowing prose.
-
-- [ ] **Step 1-5: Implement, test, commit**
-
-```bash
-git commit -m "feat: add monthly state-of-the-project briefing"
-```
+Repo-butler's ASSESS+REPORT phases already produce per-repo HTML dashboards with PR velocity, issue trends, release cadence, and weekly trend computation deployed to GitHub Pages. Monthly briefings would duplicate this. Instead, Task 16a enriches `/report/trends` so repo-butler can incorporate synthesis findings (clusters, drift, upstream signals) into its richer portfolio reports.
 
 ---
 
@@ -2217,6 +2209,8 @@ git commit -m "feat: add LLM daily usage budget tracker"
 |-------|-------|------------------|
 | 1 (Month 1) | 1-10 | butler.json config, event journal, auto-ingest, cross-reference index |
 | 2 (Month 2) | 11-15 | Synthesis engine, cluster detection, drift detection, upstream impact, weekly briefings |
-| 3 (Month 3) | 16-21 | Roadmap proposals, ADR lifecycle, monthly briefings, dashboard, multi-repo docs |
+| 3 (Month 3, revised) | 16a, 17, 19-21 | Enrich /report/trends for repo-butler, ADR lifecycle, dashboard metrics, multi-repo docs, LLM budget (done) |
 
-Each batch produces independently testable, deployable code. Month 1 can run in production with no visible change to users (events are journaled silently). Month 2 starts producing weekly briefings in the shadow repo. Month 3 adds proactive strategic recommendations.
+Tasks 16 (roadmap proposals) and 18 (monthly briefings) delegated to repo-butler (2026-03-23). This bot provides the intelligence layer via API; repo-butler handles presentation and action.
+
+Each batch produces independently testable, deployable code. Month 1 can run in production with no visible change to users (events are journaled silently). Month 2 starts producing weekly briefings in the shadow repo. Month 3 enriches the API surface for repo-butler integration and adds ADR lifecycle management.

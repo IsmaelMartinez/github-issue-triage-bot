@@ -89,6 +89,12 @@ func main() {
 
 	// Initialize clients
 	llmClient := llm.New(geminiAPIKey, logger)
+	if envLimit := os.Getenv("MAX_DAILY_LLM_CALLS"); envLimit != "" {
+		if limit, err := strconv.Atoi(envLimit); err == nil && limit > 0 {
+			llmClient.SetDailyLimit(limit)
+			logger.Info("LLM daily call limit set from env", "limit", limit)
+		}
+	}
 	ghClient := gh.New(appID, privateKey)
 
 	// Parse shadow repos configuration
@@ -288,6 +294,55 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"ingested":%d}`, len(events))
+	})
+
+	mux.HandleFunc("/pause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			http.Error(w, "missing repo parameter", http.StatusBadRequest)
+			return
+		}
+		paused := !strings.HasSuffix(r.URL.Path, "/unpause")
+		if err := s.SetPaused(r.Context(), repo, paused, "api"); err != nil {
+			http.Error(w, "failed to set pause state", http.StatusInternalServerError)
+			return
+		}
+		state := "paused"
+		if !paused {
+			state = "unpaused"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"repo":%q,"status":%q}`, repo, state)
+	})
+
+	mux.HandleFunc("/unpause", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		repo := r.URL.Query().Get("repo")
+		if repo == "" {
+			http.Error(w, "missing repo parameter", http.StatusBadRequest)
+			return
+		}
+		if err := s.SetPaused(r.Context(), repo, false, "api"); err != nil {
+			http.Error(w, "failed to set pause state", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"repo":%q,"status":"unpaused"}`, repo)
 	})
 
 	mux.HandleFunc("/synthesize", func(w http.ResponseWriter, r *http.Request) {

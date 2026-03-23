@@ -208,6 +208,24 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 		}
 	}
 
+	// Handle /pause and /unpause commands
+	trimmed := strings.TrimSpace(commentBody)
+	if trimmed == "/pause" || trimmed == "/unpause" {
+		paused := trimmed == "/pause"
+		if err := h.store.SetPaused(ctx, repo, paused, commentUser); err != nil {
+			log.Error("setting pause state", "error", err)
+		} else {
+			state := "paused"
+			if !paused {
+				state = "unpaused"
+			}
+			msg := fmt.Sprintf("Bot %s for `%s` by @%s.", state, repo, commentUser)
+			_, _ = h.github.CreateComment(ctx, installationID, repo, issueNumber, msg)
+			log.Info("bot pause state changed", "paused", paused, "by", commentUser)
+		}
+		return
+	}
+
 	// Check triage session first
 	handled, err := h.handleTriageComment(ctx, installationID, repo, issueNumber, commentBody)
 	if err != nil {
@@ -290,6 +308,28 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	issueLog := h.logger.With("repo", repo, "issue", issue.Number)
 	issueLog.Info("processing new issue")
 
+	// Check pause status
+	paused, err := h.store.IsPaused(ctx, repo)
+	if err != nil {
+		issueLog.Error("checking pause status", "error", err)
+	}
+	if paused {
+		issueLog.Info("bot is paused for this repo, skipping")
+		return
+	}
+
+	// Check butler.json kill switch and capabilities
+	cfg := h.getConfig(ctx, installationID, repo)
+	if !cfg.IsEnabled() {
+		issueLog.Info("bot is disabled via butler.json, skipping")
+		return
+	}
+
+	// Set LLM daily limit from config
+	if llmClient, ok := h.llm.(*llm.Client); ok {
+		llmClient.SetDailyLimit(cfg.MaxDailyLLMCalls)
+	}
+
 	// Skip bot accounts
 	if strings.Contains(issue.User.Login, "[bot]") || strings.HasSuffix(issue.User.Login, "-bot") {
 		issueLog.Info("skipping bot account", "user", issue.User.Login)
@@ -331,17 +371,23 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
 	issueLog.Info("issue classification", "isBug", isBug, "isEnhancement", isEnhancement, "labelCount", len(issue.Labels))
 
-	// Run phases
+	// Run phases (only if triage capability is enabled)
 	var result comment.TriageResult
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
 	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
 
-	// Phase 1: Missing info (always runs)
-	result.Phase1 = phases.Phase1(issue.Body)
+	if !cfg.Capabilities.Triage {
+		issueLog.Info("triage capability disabled, skipping phases")
+	}
+
+	// Phase 1: Missing info (always runs when triage enabled)
+	if cfg.Capabilities.Triage {
+		result.Phase1 = phases.Phase1(issue.Body)
+	}
 
 	// Phase 2: Solution suggestions (bugs only)
-	if isBug {
+	if isBug && cfg.Capabilities.Triage {
 		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
@@ -351,7 +397,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	}
 
 	// Phase 4a: Enhancement context (enhancements only)
-	if isEnhancement {
+	if isEnhancement && cfg.Capabilities.Triage {
 		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			issueLog.Error("phase 4a failed", "error", err)
@@ -411,8 +457,8 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		issueLog.Info("nothing to report in triage comment")
 	}
 
-	// Start agent session for enhancements with shadow repo
-	if isEnhancement {
+	// Start agent session for enhancements with shadow repo (requires research capability)
+	if isEnhancement && cfg.Capabilities.Research {
 		if shadowRepo, ok := h.shadowRepos[repo]; ok {
 			issueLog.Info("starting agent session", "shadowRepo", shadowRepo)
 			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body); err != nil {

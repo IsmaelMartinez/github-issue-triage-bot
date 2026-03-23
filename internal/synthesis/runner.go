@@ -37,6 +37,12 @@ func (r *Runner) Run(ctx context.Context, installationID int64, repo, shadowRepo
 		allFindings = append(allFindings, findings...)
 	}
 
+	// Skip posting if no findings are actionable (all "info" or empty severity).
+	if !hasActionableFindings(allFindings) {
+		r.logger.Info("quiet week, no briefing posted", "repo", repo, "findings", len(allFindings))
+		return 0, nil
+	}
+
 	date := time.Now().Format("2006-01-02")
 	briefing := BuildBriefing(date, allFindings)
 	title := fmt.Sprintf("[Briefing] Weekly — %s", date)
@@ -68,4 +74,14 @@ func (r *Runner) Run(ctx context.Context, installationID int64, repo, shadowRepo
 
 	r.logger.Info("briefing posted", "repo", repo, "findings", len(allFindings))
 	return len(allFindings), nil
+}
+
+// hasActionableFindings returns true if any finding has severity "warning" or "action_needed".
+func hasActionableFindings(findings []Finding) bool {
+	for _, f := range findings {
+		if f.Severity == "warning" || f.Severity == "action_needed" {
+			return true
+		}
+	}
+	return false
 }
