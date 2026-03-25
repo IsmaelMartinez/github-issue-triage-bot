@@ -15,6 +15,7 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/agent"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/config"
+	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/codenav"
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
@@ -44,6 +45,7 @@ type Handler struct {
 	mirror        *mirror.Service
 	configCaches  map[string]*config.Cache
 	configMu      sync.Mutex
+	codeNav       *codenav.Navigator
 }
 
 // New creates a new webhook Handler.
@@ -56,6 +58,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 	})
 	llmSafety := safety.NewLLMValidator(l)
 	agentHandler := agent.NewAgentHandler(s, l, g, structural, llmSafety, logger)
+	codeNav := codenav.New(g, l, logger)
 
 	return &Handler{
 		webhookSecret: webhookSecret,
@@ -69,6 +72,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		shadowRepos:   shadowRepos,
 		mirror:        mirrorSvc,
 		configCaches:  make(map[string]*config.Cache),
+		codeNav:       codeNav,
 	}
 }
 
@@ -386,9 +390,20 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		result.Phase1 = phases.Phase1(issue.Body)
 	}
 
+	// Code navigation: fetch relevant source files for Phase 2 context
+	var codeCtx string
+	if cfg.Capabilities.CodeNavigation {
+		cc, err := h.codeNav.Navigate(ctx, installationID, dataRepo, issue.Title, issue.Body)
+		if err != nil {
+			issueLog.Error("code navigation failed", "error", err)
+		} else {
+			codeCtx = cc.FormatForPrompt()
+		}
+	}
+
 	// Phase 2: Solution suggestions (bugs only)
 	if isBug && cfg.Capabilities.Triage {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "")
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx)
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
 		}
