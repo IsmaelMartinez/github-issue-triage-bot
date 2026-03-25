@@ -2,16 +2,21 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // IsPaused returns whether the bot is paused for a given repo.
 func (s *Store) IsPaused(ctx context.Context, repo string) (bool, error) {
 	var paused bool
 	err := s.pool.QueryRow(ctx, `SELECT paused FROM bot_settings WHERE repo = $1`, repo).Scan(&paused)
-	if err != nil {
-		// No row means not paused
+	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
+	}
+	if err != nil {
+		return false, err
 	}
 	return paused, nil
 }

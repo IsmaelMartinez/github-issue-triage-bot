@@ -13,8 +13,11 @@ import (
 )
 
 const (
-	maxFilesToFetch = 5
-	maxFileSize     = 8000
+	maxFilesToFetch   = 5
+	maxFileSize       = 8000
+	maxTreePromptSize = 20000
+	maxIssueTitleSize = 200
+	maxIssueBodySize  = 1500
 )
 
 // FileContent holds the path and decoded content of a source file.
@@ -77,6 +80,9 @@ func (n *Navigator) Navigate(ctx context.Context, installationID int64, repo, ti
 	}
 
 	tree := FormatTreeForLLM(filtered)
+	if len(tree) > maxTreePromptSize {
+		tree = tree[:maxTreePromptSize] + "\n  ... (truncated)\n"
+	}
 
 	systemPrompt := `You are analysing a bug report for a desktop application. Given the bug report and the repository's source file tree, identify the 3-5 most relevant source files that would help diagnose or understand this issue.
 
@@ -90,7 +96,8 @@ Return a JSON array of file paths, most relevant first. Only include files from 
 Example: ["app/browser/tools/tokenCache.js", "app/config/index.js"]
 Respond with ONLY valid JSON, no other text.`
 
-	userContent := fmt.Sprintf("Bug report title: %s\n\nBug report body:\n%s\n\n%s", title, body, tree)
+	userContent := fmt.Sprintf("Bug report title: %s\n\nBug report body:\n%s\n\n%s",
+		truncateUTF8(title, maxIssueTitleSize), truncateUTF8(body, maxIssueBodySize), tree)
 
 	raw, err := n.llm.GenerateJSONWithSystem(ctx, systemPrompt, userContent, 0.2, 1024)
 	if err != nil {
