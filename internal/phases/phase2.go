@@ -18,7 +18,7 @@ var reStripCodeFences = regexp.MustCompile("(?s)```[\\s\\S]*?```")
 
 // Phase2 searches for matching troubleshooting documentation using vector similarity
 // and then asks the LLM to pick the best matches with actionable suggestions.
-func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string) ([]Suggestion, error) {
+func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, codeContext string) ([]Suggestion, error) {
 	logger.Info("phase2 start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
@@ -59,8 +59,14 @@ Format: [{"index": 0, "reason": "This might be related because both involve logi
 
 If no sections match, return: []
 Respond with ONLY valid JSON, no other text.`
+	if codeContext != "" {
+		systemPrompt += "\n\nYou also have access to relevant source code from the repository. Use it to:\n- Identify specific configuration options or code paths related to the bug\n- Suggest specific debug log lines or config values the user should check\n- Provide more targeted diagnostic steps based on the actual implementation"
+	}
 	userContent := fmt.Sprintf("KNOWN ISSUES:\n%s\n\nBUG REPORT:\nTitle: %s\nBody: %s",
 		strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
+	if codeContext != "" {
+		userContent += "\n\n" + codeContext
+	}
 
 	raw, err := l.GenerateJSONWithSystem(ctx, systemPrompt, userContent, 0.3, 8192)
 	if err != nil {

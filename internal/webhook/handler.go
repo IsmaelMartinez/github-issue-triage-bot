@@ -388,7 +388,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 
 	// Phase 2: Solution suggestions (bugs only)
 	if isBug && cfg.Capabilities.Triage {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "")
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
 		}
@@ -492,7 +492,7 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	result.Phase1 = phases.Phase1(issue.Body)
 
 	if isBug {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "")
 		if err != nil {
 			issueLog.Error("retriage phase 2 failed", "error", err)
 		}
