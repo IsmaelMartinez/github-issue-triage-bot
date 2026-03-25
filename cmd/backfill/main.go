@@ -86,7 +86,7 @@ func main() {
 		result.Phase1 = phases.Phase1(iss.Body)
 
 		if isBug {
-			p2, err := phases.Phase2(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body)
+			p2, err := phases.Phase2(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body, "")
 			if err != nil {
 				issLog.Error("phase 2 failed", "error", err)
 			}

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	neturl "net/url"
+	"os"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
@@ -40,6 +41,9 @@ func (c *Client) installationClient(installationID int64) (*http.Client, error) 
 	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("create installation transport: %w", err)
+	}
+	if c.baseURL != "https://api.github.com" {
+		itr.BaseURL = c.baseURL
 	}
 	return &http.Client{Transport: itr, Timeout: 30 * time.Second}, nil
 }
@@ -556,6 +560,61 @@ func (c *Client) GetFileContents(ctx context.Context, installationID int64, repo
 		return nil, fmt.Errorf("unexpected encoding: %s", result.Encoding)
 	}
 	return base64.StdEncoding.DecodeString(result.Content)
+}
+
+// TreeEntry represents a single entry in a git tree (file or directory).
+type TreeEntry struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+	Size int    `json:"size"`
+}
+
+// GetTree fetches the full recursive file tree for a repository at the given ref (branch, tag, or SHA).
+// Only blob entries (files) are returned; tree (directory) entries are filtered out.
+// If the tree response is truncated, a warning is logged to stderr.
+func (c *Client) GetTree(ctx context.Context, installationID int64, repo, ref string) ([]TreeEntry, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/git/trees/%s?recursive=1", c.baseURL, repo, ref)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Tree      []TreeEntry `json:"tree"`
+		Truncated bool        `json:"truncated"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if result.Truncated {
+		fmt.Fprintf(os.Stderr, "warning: git tree for %s@%s was truncated; some files may be missing\n", repo, ref)
+	}
+
+	var blobs []TreeEntry
+	for _, entry := range result.Tree {
+		if entry.Type == "blob" {
+			blobs = append(blobs, entry)
+		}
+	}
+	return blobs, nil
 }
 
 // CloseIssue closes a GitHub issue by setting its state to "closed".

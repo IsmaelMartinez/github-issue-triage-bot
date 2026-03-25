@@ -288,7 +288,7 @@ func TestPhase2(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := Phase2(context.Background(), tt.store, tt.llm, testLogger(), "test/repo", "Test Issue", "Test body content")
+			results, err := Phase2(context.Background(), tt.store, tt.llm, testLogger(), "test/repo", "Test Issue", "Test body content", "")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

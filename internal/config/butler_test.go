@@ -104,3 +104,14 @@ func TestIsEnabled(t *testing.T) {
 		t.Error("parsed enabled:false should be disabled")
 	}
 }
+
+func TestCodeNavigationDefault(t *testing.T) {
+	c := DefaultConfig()
+	if c.Capabilities.CodeNavigation {
+		t.Error("code navigation should be disabled by default")
+	}
+	cfg, _ := Parse([]byte(`{"capabilities":{"code_navigation":true}}`))
+	if !cfg.Capabilities.CodeNavigation {
+		t.Error("code navigation should be enabled when set")
+	}
+}

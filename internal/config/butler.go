@@ -19,10 +19,11 @@ func (c ButlerConfig) IsEnabled() bool {
 }
 
 type Capabilities struct {
-	Triage     bool `json:"triage"`
-	Research   bool `json:"research"`
-	Synthesis  bool `json:"synthesis"`
-	AutoIngest bool `json:"auto_ingest"`
+	Triage         bool `json:"triage"`
+	Research       bool `json:"research"`
+	Synthesis      bool `json:"synthesis"`
+	AutoIngest     bool `json:"auto_ingest"`
+	CodeNavigation bool `json:"code_navigation"`
 }
 
 type UpstreamDep struct {
