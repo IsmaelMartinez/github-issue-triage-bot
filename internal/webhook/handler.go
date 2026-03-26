@@ -212,9 +212,15 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 		}
 	}
 
-	// Handle /pause and /unpause commands
+	// Handle /pause and /unpause commands (repo owner only)
 	trimmed := strings.TrimSpace(commentBody)
 	if trimmed == "/pause" || trimmed == "/unpause" {
+		// Only allow the repo owner to pause/unpause
+		owner := strings.SplitN(repo, "/", 2)[0]
+		if !strings.EqualFold(commentUser, owner) {
+			log.Info("ignoring pause command from non-owner", "user", commentUser, "owner", owner)
+			return
+		}
 		paused := trimmed == "/pause"
 		if err := h.store.SetPaused(ctx, repo, paused, commentUser); err != nil {
 			log.Error("setting pause state", "error", err)
@@ -390,9 +396,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		result.Phase1 = phases.Phase1(issue.Body)
 	}
 
-	// Code navigation: fetch relevant source files for Phase 2 context
+	// Code navigation: fetch relevant source files for Phase 2 context (bugs only)
 	var codeCtx string
-	if cfg.Capabilities.CodeNavigation {
+	if isBug && cfg.Capabilities.Triage && cfg.Capabilities.CodeNavigation {
 		cc, err := h.codeNav.Navigate(ctx, installationID, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			issueLog.Error("code navigation failed", "error", err)

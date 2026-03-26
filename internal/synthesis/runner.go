@@ -47,11 +47,16 @@ func (r *Runner) Run(ctx context.Context, installationID int64, repo, shadowRepo
 	briefing := BuildBriefing(date, allFindings)
 	title := fmt.Sprintf("[Briefing] Weekly — %s", date)
 
-	// GitHub limits issue bodies to 65536 characters.
+	// GitHub limits issue bodies to 65536 characters. Use rune-aware
+	// truncation to avoid splitting multi-byte UTF-8 characters.
 	const maxIssueBody = 65536
 	if len(briefing) > maxIssueBody {
 		truncMsg := "\n\n---\n*Briefing truncated — too many findings to fit in one issue.*\n"
-		briefing = briefing[:maxIssueBody-len(truncMsg)] + truncMsg
+		cutAt := maxIssueBody - len(truncMsg)
+		for cutAt > 0 && cutAt < len(briefing) && briefing[cutAt] >= 0x80 && briefing[cutAt] < 0xC0 {
+			cutAt-- // walk back to UTF-8 rune boundary
+		}
+		briefing = briefing[:cutAt] + truncMsg
 	}
 
 	issueNumber, err := r.github.CreateIssue(ctx, installationID, shadowRepo, title, briefing)

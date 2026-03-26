@@ -41,7 +41,7 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	logger     *slog.Logger
-	dailyLimit int32         // 0 means unlimited
+	dailyLimit atomic.Int32  // 0 means unlimited
 	dailyCount atomic.Int32
 	limitDay   atomic.Int64  // Unix day (seconds / 86400) when counter was last reset
 }
@@ -60,7 +60,7 @@ func New(apiKey string, logger *slog.Logger) *Client {
 
 // SetDailyLimit sets the maximum number of LLM API calls per day. 0 means unlimited.
 func (c *Client) SetDailyLimit(limit int) {
-	c.dailyLimit = int32(limit)
+	c.dailyLimit.Store(int32(limit))
 }
 
 // DailyCount returns the current day's LLM call count.
@@ -70,14 +70,15 @@ func (c *Client) DailyCount() int {
 }
 
 func (c *Client) checkAndIncrementDaily() error {
-	if c.dailyLimit <= 0 {
+	limit := c.dailyLimit.Load()
+	if limit <= 0 {
 		return nil
 	}
 	c.resetIfNewDay()
 	count := c.dailyCount.Add(1)
-	if count > c.dailyLimit {
+	if count > limit {
 		c.dailyCount.Add(-1) // roll back
-		c.logger.Warn("daily LLM call limit reached", "limit", c.dailyLimit, "count", count-1)
+		c.logger.Warn("daily LLM call limit reached", "limit", limit, "count", count-1)
 		return ErrDailyLimitExceeded
 	}
 	return nil
