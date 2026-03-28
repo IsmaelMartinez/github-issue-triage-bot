@@ -33,6 +33,24 @@ func TestGetSection(t *testing.T) {
 			header: "Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?",
 			want:   "Yes",
 		},
+		{
+			name:   "extracts synonym header steps to reproduce",
+			body:   "## Steps to reproduce\n\n1. Open app\n2. Click login\n\n## Expected behaviour\n\nShould not crash",
+			header: "Reproduction steps",
+			want:   "1. Open app\n2. Click login",
+		},
+		{
+			name:   "extracts ## Expected behaviour (British spelling)",
+			body:   "## Steps to reproduce\n\n1. Do something\n\n## Expected behaviour\n\nShould work fine",
+			header: "Expected Behavior",
+			want:   "Should work fine",
+		},
+		{
+			name:   "extracts ## level header with standard name",
+			body:   "## Reproduction steps\n\n1. Launch\n2. Crash\n\n## Debug\n\nsome logs",
+			header: "Reproduction steps",
+			want:   "1. Launch\n2. Crash",
+		},
 	}
 
 	for _, tt := range tests {
@@ -127,6 +145,13 @@ func TestPhase1(t *testing.T) {
 			name:             "single line issue without headers",
 			body:             "Screen sharing broken on Wayland",
 			wantMissingCount: 4,
+			wantPWA:          false,
+		},
+		{
+			name: "synonym headers with ## level",
+			body: "## Description\n\nSome bug description\n\n## Steps to reproduce\n\n1. Launch the app\n2. See error\n\n## Expected behaviour\n\nShould work",
+			// Only debug is truly missing; steps and expected are present via synonyms
+			wantMissingCount: 1,
 			wantPWA:          false,
 		},
 		{

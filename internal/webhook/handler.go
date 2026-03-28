@@ -386,6 +386,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
 	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
+	var phaseErrors []string // track LLM phase errors for shadow-mode fallback
 
 	if !cfg.Capabilities.Triage {
 		issueLog.Info("triage capability disabled, skipping phases")
@@ -412,6 +413,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx)
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
+			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
 		}
 		issueLog.Info("phase 2 complete", "suggestions", len(p2))
 		result.Phase2 = p2
@@ -422,6 +424,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
 		if err != nil {
 			issueLog.Error("phase 4a failed", "error", err)
+			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
 		}
 		issueLog.Info("phase 4a complete", "matches", len(p4a))
 		result.Phase4a = p4a
@@ -473,6 +476,33 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 				issueLog.Error("recording bot comment", "error", err)
 			}
 			issueLog.Info("comment posted", "phases", phasesRun)
+		}
+	} else if shadowRepo, ok := h.shadowRepos[repo]; ok && len(phaseErrors) > 0 {
+		// Phase 2/4a errored (e.g. rate limit) but Phase 1 had nothing to flag.
+		// Still create a shadow issue so the issue isn't silently lost.
+		const totalSections = 4
+		filled := totalSections - len(result.Phase1.MissingItems)
+		shadowTitle := fmt.Sprintf("[Triage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
+		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
+		shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
+		if err != nil {
+			issueLog.Error("creating shadow triage issue for errored phases", "error", err)
+		} else {
+			errNote := fmt.Sprintf("**Note:** Analysis was incomplete due to errors. All template sections were present, but LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*A maintainer can reply `/retriage` to retry.*", strings.Join(phaseErrors, "\n"))
+			if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errNote); err != nil {
+				issueLog.Error("posting error note on shadow issue", "error", err)
+			}
+			if err := h.store.CreateTriageSession(ctx, store.TriageSession{
+				Repo:              repo,
+				IssueNumber:       issue.Number,
+				ShadowRepo:        shadowRepo,
+				ShadowIssueNumber: shadowNumber,
+				TriageComment:     errNote,
+				PhasesRun:         phasesRun,
+			}); err != nil {
+				issueLog.Error("recording triage session", "error", err)
+			}
+			issueLog.Info("created shadow issue with error note", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber, "errors", len(phaseErrors))
 		}
 	} else {
 		issueLog.Info("nothing to report in triage comment")

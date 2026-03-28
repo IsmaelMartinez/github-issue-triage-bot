@@ -290,9 +290,12 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 	signal := ParseApprovalSignal(commentBody)
 	log.Info("parsed approval signal", "signal", signal)
 
-	// Handle reject signal in any active stage
+	// Handle reject/dismiss signal in any active stage
 	if signal == SignalReject {
 		return h.handleReject(ctx, installationID, sess, commentBody, commentUser, log)
+	}
+	if signal == SignalDismiss {
+		return h.handleDismiss(ctx, installationID, sess, commentBody, commentUser, log)
 	}
 
 	var actionErr error
@@ -327,6 +330,40 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 		return actionErr
 	}
 
+	return nil
+}
+
+func (h *AgentHandler) handleDismiss(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, commentUser string, log *slog.Logger) error {
+	// Resolve any pending gate
+	gate, err := h.store.GetPendingGate(ctx, sess.ID)
+	if err != nil {
+		return fmt.Errorf("get pending gate: %w", err)
+	}
+	if gate != nil {
+		_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRejected, commentUser)
+	}
+
+	// Move session to complete
+	if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
+		return fmt.Errorf("update session stage: %w", err)
+	}
+
+	// Post soft acknowledgment
+	ack := "Understood — session closed. No further research will be generated."
+	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
+
+	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
+		SessionID:         sess.ID,
+		ActionType:        "dismissed",
+		InputHash:         hashString(commentBody),
+		OutputSummary:     "Session dismissed by " + commentUser,
+		SafetyCheckPassed: true,
+		ConfidenceScore:   1.0,
+	}); err != nil {
+		log.Error("create audit entry", "error", err)
+	}
+
+	log.Info("session dismissed")
 	return nil
 }
 

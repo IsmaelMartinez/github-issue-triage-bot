@@ -6,11 +6,14 @@ import (
 )
 
 // Pre-compiled regexes for known issue template section headers.
+// Each section has a primary regex (exact template header) and alternative
+// regexes for common synonyms and different heading levels (## vs ###).
 var (
-	sectionReproSteps    = regexp.MustCompile(`### Reproduction steps\s*\n([\s\S]*?)(?:\n### |$)`)
-	sectionExpected      = regexp.MustCompile(`### Expected Behavior\s*\n([\s\S]*?)(?:\n### |$)`)
-	sectionDebug         = regexp.MustCompile(`### Debug\s*\n([\s\S]*?)(?:\n### |$)`)
-	sectionCanReproduce  = regexp.MustCompile(`### Can you reproduce this bug on the Microsoft Teams web app \(https://teams\.microsoft\.com\)\?\s*\n([\s\S]*?)(?:\n### |$)`)
+	sectionReproSteps    = regexp.MustCompile(`###? Reproduction steps\s*\n([\s\S]*?)(?:\n###? |$)`)
+	sectionReproStepsAlt = regexp.MustCompile(`(?i)###? (?:Steps to reproduce|How to reproduce|Repro(?:duction)? steps)\s*\n([\s\S]*?)(?:\n###? |$)`)
+	sectionExpected      = regexp.MustCompile(`(?i)###? Expected Behavio(?:u)?r\s*\n([\s\S]*?)(?:\n###? |$)`)
+	sectionDebug         = regexp.MustCompile(`###? Debug\s*\n([\s\S]*?)(?:\n###? |$)`)
+	sectionCanReproduce  = regexp.MustCompile(`###? Can you reproduce this bug on the Microsoft Teams web app \(https://teams\.microsoft\.com\)\?\s*\n([\s\S]*?)(?:\n###? |$)`)
 	reNumberedMarkers    = regexp.MustCompile(`(?m)^\s*\d+\.\s*`)
 	reDebugBash          = regexp.MustCompile(`(?m)^bash\s*$`)
 	reDebugMarkdown      = regexp.MustCompile(`(?m)^markdown\s*$`)
@@ -18,12 +21,12 @@ var (
 	reStripFences        = regexp.MustCompile("`{3,}[\\w]*\n?")
 )
 
-// sectionRegexes maps header names to their pre-compiled regex for getSection fallback.
-var sectionRegexes = map[string]*regexp.Regexp{
-	"Reproduction steps": sectionReproSteps,
-	"Expected Behavior":  sectionExpected,
-	"Debug":              sectionDebug,
-	"Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?": sectionCanReproduce,
+// sectionRegexes maps header names to a list of regexes to try (primary + alternatives).
+var sectionRegexes = map[string][]*regexp.Regexp{
+	"Reproduction steps": {sectionReproSteps, sectionReproStepsAlt},
+	"Expected Behavior":  {sectionExpected},
+	"Debug":              {sectionDebug},
+	"Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?": {sectionCanReproduce},
 }
 
 // Phase1 analyzes a bug report body for missing information and PWA reproducibility.
@@ -36,8 +39,8 @@ func Phase1(body string) Phase1Result {
 		return result
 	}
 
-	// If the body has content but no form sections, all template fields are missing.
-	if !strings.Contains(body, "### ") {
+	// If the body has content but no markdown headings, all template fields are missing.
+	if !strings.Contains(body, "## ") && !strings.Contains(body, "### ") {
 		result.MissingItems = []MissingItem{
 			{Label: "Reproduction steps", Detail: "Step-by-step instructions to trigger the bug (the more specific, the faster we can investigate)"},
 			{Label: "Debug console output", Detail: "Log output from running the application with debug logging enabled"},
@@ -78,18 +81,22 @@ func Phase1(body string) Phase1Result {
 	return result
 }
 
-// getSection extracts the content under a ### header in a GitHub issue form body.
+// getSection extracts the content under a ## or ### header in a GitHub issue form body.
+// It tries each regex in the sectionRegexes list for the given header, returning the
+// first match found. This allows synonym headers to be detected.
 func getSection(body, header string) string {
-	if re, ok := sectionRegexes[header]; ok {
-		match := re.FindStringSubmatch(body)
-		if len(match) < 2 {
-			return ""
+	if regexes, ok := sectionRegexes[header]; ok {
+		for _, re := range regexes {
+			match := re.FindStringSubmatch(body)
+			if len(match) >= 2 {
+				return strings.TrimSpace(match[1])
+			}
 		}
-		return strings.TrimSpace(match[1])
+		return ""
 	}
-	// Fallback for unknown headers: compile on the fly.
+	// Fallback for unknown headers: compile on the fly, accepting ## or ###.
 	escaped := regexp.QuoteMeta(header)
-	re := regexp.MustCompile(`### ` + escaped + `\s*\n([\s\S]*?)(?:\n### |$)`)
+	re := regexp.MustCompile(`###? ` + escaped + `\s*\n([\s\S]*?)(?:\n###? |$)`)
 	match := re.FindStringSubmatch(body)
 	if len(match) < 2 {
 		return ""

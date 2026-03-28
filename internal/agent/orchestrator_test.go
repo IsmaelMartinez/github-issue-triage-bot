@@ -48,6 +48,16 @@ func TestParseApprovalSignal(t *testing.T) {
 		{"elaboration request", "Can you elaborate on the second approach?", SignalNone},
 		{"empty string", "", SignalNone},
 
+		// Dismissal signals
+		{"not relevant", "this doesn't seem to be that relevant", SignalDismiss},
+		{"not needed", "this was not needed. the user was incorrect and used the wrong url.", SignalDismiss},
+		{"user error", "this is a user error, they used the wrong login", SignalDismiss},
+		{"already supported", "this is already supported via multiple instances", SignalDismiss},
+		{"wontfix", "wontfix", SignalDismiss},
+		{"skip this", "skip this, it's not a real issue", SignalDismiss},
+		{"disregard", "disregard this request", SignalDismiss},
+		{"no action needed", "no action needed here", SignalDismiss},
+
 		// False positive prevention: signal keywords embedded in natural language
 		{"research in sentence", "I don't think we need to research this", SignalNone},
 		{"reject in sentence", "I would reject the premise that this is needed", SignalNone},

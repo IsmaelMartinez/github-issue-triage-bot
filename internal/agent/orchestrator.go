@@ -12,6 +12,7 @@ const (
 	SignalPromote
 	SignalResearch
 	SignalUseAsContext
+	SignalDismiss // Maintainer dismissing the issue as not relevant/needed
 )
 
 const MaxRoundTrips = 4
@@ -52,5 +53,52 @@ func ParseApprovalSignal(comment string) ApprovalSignal {
 	if strings.HasPrefix(normalized, "lgtm") || strings.HasPrefix(normalized, "approve") || strings.HasPrefix(normalized, "👍") {
 		return SignalApproved
 	}
+	// Check for dismissal phrases anywhere in the comment. These indicate
+	// the maintainer considers the issue invalid, already handled, or not
+	// worth researching. Checked after prefix signals to avoid conflicts.
+	if containsDismissal(normalized) {
+		return SignalDismiss
+	}
 	return SignalNone
+}
+
+// dismissalPhrases are substrings that indicate a maintainer is dismissing
+// the issue rather than providing actionable feedback for research.
+var dismissalPhrases = []string{
+	"not relevant",
+	"not that relevant",
+	"not needed",
+	"not applicable",
+	"doesn't apply",
+	"doesn't seem relevant",
+	"doesn't seem to be",
+	"user error",
+	"user was incorrect",
+	"user was wrong",
+	"wrong url",
+	"already supported",
+	"already exists",
+	"already works",
+	"this was not needed",
+	"this is not needed",
+	"this isn't needed",
+	"not a real",
+	"not a valid",
+	"closing this",
+	"ignore this",
+	"disregard",
+	"skip this",
+	"no action needed",
+	"no action required",
+	"wontfix",
+	"won't fix",
+}
+
+func containsDismissal(normalized string) bool {
+	for _, phrase := range dismissalPhrases {
+		if strings.Contains(normalized, phrase) {
+			return true
+		}
+	}
+	return false
 }
