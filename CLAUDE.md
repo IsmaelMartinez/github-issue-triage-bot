@@ -160,7 +160,7 @@ Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns 
 
 ## Issue Template Headers
 
-Phase 1 parses these exact section headers from the teams-for-linux bug report form template: `Reproduction steps`, `Expected Behavior`, `Debug`, `Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?`. The case and wording must match exactly.
+Phase 1 parses section headers from the teams-for-linux bug report form template. The primary headers are: `Reproduction steps`, `Expected Behavior`, `Debug`, `Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?`. Both `##` and `###` heading levels are accepted. Synonym headers are also recognised for reproduction steps (`Steps to reproduce`, `How to reproduce`) and expected behavior (`Expected Behaviour` with British spelling). The heading guard uses a start-of-line regex to avoid matching `## ` inside code blocks or prose.
 
 ## Key Decisions
 

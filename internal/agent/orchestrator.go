@@ -1,6 +1,9 @@
 package agent
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 type ApprovalSignal int
 
@@ -12,6 +15,7 @@ const (
 	SignalPromote
 	SignalResearch
 	SignalUseAsContext
+	SignalDismiss // Maintainer dismissing the issue as not relevant/needed
 )
 
 const MaxRoundTrips = 4
@@ -52,5 +56,58 @@ func ParseApprovalSignal(comment string) ApprovalSignal {
 	if strings.HasPrefix(normalized, "lgtm") || strings.HasPrefix(normalized, "approve") || strings.HasPrefix(normalized, "👍") {
 		return SignalApproved
 	}
+	// Check for dismissal prefixes at the start of the comment, consistent
+	// with the HasPrefix approach used for all other signals.
+	if isDismissal(normalized) {
+		return SignalDismiss
+	}
 	return SignalNone
+}
+
+// dismissalPrefixRegex matches the start of a comment against known dismissal
+// patterns. Compiled once from dismissalPrefixes for efficiency. Like all other
+// signals, matching is anchored to the beginning of the comment to avoid false
+// positives from natural language.
+var dismissalPrefixRegex = compileDismissalRegex()
+
+// dismissalPrefixes are patterns that, when they appear at the START of a
+// comment, indicate the maintainer is dismissing the issue.
+var dismissalPrefixes = []string{
+	"not relevant",
+	"not needed",
+	"not applicable",
+	"not a real",
+	"not a valid",
+	"user error",
+	"user was incorrect",
+	"user was wrong",
+	"already supported",
+	"already exists",
+	"already works",
+	"no action needed",
+	"no action required",
+	"wontfix",
+	"won't fix",
+	"closing this",
+	"ignore this",
+	"disregard",
+	"skip this",
+	"this doesn't",
+	"this does not",
+	"this is not",
+	"this isn't",
+	"this was not",
+	"this wasn't",
+}
+
+func compileDismissalRegex() *regexp.Regexp {
+	var escaped []string
+	for _, p := range dismissalPrefixes {
+		escaped = append(escaped, regexp.QuoteMeta(p))
+	}
+	return regexp.MustCompile("^(?:" + strings.Join(escaped, "|") + ")")
+}
+
+func isDismissal(normalized string) bool {
+	return dismissalPrefixRegex.MatchString(normalized)
 }
