@@ -284,9 +284,9 @@ func (h *Handler) handleTriageComment(ctx context.Context, installationID int64,
 		log.Info("triage comment promoted to public issue")
 		return true, nil
 
-	case agent.SignalReject:
+	case agent.SignalReject, agent.SignalDismiss:
 		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
-		log.Info("triage session rejected")
+		log.Info("triage session rejected/dismissed")
 		return true, nil
 
 	default:
@@ -479,7 +479,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		}
 	} else if shadowRepo, ok := h.shadowRepos[repo]; ok && len(phaseErrors) > 0 {
 		// Phase 2/4a errored (e.g. rate limit) but Phase 1 had nothing to flag.
-		// Still create a shadow issue so the issue isn't silently lost.
+		// Create a shadow issue with an error note so the issue isn't silently lost.
+		// No TriageSession is created — there is no promotable comment. The issue
+		// remains eligible for /retriage on the source repo.
 		const totalSections = 4
 		filled := totalSections - len(result.Phase1.MissingItems)
 		shadowTitle := fmt.Sprintf("[Triage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
@@ -488,19 +490,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		if err != nil {
 			issueLog.Error("creating shadow triage issue for errored phases", "error", err)
 		} else {
-			errNote := fmt.Sprintf("**Note:** Analysis was incomplete due to errors. All template sections were present, but LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*A maintainer can reply `/retriage` to retry.*", strings.Join(phaseErrors, "\n"))
+			errNote := fmt.Sprintf("**Note:** Analysis was incomplete due to errors. LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*Reply `/retriage` on the source issue to retry.*", strings.Join(phaseErrors, "\n"))
 			if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errNote); err != nil {
 				issueLog.Error("posting error note on shadow issue", "error", err)
-			}
-			if err := h.store.CreateTriageSession(ctx, store.TriageSession{
-				Repo:              repo,
-				IssueNumber:       issue.Number,
-				ShadowRepo:        shadowRepo,
-				ShadowIssueNumber: shadowNumber,
-				TriageComment:     errNote,
-				PhasesRun:         phasesRun,
-			}); err != nil {
-				issueLog.Error("recording triage session", "error", err)
 			}
 			issueLog.Info("created shadow issue with error note", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber, "errors", len(phaseErrors))
 		}

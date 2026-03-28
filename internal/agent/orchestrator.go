@@ -1,6 +1,9 @@
 package agent
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 type ApprovalSignal int
 
@@ -53,52 +56,58 @@ func ParseApprovalSignal(comment string) ApprovalSignal {
 	if strings.HasPrefix(normalized, "lgtm") || strings.HasPrefix(normalized, "approve") || strings.HasPrefix(normalized, "👍") {
 		return SignalApproved
 	}
-	// Check for dismissal phrases anywhere in the comment. These indicate
-	// the maintainer considers the issue invalid, already handled, or not
-	// worth researching. Checked after prefix signals to avoid conflicts.
-	if containsDismissal(normalized) {
+	// Check for dismissal prefixes at the start of the comment, consistent
+	// with the HasPrefix approach used for all other signals.
+	if isDismissal(normalized) {
 		return SignalDismiss
 	}
 	return SignalNone
 }
 
-// dismissalPhrases are substrings that indicate a maintainer is dismissing
-// the issue rather than providing actionable feedback for research.
-var dismissalPhrases = []string{
+// dismissalPrefixRegex matches the start of a comment against known dismissal
+// patterns. Compiled once from dismissalPrefixes for efficiency. Like all other
+// signals, matching is anchored to the beginning of the comment to avoid false
+// positives from natural language.
+var dismissalPrefixRegex = compileDismissalRegex()
+
+// dismissalPrefixes are patterns that, when they appear at the START of a
+// comment, indicate the maintainer is dismissing the issue.
+var dismissalPrefixes = []string{
 	"not relevant",
-	"not that relevant",
 	"not needed",
 	"not applicable",
-	"doesn't apply",
-	"doesn't seem relevant",
-	"doesn't seem to be",
+	"not a real",
+	"not a valid",
 	"user error",
 	"user was incorrect",
 	"user was wrong",
-	"wrong url",
 	"already supported",
 	"already exists",
 	"already works",
-	"this was not needed",
-	"this is not needed",
-	"this isn't needed",
-	"not a real",
-	"not a valid",
-	"closing this",
-	"ignore this",
-	"disregard",
-	"skip this",
 	"no action needed",
 	"no action required",
 	"wontfix",
 	"won't fix",
+	"closing this",
+	"ignore this",
+	"disregard",
+	"skip this",
+	"this doesn't",
+	"this does not",
+	"this is not",
+	"this isn't",
+	"this was not",
+	"this wasn't",
 }
 
-func containsDismissal(normalized string) bool {
-	for _, phrase := range dismissalPhrases {
-		if strings.Contains(normalized, phrase) {
-			return true
-		}
+func compileDismissalRegex() *regexp.Regexp {
+	var escaped []string
+	for _, p := range dismissalPrefixes {
+		escaped = append(escaped, regexp.QuoteMeta(p))
 	}
-	return false
+	return regexp.MustCompile("^(?:" + strings.Join(escaped, "|") + ")")
+}
+
+func isDismissal(normalized string) bool {
+	return dismissalPrefixRegex.MatchString(normalized)
 }

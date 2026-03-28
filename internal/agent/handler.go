@@ -334,41 +334,18 @@ func (h *AgentHandler) HandleComment(ctx context.Context, installationID int64, 
 }
 
 func (h *AgentHandler) handleDismiss(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, commentUser string, log *slog.Logger) error {
-	// Resolve any pending gate
-	gate, err := h.store.GetPendingGate(ctx, sess.ID)
-	if err != nil {
-		return fmt.Errorf("get pending gate: %w", err)
-	}
-	if gate != nil {
-		_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRejected, commentUser)
-	}
-
-	// Move session to complete
-	if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
-		return fmt.Errorf("update session stage: %w", err)
-	}
-
-	// Post soft acknowledgment
-	ack := "Understood — session closed. No further research will be generated."
-	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
-
-	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
-		SessionID:         sess.ID,
-		ActionType:        "dismissed",
-		InputHash:         hashString(commentBody),
-		OutputSummary:     "Session dismissed by " + commentUser,
-		SafetyCheckPassed: true,
-		ConfidenceScore:   1.0,
-	}); err != nil {
-		log.Error("create audit entry", "error", err)
-	}
-
-	log.Info("session dismissed")
-	return nil
+	return h.closeSession(ctx, installationID, sess, commentBody, commentUser, "dismissed",
+		"Understood — session closed. No further research will be generated.", log)
 }
 
 func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, commentUser string, log *slog.Logger) error {
-	// Resolve any pending gate
+	return h.closeSession(ctx, installationID, sess, commentBody, commentUser, "rejected",
+		"Research session has been rejected and closed.", log)
+}
+
+// closeSession resolves any pending gate, marks the session complete, posts an
+// acknowledgment, and records an audit entry. Used by both dismiss and reject.
+func (h *AgentHandler) closeSession(ctx context.Context, installationID int64, sess *store.AgentSession, commentBody string, commentUser string, actionType string, ackMessage string, log *slog.Logger) error {
 	gate, err := h.store.GetPendingGate(ctx, sess.ID)
 	if err != nil {
 		return fmt.Errorf("get pending gate: %w", err)
@@ -377,28 +354,24 @@ func (h *AgentHandler) handleReject(ctx context.Context, installationID int64, s
 		_ = h.store.ResolveApprovalGate(ctx, gate.ID, store.ApprovalRejected, commentUser)
 	}
 
-	// Move session to complete
 	if err := h.store.UpdateSessionStage(ctx, sess.ID, store.StageComplete, sess.Context, sess.RoundTripCount); err != nil {
 		return fmt.Errorf("update session stage: %w", err)
 	}
 
-	// Post acknowledgment on shadow issue
-	ack := "Research session has been rejected and closed."
-	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ack)
+	_, _ = h.github.CreateComment(ctx, installationID, sess.ShadowRepo, sess.ShadowIssueNumber, ackMessage)
 
-	// Create audit entry for rejection
 	if err := h.store.CreateAuditEntry(ctx, store.AuditEntry{
 		SessionID:         sess.ID,
-		ActionType:        "rejected",
+		ActionType:        actionType,
 		InputHash:         hashString(commentBody),
-		OutputSummary:     "Session rejected by " + commentUser,
+		OutputSummary:     fmt.Sprintf("Session %s by %s", actionType, commentUser),
 		SafetyCheckPassed: true,
 		ConfidenceScore:   1.0,
 	}); err != nil {
 		log.Error("create audit entry", "error", err)
 	}
 
-	log.Info("session rejected")
+	log.Info("session " + actionType)
 	return nil
 }
 

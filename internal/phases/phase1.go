@@ -18,6 +18,7 @@ var (
 	reDebugBash          = regexp.MustCompile(`(?m)^bash\s*$`)
 	reDebugMarkdown      = regexp.MustCompile(`(?m)^markdown\s*$`)
 	reDebugElectron      = regexp.MustCompile(`ELECTRON_ENABLE_LOGGING=true\s+teams-for-linux\s+--logConfig='[^']*'`)
+	reMarkdownHeading    = regexp.MustCompile(`(?m)^#{2,3}\s+`)
 	reStripFences        = regexp.MustCompile("`{3,}[\\w]*\n?")
 )
 
@@ -39,8 +40,8 @@ func Phase1(body string) Phase1Result {
 		return result
 	}
 
-	// If the body has content but no markdown headings, all template fields are missing.
-	if !strings.Contains(body, "## ") && !strings.Contains(body, "### ") {
+	// If the body has content but no markdown headings at line start, all template fields are missing.
+	if !reMarkdownHeading.MatchString(body) {
 		result.MissingItems = []MissingItem{
 			{Label: "Reproduction steps", Detail: "Step-by-step instructions to trigger the bug (the more specific, the faster we can investigate)"},
 			{Label: "Debug console output", Detail: "Log output from running the application with debug logging enabled"},

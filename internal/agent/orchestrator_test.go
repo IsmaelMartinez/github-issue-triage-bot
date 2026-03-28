@@ -48,15 +48,27 @@ func TestParseApprovalSignal(t *testing.T) {
 		{"elaboration request", "Can you elaborate on the second approach?", SignalNone},
 		{"empty string", "", SignalNone},
 
-		// Dismissal signals
-		{"not relevant", "this doesn't seem to be that relevant", SignalDismiss},
-		{"not needed", "this was not needed. the user was incorrect and used the wrong url.", SignalDismiss},
-		{"user error", "this is a user error, they used the wrong login", SignalDismiss},
-		{"already supported", "this is already supported via multiple instances", SignalDismiss},
-		{"wontfix", "wontfix", SignalDismiss},
-		{"skip this", "skip this, it's not a real issue", SignalDismiss},
-		{"disregard", "disregard this request", SignalDismiss},
-		{"no action needed", "no action needed here", SignalDismiss},
+		// Dismissal signals (prefix-based, like all other signals)
+		{"dismiss: this doesn't", "this doesn't seem to be that relevant", SignalDismiss},
+		{"dismiss: this was not needed", "this was not needed. the user was incorrect.", SignalDismiss},
+		{"dismiss: not relevant", "not relevant to our project", SignalDismiss},
+		{"dismiss: not needed", "not needed, the user was wrong", SignalDismiss},
+		{"dismiss: already supported", "already supported via multiple instances", SignalDismiss},
+		{"dismiss: wontfix", "wontfix", SignalDismiss},
+		{"dismiss: skip this", "skip this, it's not a real issue", SignalDismiss},
+		{"dismiss: disregard", "disregard this request", SignalDismiss},
+		{"dismiss: no action needed", "no action needed here", SignalDismiss},
+		{"dismiss: user error", "user error — they used the wrong url", SignalDismiss},
+		{"dismiss: this is not", "this is not relevant to the middleware", SignalDismiss},
+		{"dismiss: this isn't", "this isn't needed, closing", SignalDismiss},
+
+		// Dismissal false positive prevention: phrases embedded in natural language
+		{"dismiss fp: not relevant mid-sentence", "I wouldn't say this is not relevant to the roadmap", SignalNone},
+		{"dismiss fp: already exists mid-sentence", "check if this already exists in the backlog before we proceed", SignalNone},
+		{"dismiss fp: not needed mid-sentence", "the extra config is not needed but the feature itself is valid", SignalNone},
+		{"dismiss fp: user error mid-sentence", "I don't think this is a user error, let's investigate", SignalNone},
+		{"dismiss fp: wontfix in context", "don't label this as wontfix yet", SignalNone},
+		{"dismiss fp: constructive feedback", "I think we should also consider performance", SignalNone},
 
 		// False positive prevention: signal keywords embedded in natural language
 		{"research in sentence", "I don't think we need to research this", SignalNone},
