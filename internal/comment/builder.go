@@ -136,11 +136,11 @@ func Build(r TriageResult) string {
 	if r.IsBug {
 		parts = append(parts,
 			"*Bot suggestion \u2014 [Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) \u2014 "+
-				"react \U0001F44D/\U0001F44E or mention @ismael-triage-bot with feedback.*")
+				"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*")
 	} else {
 		parts = append(parts,
 			"*Bot suggestion \u2014 [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap) \u2014 "+
-				"react \U0001F44D/\U0001F44E or mention @ismael-triage-bot with feedback.*")
+				"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*")
 	}
 
 	return strings.Join(parts, "\n")

@@ -42,8 +42,8 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	if !strings.Contains(got, "Bot suggestion") {
 		t.Error("missing bot disclosure")
 	}
-	if !strings.Contains(got, "@ismael-triage-bot") {
-		t.Error("missing feedback mention hint")
+	if !strings.Contains(got, "share feedback") {
+		t.Error("missing feedback link")
 	}
 }
 
@@ -156,5 +156,39 @@ func TestBuild_DocBugAllFilteredReturnsEmpty(t *testing.T) {
 	got := Build(r)
 	if got != "" {
 		t.Errorf("doc bug with only filtered items should return empty, got: %q", got)
+	}
+}
+
+func TestBuild_FeedbackLink(t *testing.T) {
+	feedbackURL := "https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml"
+
+	bugResult := TriageResult{
+		IsBug: true,
+		Phase1: phases.Phase1Result{
+			MissingItems: []phases.MissingItem{
+				{Label: "Reproduction steps", Detail: "Step-by-step instructions"},
+			},
+		},
+	}
+	bugGot := Build(bugResult)
+	if !strings.Contains(bugGot, feedbackURL) {
+		t.Error("bug comment missing feedback template URL")
+	}
+	if !strings.Contains(bugGot, "[share feedback]") {
+		t.Error("bug comment missing 'share feedback' link text")
+	}
+
+	enhancementResult := TriageResult{
+		IsEnhancement: true,
+		Phase4a: []phases.ContextMatch{
+			{Topic: "Dark Mode", Status: "planned", DocURL: "https://example.com/dark", Source: "roadmap", Reason: "related"},
+		},
+	}
+	enhGot := Build(enhancementResult)
+	if !strings.Contains(enhGot, feedbackURL) {
+		t.Error("enhancement comment missing feedback template URL")
+	}
+	if !strings.Contains(enhGot, "[share feedback]") {
+		t.Error("enhancement comment missing 'share feedback' link text")
 	}
 }
