@@ -1,0 +1,30 @@
+name: Bot Feedback
+description: Tell us how the triage bot could be more helpful
+labels: ["bot-feedback"]
+body:
+  - type: input
+    id: issue-number
+    attributes:
+      label: Which issue was the bot commenting on?
+      description: "Paste the issue number (e.g. #123)"
+    validations:
+      required: true
+  - type: dropdown
+    id: section
+    attributes:
+      label: Which part of the comment?
+      options:
+        - Missing information checklist
+        - Related/known issues
+        - Enhancement context
+        - PWA reproducibility note
+        - Overall comment
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What was wrong or could be improved?
+      description: Be as specific as you can — examples help us improve.
+    validations:
+      required: true
