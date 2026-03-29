@@ -154,7 +154,7 @@ The Gemini API client uses the REST API directly rather than an SDK to minimize 
 
 Phase 1 is pure string parsing (no network calls) and has the most comprehensive test coverage. The LLM phases are harder to unit test since they depend on Gemini's output format; they use extractJSONArray/ExtractJSONObject helpers with fallback parsing. All LLM JSON responses must be passed through `phases.ExtractJSONObject()` before `json.Unmarshal`, even when using `responseMimeType: application/json`, as a defensive measure against code-fenced or prefixed responses.
 
-The comment builder produces concise output: no greeting line, a compact footer with a feedback hint. Keep builder output minimal — avoid padding or preamble.
+The comment builder produces concise output: a single-sentence preamble, no greeting line, a compact footer with a feedback hint. Keep builder output minimal.
 
 Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), INGEST_SECRET (optional, authenticates /ingest and /synthesize endpoints; empty disables auth), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
 
