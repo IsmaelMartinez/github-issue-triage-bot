@@ -45,22 +45,30 @@ func (d *DriftSynthesizer) Analyze(ctx context.Context, repo string, window time
 	return findings, nil
 }
 
+// Staleness age thresholds: ADRs are architectural decisions that change
+// infrequently, so 90 days is a reasonable minimum before flagging. Roadmap
+// items are expected to evolve more often.
+const (
+	adrStalenessAge     = 90 * 24 * time.Hour
+	roadmapStalenessAge = 30 * 24 * time.Hour
+)
+
 // detectStaleness finds roadmap and ADR documents that haven't been updated
-// within the window but ARE actively referenced in recent issues or PRs.
-// Documents that are settled and not being discussed are left alone — they
-// don't need attention just because they haven't been edited recently.
+// within their doc-type-specific age threshold but ARE actively referenced in
+// recent issues or PRs. Documents that are settled and not being discussed are
+// left alone — they don't need attention just because they haven't been edited
+// recently.
 func (d *DriftSynthesizer) detectStaleness(ctx context.Context, repo string, window time.Duration) ([]Finding, error) {
 	docs, err := d.store.ListDocumentsByType(ctx, repo, []string{"roadmap", "adr"})
 	if err != nil {
 		return nil, fmt.Errorf("list docs: %w", err)
 	}
 
-	cutoff := time.Now().Add(-window)
-	since := cutoff
+	since := time.Now().Add(-window)
 	var findings []Finding
 
 	for _, doc := range docs {
-		if !isStale(doc, cutoff) {
+		if !isSignificantlyStale(doc, time.Now()) {
 			continue
 		}
 
@@ -83,7 +91,8 @@ func (d *DriftSynthesizer) detectStaleness(ctx context.Context, repo string, win
 		}
 
 		// Only flag if the document is actively being discussed but not updated.
-		if refCount > 0 {
+		// Require 2+ references to avoid noise from single incidental mentions.
+		if refCount >= 2 {
 			findings = append(findings, Finding{
 				Type:     "staleness",
 				Severity: "info",
@@ -109,8 +118,15 @@ func extractADRRef(title string) string {
 
 var adrTitleRe = regexp.MustCompile(`ADR-\d+`)
 
-// isStale returns true if the document has not been updated since the cutoff time.
-func isStale(doc store.Document, cutoff time.Time) bool {
+// isSignificantlyStale returns true if the document has not been updated within
+// its doc-type-specific staleness threshold (90 days for ADRs, 30 days for
+// roadmap items).
+func isSignificantlyStale(doc store.Document, now time.Time) bool {
+	age := adrStalenessAge
+	if doc.DocType == "roadmap" {
+		age = roadmapStalenessAge
+	}
+	cutoff := now.Add(-age)
 	return doc.UpdatedAt.Before(cutoff)
 }
 
@@ -213,6 +229,25 @@ func extractAreaFromPath(path string) string {
 	return path
 }
 
+// driftStopWords contains common English words and generic software terms that
+// are too broad to use as area keywords for drift detection.
+var driftStopWords = map[string]bool{
+	// Common English words
+	"the": true, "and": true, "for": true, "use": true, "add": true,
+	"new": true, "via": true, "may": true, "can": true, "not": true,
+	"all": true, "how": true, "why": true, "was": true, "are": true,
+	"has": true, "had": true, "but": true, "its": true, "our": true,
+	"with": true, "from": true, "that": true, "this": true, "will": true,
+	"when": true, "into": true, "over": true, "also": true, "more": true,
+	"than": true, "been": true, "have": true, "does": true, "each": true,
+	"make": true, "like": true, "should": true, "would": true, "could": true,
+	// Common software terms that are too generic
+	"adr": true, "doc": true, "docs": true, "api": true, "app": true,
+	"src": true, "cmd": true, "pkg": true, "lib": true, "test": true,
+	"data": true, "file": true, "code": true, "config": true,
+	"internal": true,
+}
+
 // buildADRAreaIndex maps lowercase area keywords extracted from ADR titles and
 // content to the ADR documents that cover those areas.
 func buildADRAreaIndex(adrs []store.Document) map[string][]store.Document {
@@ -222,7 +257,7 @@ func buildADRAreaIndex(adrs []store.Document) map[string][]store.Document {
 		words := tokenize(adr.Title)
 		for _, w := range words {
 			key := strings.ToLower(w)
-			if len(key) > 2 { // skip short tokens
+			if len(key) > 2 && !driftStopWords[key] {
 				index[key] = append(index[key], adr)
 			}
 		}
