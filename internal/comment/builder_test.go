@@ -27,6 +27,9 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	}
 	got := Build(result)
 
+	if !strings.Contains(got, "checked this issue") {
+		t.Error("missing preamble")
+	}
 	if !strings.Contains(got, "Reproduction steps") {
 		t.Error("missing reproduction steps item")
 	}
@@ -56,6 +59,14 @@ func TestBuild_BugWithPWA(t *testing.T) {
 	}
 	got := Build(result)
 
+	if !strings.Contains(got, "checked this issue") {
+		t.Error("missing preamble")
+	}
+	preambleIdx := strings.Index(got, "checked this issue")
+	pwaIdx := strings.Index(got, "Teams web app")
+	if preambleIdx >= pwaIdx {
+		t.Error("preamble should appear before the PWA note")
+	}
 	if !strings.Contains(got, "Teams web app") {
 		t.Error("missing PWA note")
 	}
@@ -105,6 +116,9 @@ func TestBuild_Enhancement(t *testing.T) {
 	}
 	got := Build(result)
 
+	if !strings.Contains(got, "checked this issue") {
+		t.Error("missing preamble")
+	}
 	if !strings.Contains(got, "Related work") {
 		t.Error("missing context header")
 	}
@@ -190,5 +204,20 @@ func TestBuild_FeedbackLink(t *testing.T) {
 	}
 	if !strings.Contains(enhGot, "[share feedback]") {
 		t.Error("enhancement comment missing 'share feedback' link text")
+	}
+}
+
+func TestBuild_PreambleAppearsFirst(t *testing.T) {
+	result := TriageResult{
+		IsBug: true,
+		Phase2: []phases.Suggestion{
+			{Title: "Known crash", DocURL: "https://example.com/crash", Reason: "similar crash report"},
+		},
+	}
+	got := Build(result)
+
+	preamble := "I checked this issue against the project's documentation and known issues."
+	if !strings.HasPrefix(got, preamble) {
+		t.Errorf("output should start with preamble, got: %q", got[:min(len(got), 100)])
 	}
 }
