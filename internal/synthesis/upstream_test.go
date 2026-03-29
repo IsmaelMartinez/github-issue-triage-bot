@@ -41,7 +41,7 @@ func TestUpstreamFindingConstruction(t *testing.T) {
 		Type:       "upstream_signal",
 		Severity:   "info",
 		Title:      `Upstream change "Electron v40" may impact "ADR-007"`,
-		Evidence:   []string{"upstream: Electron v40 (type: upstream_release)", "related: ADR-007 (type: adr, distance: 0.320)"},
+		Evidence:   []string{"upstream: Electron v40 (type: upstream_release)", "related: ADR-007 (type: adr, distance: 0.180)"},
 		Suggestion: `Review "ADR-007" in light of upstream change "Electron v40".`,
 	}
 

@@ -7,43 +7,55 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
-func TestIsStale(t *testing.T) {
+func TestIsSignificantlyStale(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name     string
-		updated  time.Time
-		cutoff   time.Time
+		name      string
+		docType   string
+		updated   time.Time
 		wantStale bool
 	}{
 		{
-			name:      "document updated before cutoff is stale",
-			updated:   now.Add(-48 * time.Hour),
-			cutoff:    now.Add(-24 * time.Hour),
+			name:      "ADR updated 60 days ago is not stale (under 90-day threshold)",
+			docType:   "adr",
+			updated:   now.Add(-60 * 24 * time.Hour),
+			wantStale: false,
+		},
+		{
+			name:      "ADR updated 100 days ago is stale (over 90-day threshold)",
+			docType:   "adr",
+			updated:   now.Add(-100 * 24 * time.Hour),
 			wantStale: true,
 		},
 		{
-			name:      "document updated after cutoff is not stale",
-			updated:   now.Add(-12 * time.Hour),
-			cutoff:    now.Add(-24 * time.Hour),
+			name:      "roadmap updated 20 days ago is not stale (under 30-day threshold)",
+			docType:   "roadmap",
+			updated:   now.Add(-20 * 24 * time.Hour),
 			wantStale: false,
 		},
 		{
-			name:      "document updated exactly at cutoff is not stale",
-			updated:   now.Add(-24 * time.Hour),
-			cutoff:    now.Add(-24 * time.Hour),
-			wantStale: false,
+			name:      "roadmap updated 40 days ago is stale (over 30-day threshold)",
+			docType:   "roadmap",
+			updated:   now.Add(-40 * 24 * time.Hour),
+			wantStale: true,
 		},
 		{
-			name:      "very old document is stale",
+			name:      "very old ADR is stale",
+			docType:   "adr",
 			updated:   now.Add(-365 * 24 * time.Hour),
-			cutoff:    now.Add(-7 * 24 * time.Hour),
 			wantStale: true,
 		},
 		{
-			name:      "just-updated document is not stale",
+			name:      "just-updated ADR is not stale",
+			docType:   "adr",
 			updated:   now,
-			cutoff:    now.Add(-1 * time.Hour),
+			wantStale: false,
+		},
+		{
+			name:      "just-updated roadmap is not stale",
+			docType:   "roadmap",
+			updated:   now,
 			wantStale: false,
 		},
 	}
@@ -52,14 +64,14 @@ func TestIsStale(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			doc := store.Document{
 				ID:        1,
-				Title:     "Test ADR",
-				DocType:   "adr",
+				Title:     "Test Doc",
+				DocType:   tt.docType,
 				UpdatedAt: tt.updated,
 			}
-			got := isStale(doc, tt.cutoff)
+			got := isSignificantlyStale(doc)
 			if got != tt.wantStale {
-				t.Errorf("isStale() = %v, want %v (updated=%v, cutoff=%v)",
-					got, tt.wantStale, tt.updated, tt.cutoff)
+				t.Errorf("isSignificantlyStale() = %v, want %v (docType=%s, updated=%v)",
+					got, tt.wantStale, tt.docType, tt.updated)
 			}
 		})
 	}
@@ -184,7 +196,7 @@ func TestBuildADRAreaIndex(t *testing.T) {
 
 	index := buildADRAreaIndex(adrs)
 
-	// Check that title words are indexed.
+	// Check that meaningful title words are indexed.
 	if _, ok := index["gemini"]; !ok {
 		t.Error("expected 'gemini' in index from ADR-001 title")
 	}
@@ -201,6 +213,13 @@ func TestBuildADRAreaIndex(t *testing.T) {
 	// Short tokens (<=2 chars) should be excluded.
 	if _, ok := index["as"]; ok {
 		t.Error("'as' should be excluded (<=2 chars)")
+	}
+	// Stop words from ADR titles should be excluded.
+	if _, ok := index["use"]; ok {
+		t.Error("'use' should be excluded as a stop word")
+	}
+	if _, ok := index["adr"]; ok {
+		t.Error("'adr' should be excluded as a stop word")
 	}
 }
 

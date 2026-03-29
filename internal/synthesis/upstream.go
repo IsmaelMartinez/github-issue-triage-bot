@@ -9,7 +9,7 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
-const upstreamSimilarityThreshold = 0.30
+const upstreamSimilarityThreshold = 0.25
 
 // maxFindingsPerUpstream caps how many ADR/roadmap matches a single upstream
 // change can produce, preventing one broad upstream doc from dominating the briefing.
