@@ -68,7 +68,7 @@ func (d *DriftSynthesizer) detectStaleness(ctx context.Context, repo string, win
 	var findings []Finding
 
 	for _, doc := range docs {
-		if !isSignificantlyStale(doc) {
+		if !isSignificantlyStale(doc, time.Now()) {
 			continue
 		}
 
@@ -121,12 +121,12 @@ var adrTitleRe = regexp.MustCompile(`ADR-\d+`)
 // isSignificantlyStale returns true if the document has not been updated within
 // its doc-type-specific staleness threshold (90 days for ADRs, 30 days for
 // roadmap items).
-func isSignificantlyStale(doc store.Document) bool {
+func isSignificantlyStale(doc store.Document, now time.Time) bool {
 	age := adrStalenessAge
 	if doc.DocType == "roadmap" {
 		age = roadmapStalenessAge
 	}
-	cutoff := time.Now().Add(-age)
+	cutoff := now.Add(-age)
 	return doc.UpdatedAt.Before(cutoff)
 }
 

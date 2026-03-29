@@ -58,6 +58,18 @@ func TestIsSignificantlyStale(t *testing.T) {
 			updated:   now,
 			wantStale: false,
 		},
+		{
+			name:      "ADR updated exactly 90 days ago is not stale (at threshold)",
+			docType:   "adr",
+			updated:   now.Add(-90 * 24 * time.Hour),
+			wantStale: false,
+		},
+		{
+			name:      "roadmap updated exactly 30 days ago is not stale (at threshold)",
+			docType:   "roadmap",
+			updated:   now.Add(-30 * 24 * time.Hour),
+			wantStale: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -68,7 +80,7 @@ func TestIsSignificantlyStale(t *testing.T) {
 				DocType:   tt.docType,
 				UpdatedAt: tt.updated,
 			}
-			got := isSignificantlyStale(doc)
+			got := isSignificantlyStale(doc, now)
 			if got != tt.wantStale {
 				t.Errorf("isSignificantlyStale() = %v, want %v (docType=%s, updated=%v)",
 					got, tt.wantStale, tt.docType, tt.updated)
