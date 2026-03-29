@@ -160,7 +160,7 @@ func TestBuild_DocBugAllFilteredReturnsEmpty(t *testing.T) {
 }
 
 func TestBuild_FeedbackLink(t *testing.T) {
-	feedbackURL := "https://github.com/IsmaelMartinez/teams-for-linux/issues/new?template=bot-feedback.yml"
+	feedbackURL := "https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml"
 
 	bugResult := TriageResult{
 		IsBug: true,
