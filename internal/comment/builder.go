@@ -35,6 +35,9 @@ func Build(r TriageResult) string {
 
 	var parts []string
 
+	// Preamble: brief bot introduction for public-facing comments
+	parts = append(parts, "I checked this issue against the project's documentation and known issues. Here's what I found:\n")
+
 	// PWA reproducibility note (bugs only, skip for documentation bugs)
 	if r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible {
 		parts = append(parts,
