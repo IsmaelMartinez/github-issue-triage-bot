@@ -61,24 +61,30 @@ func makeEmbedding(angle float64) []float32 {
 func backdateDocument(t *testing.T, s *store.Store, repo, title string, when time.Time) {
 	t.Helper()
 	ctx := context.Background()
-	_, err := s.Pool().Exec(ctx,
+	tag, err := s.Pool().Exec(ctx,
 		"UPDATE documents SET updated_at = $1 WHERE repo = $2 AND title = $3",
 		when, repo, title)
 	if err != nil {
 		t.Fatalf("backdating document %q: %v", title, err)
+	}
+	if tag.RowsAffected() == 0 {
+		t.Fatalf("backdating document %q: no rows matched (repo=%s)", title, repo)
 	}
 }
 
 // seedOldReference inserts a doc_reference with a backdated created_at.
 func seedOldReference(t *testing.T, s *store.Store, repo, sourceID, targetID string, when time.Time) {
 	t.Helper()
-	_, err := s.Pool().Exec(context.Background(),
+	tag, err := s.Pool().Exec(context.Background(),
 		`INSERT INTO doc_references (repo, source_type, source_id, target_type, target_id, relationship, created_at)
 		 VALUES ($1, 'issue', $2, 'document', $3, 'references', $4)
 		 ON CONFLICT (repo, source_type, source_id, target_type, target_id, relationship) DO NOTHING`,
 		repo, sourceID, targetID, when)
 	if err != nil {
 		t.Fatalf("seeding old reference for %s: %v", targetID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		t.Fatalf("seeding old reference for %s: no rows inserted (conflict?)", targetID)
 	}
 }
 
@@ -619,6 +625,9 @@ func TestRunnerPostsBriefing(t *testing.T) {
 	}
 
 	call := mock.lastCall()
+	if call.Repo != shadowRepo {
+		t.Errorf("expected briefing posted to %q, got %q", shadowRepo, call.Repo)
+	}
 	if !strings.Contains(call.Title, "[Briefing] Weekly") {
 		t.Errorf("expected title to contain '[Briefing] Weekly', got %q", call.Title)
 	}
