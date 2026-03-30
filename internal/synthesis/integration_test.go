@@ -69,6 +69,19 @@ func backdateDocument(t *testing.T, s *store.Store, repo, title string, when tim
 	}
 }
 
+// seedOldReference inserts a doc_reference with a backdated created_at.
+func seedOldReference(t *testing.T, s *store.Store, repo, sourceID, targetID string, when time.Time) {
+	t.Helper()
+	_, err := s.Pool().Exec(context.Background(),
+		`INSERT INTO doc_references (repo, source_type, source_id, target_type, target_id, relationship, created_at)
+		 VALUES ($1, 'issue', $2, 'document', $3, 'references', $4)
+		 ON CONFLICT (repo, source_type, source_id, target_type, target_id, relationship) DO NOTHING`,
+		repo, sourceID, targetID, when)
+	if err != nil {
+		t.Fatalf("seeding old reference for %s: %v", targetID, err)
+	}
+}
+
 type mockIssueCreator struct {
 	mu    sync.Mutex
 	calls []mockCreateCall
@@ -296,37 +309,14 @@ func TestStalenessDetection(t *testing.T) {
 
 	// Doc 1: "ADR-002 Caching strategy" — 3 old refs.
 	for i := 0; i < 3; i++ {
-		sourceID := fmt.Sprintf("issue-ADR-002 Caching strategy-%d", i)
-		_, err := s.Pool().Exec(ctx,
-			`INSERT INTO doc_references (repo, source_type, source_id, target_type, target_id, relationship, created_at)
-			 VALUES ($1, 'issue', $2, 'document', $3, 'references', $4)
-			 ON CONFLICT (repo, source_type, source_id, target_type, target_id, relationship) DO NOTHING`,
-			repo, sourceID, "ADR-002 Caching strategy", oldRefTime)
-		if err != nil {
-			t.Fatalf("seeding old reference for ADR-002: %v", err)
-		}
+		seedOldReference(t, s, repo, fmt.Sprintf("issue-ADR-002-%d", i), "ADR-002 Caching strategy", oldRefTime)
 	}
 	// Doc 3: "Roadmap Q4 targets" — 5 old refs.
 	for i := 0; i < 5; i++ {
-		sourceID := fmt.Sprintf("issue-Roadmap Q4 targets-%d", i)
-		_, err := s.Pool().Exec(ctx,
-			`INSERT INTO doc_references (repo, source_type, source_id, target_type, target_id, relationship, created_at)
-			 VALUES ($1, 'issue', $2, 'document', $3, 'references', $4)
-			 ON CONFLICT (repo, source_type, source_id, target_type, target_id, relationship) DO NOTHING`,
-			repo, sourceID, "Roadmap Q4 targets", oldRefTime)
-		if err != nil {
-			t.Fatalf("seeding old reference for Roadmap Q4: %v", err)
-		}
+		seedOldReference(t, s, repo, fmt.Sprintf("issue-Roadmap-Q4-%d", i), "Roadmap Q4 targets", oldRefTime)
 	}
 	// Doc 4: "ADR-003 Notification system" — 1 old ref.
-	_, err := s.Pool().Exec(ctx,
-		`INSERT INTO doc_references (repo, source_type, source_id, target_type, target_id, relationship, created_at)
-		 VALUES ($1, 'issue', $2, 'document', $3, 'references', $4)
-		 ON CONFLICT (repo, source_type, source_id, target_type, target_id, relationship) DO NOTHING`,
-		repo, "issue-ADR-003 Notification system-0", "ADR-003 Notification system", oldRefTime)
-	if err != nil {
-		t.Fatalf("seeding old reference for ADR-003: %v", err)
-	}
+	seedOldReference(t, s, repo, "issue-ADR-003-0", "ADR-003 Notification system", oldRefTime)
 
 	ds := NewDriftSynthesizer(s)
 	findings, err := ds.Analyze(ctx, repo, 7*24*time.Hour)
@@ -489,21 +479,27 @@ func TestUpstreamImpact(t *testing.T) {
 		t.Fatalf("expected 2 upstream findings, got %d: %v", len(upstream), upstream)
 	}
 
-	// Build a map of finding titles to severities for easier assertion.
-	severityByTitle := map[string]string{}
+	// Verify both expected findings are present with correct severities.
+	var adr007found, adr009found bool
 	for _, f := range upstream {
-		severityByTitle[f.Title] = f.Severity
+		if strings.Contains(f.Title, "ADR-007") {
+			adr007found = true
+			if f.Severity != "info" {
+				t.Errorf("ADR-007 finding should have severity info, got %q", f.Severity)
+			}
+		}
+		if strings.Contains(f.Title, "ADR-009") {
+			adr009found = true
+			if f.Severity != "action_needed" {
+				t.Errorf("ADR-009 finding should have severity action_needed, got %q", f.Severity)
+			}
+		}
 	}
-
-	// ADR-007 should be "info" (no deferred/rejected content).
-	for title, sev := range severityByTitle {
-		if strings.Contains(title, "ADR-007") && sev != "info" {
-			t.Errorf("ADR-007 finding should have severity info, got %q", sev)
-		}
-		// ADR-009 should be "action_needed" (content contains "deferred").
-		if strings.Contains(title, "ADR-009") && sev != "action_needed" {
-			t.Errorf("ADR-009 finding should have severity action_needed, got %q", sev)
-		}
+	if !adr007found {
+		t.Error("expected a finding for ADR-007, but none was found")
+	}
+	if !adr009found {
+		t.Error("expected a finding for ADR-009, but none was found")
 	}
 }
 
@@ -515,8 +511,12 @@ func TestRunnerQuietWeek(t *testing.T) {
 	s := testDB(t)
 	repo := "test/runner-quiet"
 	shadowRepo := "test/runner-quiet-shadow"
-	t.Cleanup(func() { cleanRepo(t, s, repo) })
+	t.Cleanup(func() {
+		cleanRepo(t, s, repo)
+		cleanRepo(t, s, shadowRepo)
+	})
 	cleanRepo(t, s, repo)
+	cleanRepo(t, s, shadowRepo)
 
 	ctx := context.Background()
 	now := time.Now()
