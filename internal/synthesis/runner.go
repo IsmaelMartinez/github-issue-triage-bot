@@ -6,20 +6,24 @@ import (
 	"log/slog"
 	"time"
 
-	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
+
+// IssueCreator abstracts GitHub issue creation for testability.
+type IssueCreator interface {
+	CreateIssue(ctx context.Context, installationID int64, repo, title, body string) (int, error)
+}
 
 // Runner orchestrates synthesizers and posts briefings to a shadow repo.
 type Runner struct {
 	synthesizers []Synthesizer
-	github       *gh.Client
+	github       IssueCreator
 	store        *store.Store
 	logger       *slog.Logger
 }
 
 // NewRunner creates a runner with the given synthesizers.
-func NewRunner(github *gh.Client, s *store.Store, logger *slog.Logger, synthesizers ...Synthesizer) *Runner {
+func NewRunner(github IssueCreator, s *store.Store, logger *slog.Logger, synthesizers ...Synthesizer) *Runner {
 	return &Runner{synthesizers: synthesizers, github: github, store: s, logger: logger}
 }
 
