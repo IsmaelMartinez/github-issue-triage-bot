@@ -578,6 +578,7 @@ func TestRunnerPostsBriefing(t *testing.T) {
 		cleanRepo(t, s, shadowRepo)
 	})
 	cleanRepo(t, s, repo)
+	cleanRepo(t, s, shadowRepo)
 
 	ctx := context.Background()
 	now := time.Now()
