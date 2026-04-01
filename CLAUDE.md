@@ -28,6 +28,12 @@ go run ./cmd/sync-reactions
 # Run locally (requires DATABASE_URL, GEMINI_API_KEY, GITHUB_APP_ID, GITHUB_PRIVATE_KEY, WEBHOOK_SECRET)
 go run ./cmd/server
 
+# Run MCP server (requires running triage bot at TRIAGE_BOT_URL)
+TRIAGE_BOT_URL=https://triage-bot-lhuutxzbnq-uc.a.run.app go run ./cmd/mcp
+
+# Add to Claude Code
+claude mcp add triage-bot -- go run ./cmd/mcp
+
 # Docker build (linux/amd64 for Cloud Run)
 docker build --platform linux/amd64 -t us-central1-docker.pkg.dev/gen-lang-client-0421325030/triage-bot/server:latest .
 
@@ -78,6 +84,7 @@ cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js cha
 cmd/seed/main.go              # CLI to import JSON indexes into database
 cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
 cmd/backfill/main.go          # One-time backfill of triage results for historical issues
+cmd/mcp/main.go               # MCP server (stdio JSON-RPC, wraps HTTP endpoints for Claude Code agents)
 internal/webhook/handler.go   # Webhook verification, replay protection, routing
 internal/phases/              # Triage phases (phase1.go, phase2.go, phase4a.go)
 internal/comment/builder.go   # Consolidates phase results into markdown
@@ -109,6 +116,8 @@ internal/safety/structural.go # Deterministic safety validator (length, URLs, me
 internal/safety/llm_validator.go # LLM-based safety reviewer (relevance, tone, injection)
 internal/runner/runner.go     # Runner interface for task execution abstraction
 internal/runner/inprocess.go  # In-process runner (goroutines with context timeout)
+internal/mcp/protocol.go      # MCP JSON-RPC 2.0 protocol implementation
+internal/mcp/tools/            # MCP tool implementations (health, trends, triage, briefing)
 scripts/generate-feature-index.sh # Generate seed JSON from teams-for-linux ADRs/research/roadmap
 scripts/generate-upstream-index.sh # Generate seed JSON from upstream dependency releases/changelogs
 data/                         # Seed data (feature index, Electron upstream docs)
