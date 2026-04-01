@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -173,6 +174,22 @@ type WeeklyFeedback struct {
 	Week      string `json:"week"`
 	EditFills int    `json:"edit_fills"`
 	Mentions  int    `json:"mentions"`
+}
+
+// FindingSummary is a condensed representation of a synthesis finding.
+type FindingSummary struct {
+	Title      string   `json:"title"`
+	Severity   string   `json:"severity"`
+	Evidence   []string `json:"evidence"`
+	Suggestion string   `json:"suggestion,omitempty"`
+}
+
+// SynthesisFindings holds classified findings from recent synthesis briefings.
+type SynthesisFindings struct {
+	AsOf     string                     `json:"as_of"`
+	Clusters []FindingSummary           `json:"clusters"`
+	Drift    []FindingSummary           `json:"drift"`
+	Upstream []FindingSummary           `json:"upstream"`
 }
 
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
@@ -684,6 +701,97 @@ func scanDailyBuckets(rows interface {
 		buckets = []DailyBucket{}
 	}
 	return buckets, nil
+}
+
+// GetRecentFindings returns classified synthesis findings from the most recent
+// briefing_posted events for the given repo (up to the last 4 briefings).
+func (s *Store) GetRecentFindings(ctx context.Context, repo string, since time.Time) (*SynthesisFindings, error) {
+	result := &SynthesisFindings{
+		AsOf:     time.Now().Format(time.RFC3339),
+		Clusters: []FindingSummary{},
+		Drift:    []FindingSummary{},
+		Upstream: []FindingSummary{},
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT metadata
+		FROM repo_events
+		WHERE repo = $1 AND event_type = 'briefing_posted' AND created_at > $2
+		ORDER BY created_at DESC LIMIT 4
+	`, repo, since)
+	if err != nil {
+		return nil, fmt.Errorf("query recent findings: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var meta []byte
+		if err := rows.Scan(&meta); err != nil {
+			return nil, fmt.Errorf("scan findings metadata: %w", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(meta, &m); err != nil {
+			continue
+		}
+		clusters, drift, upstream := extractFindings(m)
+		result.Clusters = append(result.Clusters, clusters...)
+		result.Drift = append(result.Drift, drift...)
+		result.Upstream = append(result.Upstream, upstream...)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate findings rows: %w", err)
+	}
+
+	return result, nil
+}
+
+// extractFindings parses a metadata map from a briefing_posted event into
+// classified FindingSummary slices. The metadata is expected to have keys
+// "clusters", "drift", and "upstream", each containing a slice of finding maps.
+func extractFindings(m map[string]any) (clusters, drift, upstream []FindingSummary) {
+	parse := func(key string) []FindingSummary {
+		raw, ok := m[key]
+		if !ok {
+			return nil
+		}
+		items, ok := raw.([]any)
+		if !ok {
+			return nil
+		}
+		var out []FindingSummary
+		for _, item := range items {
+			fm, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			f := FindingSummary{
+				Title:      stringFromMap(fm, "title"),
+				Severity:   stringFromMap(fm, "severity"),
+				Suggestion: stringFromMap(fm, "suggestion"),
+				Evidence:   []string{},
+			}
+			if ev, ok := fm["evidence"].([]any); ok {
+				for _, e := range ev {
+					if s, ok := e.(string); ok {
+						f.Evidence = append(f.Evidence, s)
+					}
+				}
+			}
+			out = append(out, f)
+		}
+		return out
+	}
+	return parse("clusters"), parse("drift"), parse("upstream")
+}
+
+// stringFromMap safely extracts a string value from a map[string]any.
+func stringFromMap(m map[string]any, key string) string {
+	v, ok := m[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
 }
 
 // GetWeeklyTrends returns multi-metric weekly time-series data for the given repo.
