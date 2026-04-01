@@ -16,3 +16,4 @@ This directory records significant architecture decisions for the GitHub Issue T
 | [010](010-cicd-workload-identity.md) | CI/CD with GitHub Actions and Workload Identity Federation | Implemented |
 | [011](011-public-dashboard.md) | Public Dashboard with GitHub Pages | Superseded by ADR 012 |
 | [012](012-dashboard-consolidation.md) | Dashboard Consolidation — Live Endpoint Only | Implemented |
+| [013](013-mcp-server.md) | MCP Server for Agent Integration | Implemented |
