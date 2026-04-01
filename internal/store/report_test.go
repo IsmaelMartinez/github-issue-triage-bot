@@ -42,3 +42,30 @@ func TestWeeklyAgentsType(t *testing.T) {
 		t.Fatalf("unexpected WeeklyAgents: %+v", wa)
 	}
 }
+
+func TestSynthesisFindingsModel(t *testing.T) {
+	f := SynthesisFindings{
+		AsOf: "2026-03-31T00:00:00Z",
+		Clusters: []FindingSummary{
+			{Title: "Auth cluster", Severity: "warning", Suggestion: "investigate"},
+		},
+		Drift: []FindingSummary{
+			{Title: "ADR-003 stale", Severity: "action_needed", Suggestion: "update ADR"},
+		},
+		Upstream: []FindingSummary{
+			{Title: "Electron v34 impact", Severity: "info"},
+		},
+	}
+	if len(f.Clusters) != 1 || f.Clusters[0].Title != "Auth cluster" {
+		t.Fatalf("unexpected Clusters: %+v", f.Clusters)
+	}
+	if len(f.Drift) != 1 || f.Drift[0].Severity != "action_needed" {
+		t.Fatalf("unexpected Drift: %+v", f.Drift)
+	}
+	if len(f.Upstream) != 1 || f.Upstream[0].Title != "Electron v34 impact" {
+		t.Fatalf("unexpected Upstream: %+v", f.Upstream)
+	}
+	if f.AsOf != "2026-03-31T00:00:00Z" {
+		t.Fatalf("unexpected AsOf: %s", f.AsOf)
+	}
+}

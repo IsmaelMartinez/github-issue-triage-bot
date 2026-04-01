@@ -437,13 +437,16 @@ func main() {
 			http.Error(w, "failed to get trends", http.StatusInternalServerError)
 			return
 		}
+		findings, _ := s.GetRecentFindings(r.Context(), repo)
 		w.Header().Set("Content-Type", "application/json")
 		resp := struct {
 			*store.WeeklyTrends
-			Partial bool `json:"partial"`
+			Partial   bool                    `json:"partial"`
+			Synthesis *store.SynthesisFindings `json:"synthesis_findings,omitempty"`
 		}{
 			WeeklyTrends: trends,
 			Partial:      trendsErr != nil,
+			Synthesis:    findings,
 		}
 		if trendsErr != nil {
 			logger.Warn("partial weekly trends", "error", trendsErr, "repo", repo)

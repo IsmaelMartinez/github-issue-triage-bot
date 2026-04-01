@@ -70,12 +70,14 @@ func (r *Runner) Run(ctx context.Context, installationID int64, repo, shadowRepo
 
 	// Record briefing event in journal (best-effort)
 	if r.store != nil {
+		classified := classifyFindings(allFindings)
+		classified["findings"] = len(allFindings)
 		if evErr := r.store.RecordEvent(ctx, store.RepoEvent{
 			Repo:      repo,
 			EventType: "briefing_posted",
 			SourceRef: fmt.Sprintf("#%d", issueNumber),
 			Summary:   title,
-			Metadata:  map[string]any{"findings": len(allFindings)},
+			Metadata:  classified,
 		}); evErr != nil {
 			r.logger.Error("recording briefing event", "error", evErr)
 		}
@@ -93,4 +95,36 @@ func hasActionableFindings(findings []Finding) bool {
 		}
 	}
 	return false
+}
+
+// classifyFindings groups findings into clusters, drift, and upstream categories.
+// Findings with type "staleness" are grouped under drift.
+// Returns a map suitable for use as event metadata.
+func classifyFindings(findings []Finding) map[string]any {
+	type summary struct {
+		Title      string `json:"title"`
+		Severity   string `json:"severity"`
+		Suggestion string `json:"suggestion,omitempty"`
+	}
+	clusters := []summary{}
+	drift := []summary{}
+	upstream := []summary{}
+
+	for _, f := range findings {
+		s := summary{Title: f.Title, Severity: f.Severity, Suggestion: f.Suggestion}
+		switch f.Type {
+		case "cluster":
+			clusters = append(clusters, s)
+		case "drift", "staleness":
+			drift = append(drift, s)
+		case "upstream_signal":
+			upstream = append(upstream, s)
+		}
+	}
+
+	return map[string]any{
+		"clusters": clusters,
+		"drift":    drift,
+		"upstream": upstream,
+	}
 }
