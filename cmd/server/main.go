@@ -49,6 +49,9 @@ func main() {
 
 	sourceRepo := os.Getenv("SOURCE_REPO")
 	ingestSecret := os.Getenv("INGEST_SECRET")
+	if ingestSecret == "" {
+		logger.Warn("INGEST_SECRET not set — /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause are unauthenticated")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -140,6 +143,10 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 
 		staleDuration := 14 * 24 * time.Hour
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
@@ -191,6 +198,10 @@ func main() {
 	mux.HandleFunc("/health-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
@@ -310,6 +321,10 @@ func main() {
 			http.Error(w, "missing repo parameter", http.StatusBadRequest)
 			return
 		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		paused := !strings.HasSuffix(r.URL.Path, "/unpause")
 		if err := s.SetPaused(r.Context(), repo, paused, "api"); err != nil {
 			http.Error(w, "failed to set pause state", http.StatusInternalServerError)
@@ -335,6 +350,10 @@ func main() {
 		repo := r.URL.Query().Get("repo")
 		if repo == "" {
 			http.Error(w, "missing repo parameter", http.StatusBadRequest)
+			return
+		}
+		if !allowedRepos[repo] {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 		if err := s.SetPaused(r.Context(), repo, false, "api"); err != nil {

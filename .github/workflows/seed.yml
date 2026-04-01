@@ -16,6 +16,9 @@ on:
         required: true
         default: 'data/feature-index.json'
 
+permissions:
+  contents: read
+
 jobs:
   seed:
     runs-on: ubuntu-latest

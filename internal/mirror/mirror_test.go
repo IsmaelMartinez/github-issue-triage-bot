@@ -4,6 +4,33 @@ import (
 	"testing"
 )
 
+func TestValidateRepoFormat(t *testing.T) {
+	tests := []struct {
+		repo  string
+		valid bool
+	}{
+		{"owner/repo", true},
+		{"IsmaelMartinez/teams-for-linux", true},
+		{"owner/repo-name.v2", true},
+		{"owner/repo_name", true},
+		{"", false},
+		{"noslash", false},
+		{"../../etc/passwd", false},
+		{"owner/repo;rm -rf /", false},
+		{"owner/repo\ninjection", false},
+		{"owner/repo@attacker.com", false},
+		{"a/b/c", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.repo, func(t *testing.T) {
+			got := validRepoSlug(tt.repo)
+			if got != tt.valid {
+				t.Errorf("validRepoSlug(%q) = %v, want %v", tt.repo, got, tt.valid)
+			}
+		})
+	}
+}
+
 func TestRedactTokens(t *testing.T) {
 	tests := []struct {
 		name  string

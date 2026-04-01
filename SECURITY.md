@@ -34,13 +34,25 @@ All LLM-generated output passes through two safety layers before being posted to
 
 Both layers must pass before content reaches a shadow repo, and again before content is promoted to a public issue.
 
+### Endpoint Authentication
+
+All mutating endpoints (`/cleanup`, `/health-check`, `/ingest`, `/synthesize`, `/pause`, `/unpause`) require a Bearer token matching the `INGEST_SECRET` environment variable. The service logs a warning at startup if this secret is not set. The `/pause` and `/unpause` endpoints additionally validate the `repo` parameter against the configured allowed repos. Read-only endpoints (`/report`, `/report/trends`, `/dashboard`) serve aggregated data and are publicly accessible.
+
+### Webhook Security
+
+Webhook payloads require both a valid HMAC-SHA256 signature (`X-Hub-Signature-256`) and a unique delivery ID (`X-GitHub-Delivery`). Payloads without a delivery ID are rejected. Replay protection tracks delivery IDs for 30 days. The webhook body size is limited to 2 MB. Background processing goroutines include panic recovery to prevent a single malformed event from crashing the server.
+
+### Output Sanitisation
+
+Two sanitisation paths protect against malicious LLM output. The triage pipeline (Phase 2, Phase 4a) passes each LLM-generated field through `sanitizeLLMOutput` which strips HTML tags, script elements, dangerous URI schemes, and GFM image syntax including reference-style images (preventing tracking pixel injection). The enhancement research agent additionally runs output through the structural validator (URL hostname allowlist, `@mention` blocking) and the LLM safety reviewer before posting to shadow repos, and again before promoting content to public issues.
+
 ### Infrastructure
 
 The service runs on Google Cloud Run with a non-root container user. The Docker image uses a multi-stage build with Alpine Linux. CI/CD uses Workload Identity Federation (no long-lived service account keys). Terraform state is in GCS with versioning and locking.
 
 ### Code Execution
 
-The codebase has a single `exec.Command` call in `internal/mirror/mirror.go` for git operations. All arguments are hardcoded git subcommands or validated repository URLs. No user-controlled input reaches command construction.
+The codebase has a single `exec.Command` call in `internal/mirror/mirror.go` for git operations. All arguments are hardcoded git subcommands, and repository slugs are validated against a strict `owner/name` regex before use. No user-controlled input reaches command construction.
 
 All SQL queries use parameterised statements via pgx. There is no string concatenation in production SQL.
 

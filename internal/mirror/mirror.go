@@ -7,12 +7,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 )
+
+var repoSlugRe = regexp.MustCompile(`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`)
+
+// validRepoSlug checks that a repo string matches the expected owner/name format.
+func validRepoSlug(repo string) bool {
+	return repoSlugRe.MatchString(repo)
+}
 
 const (
 	// syncTimeout is the maximum time allowed for a mirror sync operation.
@@ -43,6 +51,10 @@ func New(github *gh.Client, logger *slog.Logger, cacheDir string) *Service {
 func (s *Service) Sync(ctx context.Context, installationID int64, sourceRepo, shadowRepo string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if !validRepoSlug(sourceRepo) || !validRepoSlug(shadowRepo) {
+		return fmt.Errorf("invalid repo slug format: source=%q shadow=%q", sourceRepo, shadowRepo)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, syncTimeout)
 	defer cancel()
