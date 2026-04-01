@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/pgvector/pgvector-go v0.3.0
 )
 
