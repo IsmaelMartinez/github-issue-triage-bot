@@ -29,6 +29,7 @@ type DashboardStats struct {
 	RoundTripDistribution []RoundTripBucket `json:"round_trip_distribution"`
 	PhaseHitRate          map[string]float64 `json:"phase_hit_rate"`
 	FeedbackStats         *FeedbackStats     `json:"feedback_stats"`
+	SynthesisStats        *SynthesisStats    `json:"synthesis_stats"`
 	DailyTriageCounts     []DailyBucket      `json:"daily_triage_counts"`
 	DailyAgentCounts      []DailyBucket      `json:"daily_agent_counts"`
 	DailyFeedbackCounts   []DailyBucket      `json:"daily_feedback_counts"`
@@ -192,6 +193,14 @@ type SynthesisFindings struct {
 	Upstream []FindingSummary           `json:"upstream"`
 }
 
+// SynthesisStats tracks synthesis briefing activity.
+type SynthesisStats struct {
+	TotalBriefings int            `json:"total_briefings"`
+	TotalFindings  int            `json:"total_findings"`
+	FindingsByType map[string]int `json:"findings_by_type"`
+	RecentBriefing string         `json:"recent_briefing,omitempty"`
+}
+
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
 func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardStats, error) {
 	stats := &DashboardStats{
@@ -349,6 +358,13 @@ func (s *Store) GetDashboardStats(ctx context.Context, repo string) (*DashboardS
 	} else {
 		stats.FeedbackStats = feedbackStats
 	}
+
+	// Synthesis stats (non-fatal)
+	synthStats, synthErr := s.getSynthesisStats(ctx, repo)
+	if synthErr != nil {
+		slog.Warn("synthesis stats query failed", "error", synthErr)
+	}
+	stats.SynthesisStats = synthStats
 
 	// Daily time-series counts (non-fatal)
 	if dailyTriage, err := s.GetDailyTriageCounts(ctx, repo); err != nil {
@@ -607,6 +623,70 @@ func (s *Store) getPhaseHitRate(ctx context.Context, repo string) (map[string]fl
 		result[phase] = rate
 	}
 	return result, rows.Err()
+}
+
+func (s *Store) getSynthesisStats(ctx context.Context, repo string) (*SynthesisStats, error) {
+	stats := &SynthesisStats{
+		FindingsByType: map[string]int{},
+	}
+
+	// Count briefings and total findings
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COALESCE(SUM((metadata->>'findings')::int), 0)
+		FROM repo_events
+		WHERE repo = $1 AND event_type = 'briefing_posted'
+	`, repo).Scan(&stats.TotalBriefings, &stats.TotalFindings)
+	if err != nil {
+		return stats, fmt.Errorf("synthesis stats query: %w", err)
+	}
+
+	// Most recent briefing date
+	var recentAt *time.Time
+	_ = s.pool.QueryRow(ctx, `
+		SELECT created_at FROM repo_events
+		WHERE repo = $1 AND event_type = 'briefing_posted'
+		ORDER BY created_at DESC LIMIT 1
+	`, repo).Scan(&recentAt)
+	if recentAt != nil {
+		stats.RecentBriefing = recentAt.Format("2006-01-02")
+	}
+
+	// Count findings by type from recent briefings (last 30 days)
+	rows, err := s.pool.Query(ctx, `
+		SELECT metadata FROM repo_events
+		WHERE repo = $1 AND event_type = 'briefing_posted'
+		AND created_at > now() - interval '30 days'
+		ORDER BY created_at DESC LIMIT 4
+	`, repo)
+	if err != nil {
+		return stats, nil
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var meta []byte
+		if err := rows.Scan(&meta); err != nil {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(meta, &m); err != nil {
+			continue
+		}
+		countItems := func(key string) int {
+			items, ok := m[key].([]any)
+			if !ok {
+				return 0
+			}
+			return len(items)
+		}
+		stats.FindingsByType["clusters"] += countItems("clusters")
+		stats.FindingsByType["drift"] += countItems("drift")
+		stats.FindingsByType["upstream"] += countItems("upstream")
+	}
+
+	return stats, nil
 }
 
 // UpdateReactions updates the thumbs up/down counts for a bot comment.
