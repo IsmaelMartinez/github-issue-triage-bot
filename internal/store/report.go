@@ -636,7 +636,7 @@ func (s *Store) getSynthesisStats(ctx context.Context, repo string) (*SynthesisS
 	err := s.pool.QueryRow(ctx, `
 		SELECT
 			COUNT(*),
-			COALESCE(SUM((metadata->>'findings')::int), 0)
+			COALESCE(SUM(CASE WHEN metadata->>'findings' ~ '^\d+$' THEN (metadata->>'findings')::int ELSE 0 END), 0)
 		FROM repo_events
 		WHERE repo = $1 AND event_type = 'briefing_posted'
 	`, repo).Scan(&stats.TotalBriefings, &stats.TotalFindings)
@@ -663,7 +663,7 @@ func (s *Store) getSynthesisStats(ctx context.Context, repo string) (*SynthesisS
 		ORDER BY created_at DESC LIMIT 4
 	`, repo)
 	if err != nil {
-		return stats, nil
+		return stats, fmt.Errorf("recent findings query: %w", err)
 	}
 	defer rows.Close()
 
@@ -686,6 +686,9 @@ func (s *Store) getSynthesisStats(ctx context.Context, repo string) (*SynthesisS
 		stats.FindingsByType["clusters"] += countItems("clusters")
 		stats.FindingsByType["drift"] += countItems("drift")
 		stats.FindingsByType["upstream"] += countItems("upstream")
+	}
+	if err := rows.Err(); err != nil {
+		slog.Warn("iterating synthesis findings", "error", err)
 	}
 
 	// Count proposal outcomes from approval gates

@@ -29,7 +29,7 @@ func (c ButlerConfig) Validate() []string {
 	}
 
 	// Synthesis frequency must be a known value
-	if c.Capabilities.Synthesis && c.Synthesis.Frequency != "" && !validFrequencies[c.Synthesis.Frequency] {
+	if c.Capabilities.Synthesis && c.Synthesis.Frequency != "" && !validFrequencies[strings.ToLower(c.Synthesis.Frequency)] {
 		warnings = append(warnings, fmt.Sprintf("synthesis frequency %q is not recognised (use weekly or monthly)", c.Synthesis.Frequency))
 	}
 
@@ -53,7 +53,9 @@ func (c ButlerConfig) Validate() []string {
 	}
 
 	// MaxDailyLLMCalls sanity check
-	if c.MaxDailyLLMCalls > 250 {
+	if c.MaxDailyLLMCalls < 0 {
+		warnings = append(warnings, fmt.Sprintf("max_daily_llm_calls %d cannot be negative", c.MaxDailyLLMCalls))
+	} else if c.MaxDailyLLMCalls > 250 {
 		warnings = append(warnings, fmt.Sprintf("max_daily_llm_calls %d exceeds the Gemini free tier limit of 250", c.MaxDailyLLMCalls))
 	}
 
