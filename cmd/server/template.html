@@ -126,6 +126,7 @@
                     <div class="panel"><h3>Vector Store</h3><table id="sys-vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
                     <div class="panel"><h3>Recent Comments</h3><table id="comments-table"><thead><tr><th>Issue</th><th>Phases</th><th>&#x1F44D;</th><th>&#x1F44E;</th></tr></thead><tbody></tbody></table></div>
                 </div>
+                <div class="panel"><h3>Synthesis</h3><table id="synthesis-table"><thead><tr><th>Metric</th><th style="text-align:right">Value</th></tr></thead><tbody></tbody></table></div>
             </div>
             <div id="view-trends" class="view">
                 <h2>12-Week Trends</h2>
@@ -198,6 +199,7 @@
     var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
     var ag = stats.agent_stats || {total:0, stage_breakdown:{}, action_breakdown:{}, recent:[]};
     var ss = stats.safety_stats || {total_actions:0, passed:0, avg_confidence:null};
+    var syn = stats.synthesis_stats || {total_briefings:0, total_findings:0, findings_by_type:{}, recent_briefing:''};
     var gates = stats.approval_gate_stats || [];
     var rt = stats.round_trip_distribution || [];
     var phr = stats.phase_hit_rate || {};
@@ -222,6 +224,7 @@
     addCards('overview-cards', [
         {label: 'Triage', value: promRate != null ? promRate.toFixed(0) + '%' : 'N/A', sub: ts.promoted + '/' + ts.total + ' promoted', cls: hCls(promRate, 50, 25, true)},
         {label: 'Agent', value: pendAg, sub: pendAg > 0 ? 'pending review' : 'all complete', cls: pendAg > 0 ? 'hc-yellow' : 'hc-green'},
+        {label: 'Synthesis', value: syn.total_briefings, sub: syn.total_findings + ' findings', cls: syn.total_briefings > 0 ? 'hc-green' : 'hc-neutral'},
         {label: 'Safety', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', sub: 'pass rate', cls: hCls(safeRate, 95, 80, true)},
         {label: 'Response', value: rStr, sub: 'avg time', cls: hCls(avgR, 60, 300, false)}
     ]);
@@ -436,6 +439,13 @@
         (c.phases_run || []).forEach(function(p) { ph.appendChild(el('span', {cls: 'phase-tag', text: p})); });
         return [lk, ph, c.thumbs_up, c.thumbs_down];
     }));
+
+    /* Synthesis panel in System view */
+    var synRows = [['Briefings', syn.total_briefings], ['Findings', syn.total_findings]];
+    var fbt = syn.findings_by_type || {};
+    Object.keys(fbt).sort().forEach(function(k) { synRows.push([k, fbt[k]]); });
+    if (syn.recent_briefing) synRows.push(['Last Briefing', fDate(syn.recent_briefing)]);
+    fillTbl('synthesis-table', synRows);
 
     /* Auto-refresh every 60 seconds, skip when modal is open or page hidden */
     setInterval(function() {
