@@ -45,10 +45,12 @@ func TestWeeklyAgentsType(t *testing.T) {
 
 func TestSynthesisStatsModel(t *testing.T) {
 	stats := SynthesisStats{
-		TotalBriefings: 5,
-		TotalFindings:  12,
-		FindingsByType: map[string]int{"clusters": 3, "drift": 5, "upstream": 4},
-		RecentBriefing: "2026-04-01",
+		TotalBriefings:    5,
+		TotalFindings:     12,
+		FindingsByType:    map[string]int{"clusters": 3, "drift": 5, "upstream": 4},
+		RecentBriefing:    "2026-04-01",
+		ProposalsAccepted: 7,
+		ProposalsRejected: 2,
 	}
 	if stats.TotalBriefings != 5 {
 		t.Errorf("TotalBriefings = %d, want 5", stats.TotalBriefings)
@@ -58,6 +60,12 @@ func TestSynthesisStatsModel(t *testing.T) {
 	}
 	if stats.RecentBriefing != "2026-04-01" {
 		t.Errorf("RecentBriefing = %q", stats.RecentBriefing)
+	}
+	if stats.ProposalsAccepted != 7 {
+		t.Errorf("ProposalsAccepted = %d, want 7", stats.ProposalsAccepted)
+	}
+	if stats.ProposalsRejected != 2 {
+		t.Errorf("ProposalsRejected = %d, want 2", stats.ProposalsRejected)
 	}
 }
 

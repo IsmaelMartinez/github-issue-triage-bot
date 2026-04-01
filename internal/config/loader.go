@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -52,6 +53,9 @@ func (c *Cache) Get() (ButlerConfig, error) {
 
 	if data == nil {
 		c.cfg = DefaultConfig()
+		for _, w := range c.cfg.Validate() {
+			slog.Warn("butler config warning", "warning", w)
+		}
 		c.fetched = true
 		c.fetchAt = time.Now()
 	} else {
@@ -64,6 +68,9 @@ func (c *Cache) Get() (ButlerConfig, error) {
 			return DefaultConfig(), nil
 		}
 		c.cfg = cfg
+		for _, w := range cfg.Validate() {
+			slog.Warn("butler config warning", "warning", w)
+		}
 		c.fetched = true
 		c.fetchAt = time.Now()
 	}

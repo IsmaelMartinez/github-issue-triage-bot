@@ -195,10 +195,12 @@ type SynthesisFindings struct {
 
 // SynthesisStats tracks synthesis briefing activity.
 type SynthesisStats struct {
-	TotalBriefings int            `json:"total_briefings"`
-	TotalFindings  int            `json:"total_findings"`
-	FindingsByType map[string]int `json:"findings_by_type"`
-	RecentBriefing string         `json:"recent_briefing,omitempty"`
+	TotalBriefings    int            `json:"total_briefings"`
+	TotalFindings     int            `json:"total_findings"`
+	FindingsByType    map[string]int `json:"findings_by_type"`
+	RecentBriefing    string         `json:"recent_briefing,omitempty"`
+	ProposalsAccepted int            `json:"proposals_accepted"`
+	ProposalsRejected int            `json:"proposals_rejected"`
 }
 
 // GetDashboardStats retrieves aggregated triage statistics for a given repo.
@@ -685,6 +687,16 @@ func (s *Store) getSynthesisStats(ctx context.Context, repo string) (*SynthesisS
 		stats.FindingsByType["drift"] += countItems("drift")
 		stats.FindingsByType["upstream"] += countItems("upstream")
 	}
+
+	// Count proposal outcomes from approval gates
+	_ = s.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE ag.status = 'approved'),
+			COUNT(*) FILTER (WHERE ag.status = 'rejected')
+		FROM approval_gates ag
+		JOIN agent_sessions s ON s.id = ag.session_id
+		WHERE s.repo = $1
+	`, repo).Scan(&stats.ProposalsAccepted, &stats.ProposalsRejected)
 
 	return stats, nil
 }
