@@ -157,16 +157,30 @@ Enriches weekly briefings with portfolio context. Add weekly workflow step.
 
 Depends on repo-butler's Phase 5 (Portfolio Governance Engine) producing proposals. Can wait until governance proposals are flowing.
 
-Dependencies: Phase 1 blocks Phases 3-6. Phase 2 can parallel Phase 1. Phases 3-6 are sequential for validation, not hard dependencies.
+### Phase 7: ADR Lifecycle Agent (repo-butler) — added 2026-04-01
+
+Originally planned as a Go synthesizer (Task 17: `internal/synthesis/adr.go`). Revised after the codebase analysis confirmed that the existing drift detection synthesizer already produces the raw signals ("ADR-007 has been contradicted by 3 PRs"). What's missing is the reasoning layer that turns those signals into concrete revision proposals — and that requires LLM reasoning with richer context than a hardcoded Go prompt can provide. This agent reads drift findings from the triage bot MCP, cross-references with repo-butler's portfolio context, and drafts ADR revision proposals or gap detection proposals as shadow issues.
+
+### Future Phases (after initial agents are validated)
+
+**Research Agent** — replaces `SynthesizeResearch` in the Go codebase. The current implementation is capped at 8192 tokens, hardcodes teams-for-linux architecture, and cannot read source files or recent GitHub activity. An agent that can read `src/`, check upstream API docs, and browse PR history produces substantially richer research. The Go state machine in `handler.go` stays; the agent replaces just the synthesis call. Absorbs Phase Q1 (revision loop becomes trivial when the agent iterates on its own output).
+
+**Learnings Integration** — the synthesis analyst agent gains the ability to read maintainer feedback signals (rejections, corrections, lgtm patterns) from the MCP server and incorporate them into its weekly analysis. Absorbs Phase F3 (learnings system). The database table for learnings may still be needed in the triage bot, but the reasoning over them belongs here.
+
+**Threshold Advisor** — the synthesis analyst agent reads quality trends from `/report/trends` and recommends approval threshold adjustments. Absorbs Phase Q2 (progressive threshold adjustment).
+
+Dependencies: Phase 1 blocks Phases 3-7. Phase 2 can parallel Phase 1. Phases 3-7 are sequential for validation, not hard dependencies. Future phases depend on having enough data from the initial agents.
 
 ## Explicit Non-Goals
 
-**No replacement of existing functionality.** The triage bot's webhook handling, synthesis engine, and shadow repo pipeline stay as-is. Repo-butler's six-phase pipeline stays as-is. Agents are additive.
+**No replacement of existing deterministic functionality.** The triage bot's webhook handling, real-time triage phases, vector search, synthesis algorithms, and safety gates stay as Go code. These are latency-sensitive, well-bounded, and deterministic. Repo-butler's six-phase pipeline stays as-is. Agents are additive.
 
-**No new database tables or persistent state.** Agents are stateless. They read from MCP servers and write to GitHub. To determine what they've already processed, they read shadow repo issue history.
+**No new Go code for LLM-heavy reasoning.** The codebase analysis (2026-04-01) established that LLM reasoning tasks (research synthesis, ADR revision proposals, learnings, quality loops) belong in the agent layer where they benefit from richer context, code navigation, and iterative reasoning. The triage bot's Go code stays focused on data processing and exposure.
+
+**No new database tables or persistent state for agents.** Agents are stateless. They read from MCP servers and write to GitHub. To determine what they've already processed, they read shadow repo issue history.
 
 **No changes to trust model or approval gates.** Agents post to shadow repos like everything else. The lgtm/reject flow doesn't change.
 
-**No multi-agent coordination.** The four agents don't talk to each other. If one agent's output should feed another, it happens through the shadow repo (the second agent reads the first's comments). Simple, observable, debuggable.
+**No multi-agent coordination.** The agents don't talk to each other. If one agent's output should feed another, it happens through the shadow repo (the second agent reads the first's comments). Simple, observable, debuggable.
 
 **No migration of existing features.** The triage bot's scheduled workflows (daily maintenance, weekly synthesis, event ingest) continue as GitHub Actions hitting Cloud Run. Agents are a parallel track, not a replacement.
