@@ -71,6 +71,16 @@ func TestSanitizeLLMOutputStripsGFMImages(t *testing.T) {
 			input: "See [this guide](https://github.com/docs) for details",
 			want:  "See [this guide](https://github.com/docs) for details",
 		},
+		{
+			name:  "reference-style image stripped",
+			input: "See ![alt][img]\n\n[img]: https://tracker.example.com/pixel.png",
+			want:  "See \n",
+		},
+		{
+			name:  "reference-style link definition stripped",
+			input: "text\n[ref]: https://evil.com/pixel\nmore text",
+			want:  "text\n\nmore text",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

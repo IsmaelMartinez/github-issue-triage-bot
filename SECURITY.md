@@ -44,7 +44,7 @@ Webhook payloads require both a valid HMAC-SHA256 signature (`X-Hub-Signature-25
 
 ### Output Sanitisation
 
-LLM-generated output passes through `sanitizeLLMOutput` which strips HTML tags, script elements, dangerous URI schemes, and GFM image syntax (preventing tracking pixel injection). The structural validator enforces a URL hostname allowlist and blocks `@mentions` in LLM output (only the bot's own handle is permitted). Both layers run before content reaches any GitHub comment.
+Two sanitisation paths protect against malicious LLM output. The triage pipeline (Phase 2, Phase 4a) passes each LLM-generated field through `sanitizeLLMOutput` which strips HTML tags, script elements, dangerous URI schemes, and GFM image syntax including reference-style images (preventing tracking pixel injection). The enhancement research agent additionally runs output through the structural validator (URL hostname allowlist, `@mention` blocking) and the LLM safety reviewer before posting to shadow repos, and again before promoting content to public issues.
 
 ### Infrastructure
 
