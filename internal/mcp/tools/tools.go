@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mcp"
 )
+
+// httpClient is the shared HTTP client with a reasonable timeout.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // Tool wraps a tool definition and its handler together.
 type Tool struct {
@@ -34,7 +38,7 @@ func doRequest(method, url, secret string) (any, error) {
 	if secret != "" {
 		req.Header.Set("Authorization", "Bearer "+secret)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}

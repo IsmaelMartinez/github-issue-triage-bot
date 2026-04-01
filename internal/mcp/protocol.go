@@ -186,7 +186,7 @@ func (s *Server) handleToolsCall(req Request) Response {
 
 	toolResult, err := s.CallTool(params.Name, params.Arguments)
 	if err != nil {
-		return errorResponse(req.ID, -32601, err.Error())
+		return errorResponse(req.ID, -32603, err.Error())
 	}
 
 	encoded, err := json.Marshal(toolResult)

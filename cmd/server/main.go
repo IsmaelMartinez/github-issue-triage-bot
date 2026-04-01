@@ -438,7 +438,10 @@ func main() {
 			return
 		}
 		since := time.Now().Add(-30 * 24 * time.Hour)
-		findings, _ := s.GetRecentFindings(r.Context(), repo, since)
+		findings, findingsErr := s.GetRecentFindings(r.Context(), repo, since)
+		if findingsErr != nil {
+			logger.Warn("failed to get recent findings", "error", findingsErr, "repo", repo)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		resp := struct {
 			*store.WeeklyTrends
