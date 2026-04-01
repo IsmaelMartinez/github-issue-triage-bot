@@ -50,6 +50,38 @@ func TestSanitizeLLMOutput(t *testing.T) {
 	}
 }
 
+func TestSanitizeLLMOutputStripsGFMImages(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "tracking pixel",
+			input: "Try this fix: ![](https://tracker.example.com/pixel)",
+			want:  "Try this fix: ",
+		},
+		{
+			name:  "image with alt text",
+			input: "See ![screenshot](https://evil.com/img.png) for details",
+			want:  "See  for details",
+		},
+		{
+			name:  "regular markdown link preserved",
+			input: "See [this guide](https://github.com/docs) for details",
+			want:  "See [this guide](https://github.com/docs) for details",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeLLMOutput(tt.input)
+			if got != tt.want {
+				t.Errorf("sanitizeLLMOutput(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSanitizeURL(t *testing.T) {
 	tests := []struct {
 		name string

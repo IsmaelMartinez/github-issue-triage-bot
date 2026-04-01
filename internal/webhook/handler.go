@@ -62,6 +62,17 @@ type Handler struct {
 func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string, mirrorSvc *mirror.Service) *Handler {
 	structural := safety.NewStructuralValidator(safety.StructuralConfig{
 		MaxCommentLength: maxCommentLength,
+		AllowedURLHosts: []string{
+			"github.com",
+			"ismaelmartinez.github.io",
+			"teams.microsoft.com",
+			"feedbackportal.microsoft.com",
+			"learn.microsoft.com",
+			"electronjs.org",
+			"www.electronjs.org",
+			"releases.electronjs.org",
+		},
+		AllowedMentions: []string{"ismael-triage-bot"},
 	})
 	llmSafety := safety.NewLLMValidator(l)
 	agentHandler := agent.NewAgentHandler(s, l, g, structural, llmSafety, logger)
