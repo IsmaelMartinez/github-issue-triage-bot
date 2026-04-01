@@ -437,7 +437,8 @@ func main() {
 			http.Error(w, "failed to get trends", http.StatusInternalServerError)
 			return
 		}
-		findings, _ := s.GetRecentFindings(r.Context(), repo)
+		since := time.Now().Add(-30 * 24 * time.Hour)
+		findings, _ := s.GetRecentFindings(r.Context(), repo, since)
 		w.Header().Set("Content-Type", "application/json")
 		resp := struct {
 			*store.WeeklyTrends

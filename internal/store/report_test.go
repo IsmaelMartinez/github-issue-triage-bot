@@ -47,23 +47,32 @@ func TestSynthesisFindingsModel(t *testing.T) {
 	f := SynthesisFindings{
 		AsOf: "2026-03-31T00:00:00Z",
 		Clusters: []FindingSummary{
-			{Title: "Auth cluster", Severity: "warning", Suggestion: "investigate"},
+			{Title: "Auth cluster", Severity: "warning", Evidence: []string{"issue #12", "issue #34"}, Suggestion: "investigate"},
 		},
 		Drift: []FindingSummary{
-			{Title: "ADR-003 stale", Severity: "action_needed", Suggestion: "update ADR"},
+			{Title: "ADR-003 stale", Severity: "action_needed", Evidence: []string{"PR #56"}, Suggestion: "update ADR"},
 		},
 		Upstream: []FindingSummary{
-			{Title: "Electron v34 impact", Severity: "info"},
+			{Title: "Electron v34 impact", Severity: "info", Evidence: []string{}},
 		},
 	}
 	if len(f.Clusters) != 1 || f.Clusters[0].Title != "Auth cluster" {
 		t.Fatalf("unexpected Clusters: %+v", f.Clusters)
 	}
+	if len(f.Clusters[0].Evidence) != 2 || f.Clusters[0].Evidence[0] != "issue #12" {
+		t.Fatalf("unexpected Clusters Evidence: %+v", f.Clusters[0].Evidence)
+	}
 	if len(f.Drift) != 1 || f.Drift[0].Severity != "action_needed" {
 		t.Fatalf("unexpected Drift: %+v", f.Drift)
 	}
+	if len(f.Drift[0].Evidence) != 1 || f.Drift[0].Evidence[0] != "PR #56" {
+		t.Fatalf("unexpected Drift Evidence: %+v", f.Drift[0].Evidence)
+	}
 	if len(f.Upstream) != 1 || f.Upstream[0].Title != "Electron v34 impact" {
 		t.Fatalf("unexpected Upstream: %+v", f.Upstream)
+	}
+	if len(f.Upstream[0].Evidence) != 0 {
+		t.Fatalf("unexpected Upstream Evidence: %+v", f.Upstream[0].Evidence)
 	}
 	if f.AsOf != "2026-03-31T00:00:00Z" {
 		t.Fatalf("unexpected AsOf: %s", f.AsOf)

@@ -178,9 +178,10 @@ type WeeklyFeedback struct {
 
 // FindingSummary is a condensed representation of a synthesis finding.
 type FindingSummary struct {
-	Title      string `json:"title"`
-	Severity   string `json:"severity"`
-	Suggestion string `json:"suggestion,omitempty"`
+	Title      string   `json:"title"`
+	Severity   string   `json:"severity"`
+	Evidence   []string `json:"evidence"`
+	Suggestion string   `json:"suggestion,omitempty"`
 }
 
 // SynthesisFindings holds classified findings from recent synthesis briefings.
@@ -704,7 +705,7 @@ func scanDailyBuckets(rows interface {
 
 // GetRecentFindings returns classified synthesis findings from the most recent
 // briefing_posted events for the given repo (up to the last 4 briefings).
-func (s *Store) GetRecentFindings(ctx context.Context, repo string) (*SynthesisFindings, error) {
+func (s *Store) GetRecentFindings(ctx context.Context, repo string, since time.Time) (*SynthesisFindings, error) {
 	result := &SynthesisFindings{
 		AsOf:     time.Now().Format(time.RFC3339),
 		Clusters: []FindingSummary{},
@@ -715,9 +716,9 @@ func (s *Store) GetRecentFindings(ctx context.Context, repo string) (*SynthesisF
 	rows, err := s.pool.Query(ctx, `
 		SELECT metadata
 		FROM repo_events
-		WHERE repo = $1 AND event_type = 'briefing_posted'
+		WHERE repo = $1 AND event_type = 'briefing_posted' AND created_at > $2
 		ORDER BY created_at DESC LIMIT 4
-	`, repo)
+	`, repo, since)
 	if err != nil {
 		return nil, fmt.Errorf("query recent findings: %w", err)
 	}
@@ -763,11 +764,20 @@ func extractFindings(m map[string]any) (clusters, drift, upstream []FindingSumma
 			if !ok {
 				continue
 			}
-			out = append(out, FindingSummary{
+			f := FindingSummary{
 				Title:      stringFromMap(fm, "title"),
 				Severity:   stringFromMap(fm, "severity"),
 				Suggestion: stringFromMap(fm, "suggestion"),
-			})
+				Evidence:   []string{},
+			}
+			if ev, ok := fm["evidence"].([]any); ok {
+				for _, e := range ev {
+					if s, ok := e.(string); ok {
+						f.Evidence = append(f.Evidence, s)
+					}
+				}
+			}
+			out = append(out, f)
 		}
 		return out
 	}
