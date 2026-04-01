@@ -102,16 +102,17 @@ func hasActionableFindings(findings []Finding) bool {
 // Returns a map suitable for use as event metadata.
 func classifyFindings(findings []Finding) map[string]any {
 	type summary struct {
-		Title      string `json:"title"`
-		Severity   string `json:"severity"`
-		Suggestion string `json:"suggestion,omitempty"`
+		Title      string   `json:"title"`
+		Severity   string   `json:"severity"`
+		Suggestion string   `json:"suggestion,omitempty"`
+		Evidence   []string `json:"evidence,omitempty"`
 	}
 	clusters := []summary{}
 	drift := []summary{}
 	upstream := []summary{}
 
 	for _, f := range findings {
-		s := summary{Title: f.Title, Severity: f.Severity, Suggestion: f.Suggestion}
+		s := summary{Title: f.Title, Severity: f.Severity, Suggestion: f.Suggestion, Evidence: f.Evidence}
 		switch f.Type {
 		case "cluster":
 			clusters = append(clusters, s)

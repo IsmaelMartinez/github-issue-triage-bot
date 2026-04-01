@@ -113,7 +113,13 @@ func TestClassifyFindings(t *testing.T) {
 
 func TestClassifyFindingsFieldsPreserved(t *testing.T) {
 	findings := []Finding{
-		{Type: "cluster", Severity: "warning", Title: "Login issues", Suggestion: "investigate auth"},
+		{
+			Type:       "cluster",
+			Severity:   "warning",
+			Title:      "Login issues",
+			Suggestion: "investigate auth",
+			Evidence:   []string{"issue #1", "issue #2"},
+		},
 	}
 	got := classifyFindings(findings)
 
@@ -121,20 +127,30 @@ func TestClassifyFindingsFieldsPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal clusters: %v", err)
 	}
-	var items []map[string]string
+
+	type summaryItem struct {
+		Title      string   `json:"title"`
+		Severity   string   `json:"severity"`
+		Suggestion string   `json:"suggestion"`
+		Evidence   []string `json:"evidence"`
+	}
+	var items []summaryItem
 	if err := json.Unmarshal(b, &items); err != nil {
 		t.Fatalf("unmarshal clusters: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("expected 1 cluster item, got %d", len(items))
 	}
-	if items[0]["title"] != "Login issues" {
-		t.Errorf("title: got %q, want %q", items[0]["title"], "Login issues")
+	if items[0].Title != "Login issues" {
+		t.Errorf("title: got %q, want %q", items[0].Title, "Login issues")
 	}
-	if items[0]["severity"] != "warning" {
-		t.Errorf("severity: got %q, want %q", items[0]["severity"], "warning")
+	if items[0].Severity != "warning" {
+		t.Errorf("severity: got %q, want %q", items[0].Severity, "warning")
 	}
-	if items[0]["suggestion"] != "investigate auth" {
-		t.Errorf("suggestion: got %q, want %q", items[0]["suggestion"], "investigate auth")
+	if items[0].Suggestion != "investigate auth" {
+		t.Errorf("suggestion: got %q, want %q", items[0].Suggestion, "investigate auth")
+	}
+	if len(items[0].Evidence) != 2 || items[0].Evidence[0] != "issue #1" || items[0].Evidence[1] != "issue #2" {
+		t.Errorf("evidence: got %v, want [issue #1 issue #2]", items[0].Evidence)
 	}
 }
