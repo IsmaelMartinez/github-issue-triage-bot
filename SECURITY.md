@@ -46,4 +46,4 @@ All SQL queries use parameterised statements via pgx. There is no string concate
 
 ## Dependencies
 
-The project uses minimal external dependencies: pgx/v5 (PostgreSQL), pgvector-go, and ghinstallation/v2 (GitHub App auth). Go module checksums are verified via `go.sum`. Dependabot monitoring is planned.
+The project uses minimal external dependencies: pgx/v5 (PostgreSQL), pgvector-go, and ghinstallation/v2 (GitHub App auth). Go module checksums are verified via `go.sum`. Dependabot monitoring is enabled for Go modules and GitHub Actions.

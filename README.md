@@ -78,7 +78,7 @@ After the initial seed, the webhook handler keeps issue data up to date. If `aut
 # DATABASE_URL, GEMINI_API_KEY, GITHUB_APP_ID, GITHUB_PRIVATE_KEY, WEBHOOK_SECRET
 
 # Deploy via Terraform
-cd terraform && terraform apply
+cd terraform && terraform init && terraform apply
 
 # Or build and deploy manually
 docker build --platform linux/amd64 -t your-registry/server:latest .
@@ -89,7 +89,7 @@ Pushes to `main` automatically build and deploy via GitHub Actions using Workloa
 ### 5. Connect the MCP Server
 
 ```bash
-claude mcp add triage-bot -- TRIAGE_BOT_URL=https://your-cloud-run-url go run ./cmd/mcp
+claude mcp add triage-bot -- env TRIAGE_BOT_URL=https://your-cloud-run-url go run ./cmd/mcp
 ```
 
 ## Development
