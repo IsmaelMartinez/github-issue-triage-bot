@@ -25,10 +25,17 @@ import (
 )
 
 const (
-	maxWebhookBodySize = 25 << 20 // 25 MB
+	maxWebhookBodySize = 2 << 20 // 2 MB — issue/comment events are <100 KB; push events rarely exceed 1 MB
 	maxCommentLength   = 65536
 	triageTimeout      = 5 * time.Minute
 )
+
+// recoverGoroutine logs panics in background goroutines instead of crashing.
+func recoverGoroutine(logger *slog.Logger, name string) {
+	if r := recover(); r != nil {
+		logger.Error("panic in background goroutine", "goroutine", name, "error", r)
+	}
+}
 
 // Handler processes GitHub webhook events.
 type Handler struct {
@@ -104,19 +111,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Reject duplicate deliveries
 	deliveryID := r.Header.Get("X-GitHub-Delivery")
-	if deliveryID != "" {
-		duplicate, err := h.store.CheckAndRecordDelivery(r.Context(), deliveryID)
-		if err != nil {
-			h.logger.Error("checking delivery ID", "error", err)
-			http.Error(w, "dedup check failed", http.StatusInternalServerError)
-			return
-		}
-		if duplicate {
-			h.logger.Info("duplicate delivery rejected", "deliveryID", deliveryID)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, "duplicate delivery")
-			return
-		}
+	if deliveryID == "" {
+		http.Error(w, "missing X-GitHub-Delivery header", http.StatusBadRequest)
+		return
+	}
+	duplicate, err := h.store.CheckAndRecordDelivery(r.Context(), deliveryID)
+	if err != nil {
+		h.logger.Error("checking delivery ID", "error", err)
+		http.Error(w, "dedup check failed", http.StatusInternalServerError)
+		return
+	}
+	if duplicate {
+		h.logger.Info("duplicate delivery rejected", "deliveryID", deliveryID)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "duplicate delivery")
+		return
 	}
 
 	eventType := r.Header.Get("X-GitHub-Event")
@@ -131,6 +140,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.wg.Add(1)
 		go func() {
 			defer h.wg.Done()
+			defer recoverGoroutine(h.logger, "processEvent")
 			ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
 			defer cancel()
 			h.processEvent(ctx, event)
@@ -151,6 +161,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.wg.Add(1)
 		go func() {
 			defer h.wg.Done()
+			defer recoverGoroutine(h.logger, "processCommentEvent")
 			ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
 			defer cancel()
 			h.processCommentEvent(ctx, event)
@@ -167,6 +178,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.wg.Add(1)
 			go func() {
 				defer h.wg.Done()
+				defer recoverGoroutine(h.logger, "handlePush")
 				ctx, cancel := context.WithTimeout(h.ctx, triageTimeout)
 				defer cancel()
 				h.handlePush(ctx, event)
