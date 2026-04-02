@@ -404,7 +404,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
 	embedding, embedErr := h.llm.Embed(ctx, queryText)
 	if embedErr != nil {
-		issueLog.Error("embedding issue", "error", embedErr)
+		issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
+		// Pass nil so phases fall back to their own embed calls (which may also fail).
+		embedding = nil
 	}
 
 	// Determine issue type
@@ -481,7 +483,12 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
 			body = comment.Build(result)
 		} else if synthResult != "" {
-			body = synthResult
+			// Sanitise LLM output, append debug instructions and footer
+			body = comment.SanitizeLLMOutput(synthResult)
+			if di := comment.DebugInstructions(result); di != "" {
+				body += "\n\n" + di
+			}
+			body += "\n\n" + comment.Footer(result)
 			synthesized = true
 		}
 	}
@@ -585,7 +592,8 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
 	embedding, embedErr := h.llm.Embed(ctx, queryText)
 	if embedErr != nil {
-		issueLog.Error("embedding issue", "error", embedErr)
+		issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
+		embedding = nil
 	}
 
 	isBug := hasLabel(issue.Labels, "bug")
@@ -630,7 +638,12 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
 			body = comment.Build(result)
 		} else if synthResult != "" {
-			body = synthResult
+			// Sanitise LLM output, append debug instructions and footer
+			body = comment.SanitizeLLMOutput(synthResult)
+			if di := comment.DebugInstructions(result); di != "" {
+				body += "\n\n" + di
+			}
+			body += "\n\n" + comment.Footer(result)
 			synthesized = true
 		}
 	}

@@ -158,6 +158,46 @@ func Build(r TriageResult) string {
 	return strings.Join(parts, "\n")
 }
 
+// Footer returns the bot disclosure footer line based on which phases produced output.
+func Footer(r TriageResult) string {
+	hasPhase2 := len(r.Phase2) > 0
+	hasPhase4a := len(r.Phase4a) > 0
+	var docLinks string
+	switch {
+	case hasPhase2 && hasPhase4a:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) " +
+			"| [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	case hasPhase2:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting)"
+	case hasPhase4a:
+		docLinks = "[Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	default:
+		docLinks = "[Project docs](https://ismaelmartinez.github.io/teams-for-linux)"
+	}
+	return "*Bot suggestion \u2014 " + docLinks + " \u2014 " +
+		"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*"
+}
+
+// DebugInstructions returns the collapsible debug log instructions block,
+// or empty string if debug logs are not missing.
+func DebugInstructions(r TriageResult) string {
+	if !r.IsBug || r.IsDocBug {
+		return ""
+	}
+	for _, item := range r.Phase1.MissingItems {
+		if item.Label == "Debug console output" {
+			return "<details>\n" +
+				"<summary>How to get debug logs</summary>\n\n" +
+				"```bash\n" +
+				"ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n" +
+				"```\n" +
+				"Reproduce the issue and copy the relevant output.\n\n" +
+				"</details>\n"
+		}
+	}
+	return ""
+}
+
 // countRelevantMissing returns the number of missing items that will actually
 // be displayed, accounting for doc-bug filtering.
 func countRelevantMissing(r TriageResult) int {
