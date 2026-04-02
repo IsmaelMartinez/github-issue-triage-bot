@@ -399,6 +399,14 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		issueLog.Info("using source repo for data lookups", "dataRepo", dataRepo)
 	}
 
+	// Compute embedding once for reuse across phases
+	cleanBody := phases.StripCodeFences(issue.Body, 1500)
+	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
+	embedding, embedErr := h.llm.Embed(ctx, queryText)
+	if embedErr != nil {
+		issueLog.Error("embedding issue", "error", embedErr)
+	}
+
 	// Determine issue type
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
@@ -431,9 +439,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		}
 	}
 
-	// Phase 2: Solution suggestions (bugs only)
-	if isBug && cfg.Capabilities.Triage {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx)
+	// Phase 2: Solution suggestions
+	if cfg.Capabilities.Triage {
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx, embedding)
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
 			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
@@ -442,9 +450,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		result.Phase2 = p2
 	}
 
-	// Phase 4a: Enhancement context (enhancements only)
-	if isEnhancement && cfg.Capabilities.Triage {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
+	// Phase 4a: Enhancement context
+	if cfg.Capabilities.Triage {
+		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding)
 		if err != nil {
 			issueLog.Error("phase 4a failed", "error", err)
 			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
@@ -453,9 +461,34 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		result.Phase4a = p4a
 	}
 
-	// Build triage comment
-	body := comment.Build(result)
-	phasesRun := collectPhasesRun(result)
+	// Build triage comment — try synthesis first, fall back to concatenation
+	synthInput := phases.SynthesisInput{
+		IssueTitle:    issue.Title,
+		IssueBody:     issue.Body,
+		IsBug:         isBug,
+		IsEnhancement: isEnhancement,
+		IsDocBug:      result.IsDocBug,
+		Phase1:        result.Phase1,
+		Phase2:        result.Phase2,
+		Phase4a:       result.Phase4a,
+	}
+
+	var synthesized bool
+	var body string
+	if phases.ShouldSynthesize(synthInput) {
+		synthResult, synthErr := phases.Synthesize(ctx, h.llm, synthInput)
+		if synthErr != nil {
+			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
+			body = comment.Build(result)
+		} else if synthResult != "" {
+			body = synthResult
+			synthesized = true
+		}
+	}
+	if body == "" {
+		body = comment.Build(result)
+	}
+	phasesRun := collectPhasesRun(result, synthesized)
 
 	if shadowRepo, ok := h.shadowRepos[repo]; ok && body != "" {
 		// Post to shadow repo for review
@@ -547,6 +580,14 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		dataRepo = h.sourceRepo
 	}
 
+	// Compute embedding once for reuse across phases
+	cleanBody := phases.StripCodeFences(issue.Body, 1500)
+	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
+	embedding, embedErr := h.llm.Embed(ctx, queryText)
+	if embedErr != nil {
+		issueLog.Error("embedding issue", "error", embedErr)
+	}
+
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
 
@@ -557,24 +598,46 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 
 	result.Phase1 = phases.Phase1(issue.Body)
 
-	if isBug {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "")
-		if err != nil {
-			issueLog.Error("retriage phase 2 failed", "error", err)
-		}
-		result.Phase2 = p2
+	p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "", embedding)
+	if err != nil {
+		issueLog.Error("retriage phase 2 failed", "error", err)
+	}
+	result.Phase2 = p2
+
+	p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding)
+	if err != nil {
+		issueLog.Error("retriage phase 4a failed", "error", err)
+	}
+	result.Phase4a = p4a
+
+	// Build triage comment — try synthesis first, fall back to concatenation
+	synthInput := phases.SynthesisInput{
+		IssueTitle:    issue.Title,
+		IssueBody:     issue.Body,
+		IsBug:         isBug,
+		IsEnhancement: isEnhancement,
+		IsDocBug:      result.IsDocBug,
+		Phase1:        result.Phase1,
+		Phase2:        result.Phase2,
+		Phase4a:       result.Phase4a,
 	}
 
-	if isEnhancement {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body)
-		if err != nil {
-			issueLog.Error("retriage phase 4a failed", "error", err)
+	var synthesized bool
+	var body string
+	if phases.ShouldSynthesize(synthInput) {
+		synthResult, synthErr := phases.Synthesize(ctx, h.llm, synthInput)
+		if synthErr != nil {
+			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
+			body = comment.Build(result)
+		} else if synthResult != "" {
+			body = synthResult
+			synthesized = true
 		}
-		result.Phase4a = p4a
 	}
-
-	body := comment.Build(result)
-	phasesRun := collectPhasesRun(result)
+	if body == "" {
+		body = comment.Build(result)
+	}
+	phasesRun := collectPhasesRun(result, synthesized)
 
 	shadowRepo, ok := h.shadowRepos[repo]
 	if !ok || body == "" {
@@ -866,7 +929,7 @@ func sanitizeBody(body string, maxLen int) string {
 	return result
 }
 
-func collectPhasesRun(r comment.TriageResult) []string {
+func collectPhasesRun(r comment.TriageResult, synthesized bool) []string {
 	var phases []string
 	phases = append(phases, "missing_info")
 	if r.Phase2 != nil {
@@ -874,6 +937,9 @@ func collectPhasesRun(r comment.TriageResult) []string {
 	}
 	if r.Phase4a != nil {
 		phases = append(phases, "enhancement_context")
+	}
+	if synthesized {
+		phases = append(phases, "synthesis")
 	}
 	return phases
 }

@@ -13,15 +13,21 @@ import (
 
 // Phase4a matches enhancement requests against the feature index (roadmap, ADRs, research)
 // using vector similarity search and LLM-based semantic matching.
-func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string) ([]ContextMatch, error) {
+func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, preEmbedding []float32) ([]ContextMatch, error) {
 	logger.Info("phase4a start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
 
-	// Get embedding for the enhancement request
-	embedding, err := l.Embed(ctx, queryText)
-	if err != nil {
-		return nil, fmt.Errorf("embed issue: %w", err)
+	// Use pre-computed embedding if provided, otherwise compute it
+	var embedding []float32
+	if len(preEmbedding) > 0 {
+		embedding = preEmbedding
+	} else {
+		var err error
+		embedding, err = l.Embed(ctx, queryText)
+		if err != nil {
+			return nil, fmt.Errorf("embed issue: %w", err)
+		}
 	}
 
 	// Find similar features/ADRs/research
@@ -44,20 +50,20 @@ func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *
 	}
 
 	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
-Match this enhancement request against our existing roadmap items, architecture decisions (ADRs), and research documents.
+Match this issue against our existing roadmap items, architecture decisions (ADRs), and research documents.
 
-Return a JSON array of 0-3 matches. Only include items with a meaningful connection to the enhancement request (same feature area, overlapping goals, related technical decisions).
+Return a JSON array of 0-3 matches. Only include items with a meaningful connection to the issue (same feature area, overlapping goals, related technical decisions).
 
 For each match, include:
 - "index": the item index number
 - "reason": a brief explanation using humble language ("appears related", "might be connected", "could be relevant")
-- "is_infeasible": true ONLY if the matched item has status "rejected" and the rejection reason clearly applies to this request. false otherwise.
+- "is_infeasible": true ONLY if the matched item has status "rejected" and the rejection reason clearly applies to this issue. false otherwise.
 
 Format: [{"index": 0, "reason": "We've previously investigated this area...", "is_infeasible": false}]
 
 If no items match, return: []
 Respond with ONLY valid JSON, no other text.`
-	userContent := fmt.Sprintf("EXISTING FEATURES/DECISIONS/RESEARCH:\n%s\n\nENHANCEMENT REQUEST:\nTitle: %s\nBody: %s",
+	userContent := fmt.Sprintf("EXISTING FEATURES/DECISIONS/RESEARCH:\n%s\n\nISSUE:\nTitle: %s\nBody: %s",
 		strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 
 	raw, err := l.GenerateJSONWithSystem(ctx, systemPrompt, userContent, 0.3, 8192)
