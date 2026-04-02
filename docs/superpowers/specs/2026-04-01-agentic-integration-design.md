@@ -1,7 +1,7 @@
 # Agentic Integration Layer — Design Spec
 
 Date: 2026-04-01
-Status: Proposed
+Status: Superseded (2026-04-02) — the phased agent approach was replaced by a simpler model: agents are CLAUDE.md files created as needed, placed where the data is. See the "Agents" section in `docs/plans/2026-03-04-roadmap.md`.
 
 ## Vision
 
