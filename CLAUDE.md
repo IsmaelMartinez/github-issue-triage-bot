@@ -63,9 +63,9 @@ gh workflow run seed.yml -f seed_type=features -f data_file=data/feature-index.j
 
 The service receives GitHub webhook events (issue opened/closed/reopened, issue comments, issue edits) and runs a focused triage pipeline. Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed in favour of GitHub native tooling — see `docs/plans/2026-03-15-lean-bot-pivot-design.md`.
 
-Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): for enhancement requests, searches roadmap/ADR/research documents for related context.
+Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): searches roadmap/ADR/research documents for related context. All phases run for every issue regardless of labels; a single embedding is computed once and shared across Phase 2 and Phase 4a.
 
-All phase results are consolidated into a single markdown comment by the comment builder (concise format: no greeting, compact footer with feedback hint). When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue. The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends, stuck sessions, and orphaned triage, creating GitHub alert issues when thresholds are violated.
+A synthesis step (`internal/phases/synthesis.go`) takes all phase outputs and produces one coherent response via an LLM call, weaving doc matches with missing-info requests (e.g., "this looks like [doc X], debug logs would help confirm"). The `ShouldSynthesize` guard skips the LLM call for trivially simple cases (single missing item, no doc matches). On synthesis failure, the comment builder (`internal/comment/builder.go`) produces a fallback concatenated response. Debug log instructions and the feedback footer are appended deterministically after synthesis. When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue. The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends, stuck sessions, and orphaned triage, creating GitHub alert issues when thresholds are violated.
 
 The vector store includes upstream dependency docs (Electron release notes, changelogs) in addition to project-specific docs, so Phase 2 can surface relevant upstream changes when triaging bug reports.
 
@@ -86,8 +86,8 @@ cmd/sync-reactions/main.go   # Sync GitHub reactions to bot comments in DB
 cmd/backfill/main.go          # One-time backfill of triage results for historical issues
 cmd/mcp/main.go               # MCP server (stdio JSON-RPC, wraps HTTP endpoints for Claude Code agents)
 internal/webhook/handler.go   # Webhook verification, replay protection, routing
-internal/phases/              # Triage phases (phase1.go, phase2.go, phase4a.go)
-internal/comment/builder.go   # Consolidates phase results into markdown
+internal/phases/              # Triage phases (phase1.go, phase2.go, phase4a.go, synthesis.go)
+internal/comment/builder.go   # Consolidates phase results into markdown (fallback when synthesis skipped)
 internal/comment/sanitize.go  # LLM output and URL sanitization
 internal/llm/client.go        # Gemini API client (generation + embeddings)
 internal/github/client.go     # GitHub App client (comments, issues, branches, PRs)
