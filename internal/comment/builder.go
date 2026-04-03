@@ -24,7 +24,8 @@ type TriageResult struct {
 func Build(r TriageResult) string {
 	hasPwaNote := r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible
 	missingCount := countRelevantMissing(r)
-	hasContent := (r.IsBug && missingCount > 0) ||
+	hasMissingInfo := r.IsBug && missingCount > 0
+	hasContent := hasMissingInfo ||
 		hasPwaNote ||
 		len(r.Phase2) > 0 ||
 		len(r.Phase4a) > 0
@@ -47,8 +48,8 @@ func Build(r TriageResult) string {
 				"We'll still take a look.\n")
 	}
 
-	// Known issue matches from Phase 2 (bugs only)
-	if r.IsBug && len(r.Phase2) > 0 {
+	// Known issue matches from Phase 2
+	if len(r.Phase2) > 0 {
 		parts = append(parts, "**Possibly related:**\n")
 		for _, s := range r.Phase2 {
 			url := sanitizeURL(s.DocURL)
@@ -62,8 +63,8 @@ func Build(r TriageResult) string {
 		parts = append(parts, "")
 	}
 
-	// Enhancement context from Phase 4a (enhancements only)
-	if r.IsEnhancement && len(r.Phase4a) > 0 {
+	// Enhancement context from Phase 4a
+	if len(r.Phase4a) > 0 {
 		statusLabels := map[string]string{
 			"shipped":       "Shipped",
 			"planned":       "Planned",
@@ -136,17 +137,66 @@ func Build(r TriageResult) string {
 	}
 
 	// Footer: tip + feedback + bot disclosure
-	if r.IsBug {
-		parts = append(parts,
-			"*Bot suggestion \u2014 [Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) \u2014 "+
-				"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*")
-	} else {
-		parts = append(parts,
-			"*Bot suggestion \u2014 [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap) \u2014 "+
-				"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*")
+	// Link to relevant docs based on which phases produced output.
+	hasPhase2 := len(r.Phase2) > 0
+	hasPhase4a := len(r.Phase4a) > 0
+	var docLinks string
+	switch {
+	case hasPhase2 && hasPhase4a:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) " +
+			"| [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	case hasPhase2:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting)"
+	case hasPhase4a:
+		docLinks = "[Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	default:
+		docLinks = "[Project docs](https://ismaelmartinez.github.io/teams-for-linux)"
 	}
+	parts = append(parts,
+		"*Bot suggestion \u2014 "+docLinks+" \u2014 "+
+			"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*")
 
 	return strings.Join(parts, "\n")
+}
+
+// Footer returns the bot disclosure footer line based on which phases produced output.
+func Footer(r TriageResult) string {
+	hasPhase2 := len(r.Phase2) > 0
+	hasPhase4a := len(r.Phase4a) > 0
+	var docLinks string
+	switch {
+	case hasPhase2 && hasPhase4a:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting) " +
+			"| [Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	case hasPhase2:
+		docLinks = "[Troubleshooting Guide](https://ismaelmartinez.github.io/teams-for-linux/troubleshooting)"
+	case hasPhase4a:
+		docLinks = "[Roadmap](https://ismaelmartinez.github.io/teams-for-linux/development/plan/roadmap)"
+	default:
+		docLinks = "[Project docs](https://ismaelmartinez.github.io/teams-for-linux)"
+	}
+	return "*Bot suggestion \u2014 " + docLinks + " \u2014 " +
+		"react \U0001F44D/\U0001F44E or [share feedback](https://github.com/IsmaelMartinez/github-issue-triage-bot/issues/new?template=bot-feedback.yml).*"
+}
+
+// DebugInstructions returns the collapsible debug log instructions block,
+// or empty string if debug logs are not missing.
+func DebugInstructions(r TriageResult) string {
+	if !r.IsBug || r.IsDocBug {
+		return ""
+	}
+	for _, item := range r.Phase1.MissingItems {
+		if item.Label == "Debug console output" {
+			return "<details>\n" +
+				"<summary>How to get debug logs</summary>\n\n" +
+				"```bash\n" +
+				"ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{\"transports\":{\"console\":{\"level\":\"debug\"}}}'\n" +
+				"```\n" +
+				"Reproduce the issue and copy the relevant output.\n\n" +
+				"</details>\n"
+		}
+	}
+	return ""
 }
 
 // countRelevantMissing returns the number of missing items that will actually

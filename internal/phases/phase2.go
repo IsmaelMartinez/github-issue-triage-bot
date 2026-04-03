@@ -18,15 +18,21 @@ var reStripCodeFences = regexp.MustCompile("(?s)```[\\s\\S]*?```")
 
 // Phase2 searches for matching troubleshooting documentation using vector similarity
 // and then asks the LLM to pick the best matches with actionable suggestions.
-func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, codeContext string) ([]Suggestion, error) {
+func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, codeContext string, preEmbedding []float32) ([]Suggestion, error) {
 	logger.Info("phase2 start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
 
-	// Get embedding for the issue
-	embedding, err := l.Embed(ctx, queryText)
-	if err != nil {
-		return nil, fmt.Errorf("embed issue: %w", err)
+	// Use pre-computed embedding if provided, otherwise compute it
+	var embedding []float32
+	if len(preEmbedding) > 0 {
+		embedding = preEmbedding
+	} else {
+		var err error
+		embedding, err = l.Embed(ctx, queryText)
+		if err != nil {
+			return nil, fmt.Errorf("embed issue: %w", err)
+		}
 	}
 	// Find similar documents across all doc types (project + upstream)
 	docs, err := s.FindSimilarDocuments(ctx, repo, []string{"troubleshooting", "configuration", "adr", "roadmap", "research", "upstream_release", "upstream_issue"}, embedding, 5)
@@ -49,7 +55,7 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 	}
 
 	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
-Match this bug report against our documentation: troubleshooting guides, configuration options, architecture decisions (ADRs), roadmap items, and research documents.
+Match this issue against our documentation: troubleshooting guides, configuration options, architecture decisions (ADRs), roadmap items, and research documents.
 
 Return a JSON array of 0-3 matches. Only include sections with a strong connection (same symptoms, same error message, same component, or a documented decision/limitation that explains the behaviour). For each match, estimate a relevance percentage (60-95). Only include matches above 60%%.
 
@@ -62,7 +68,7 @@ Respond with ONLY valid JSON, no other text.`
 	if codeContext != "" {
 		systemPrompt += "\n\nYou also have access to relevant source code from the repository. Use it to:\n- Identify specific configuration options or code paths related to the bug\n- Suggest specific debug log lines or config values the user should check\n- Provide more targeted diagnostic steps based on the actual implementation"
 	}
-	userContent := fmt.Sprintf("KNOWN ISSUES:\n%s\n\nBUG REPORT:\nTitle: %s\nBody: %s",
+	userContent := fmt.Sprintf("KNOWN ISSUES:\n%s\n\nISSUE:\nTitle: %s\nBody: %s",
 		strings.Join(summaries, "\n"), truncate(title, 200), cleanBody)
 	if codeContext != "" {
 		userContent += "\n\n" + codeContext
@@ -130,6 +136,11 @@ func stripCodeFences(text string, maxLen int) string {
 	return truncate(result, maxLen)
 }
 
+// StripCodeFences removes markdown code fences and truncates to maxLen.
+func StripCodeFences(text string, maxLen int) string {
+	return stripCodeFences(text, maxLen)
+}
+
 // truncate shortens s to at most maxLen bytes, backing up to a valid UTF-8
 // rune boundary so multi-byte sequences are never split.
 func truncate(s string, maxLen int) string {
@@ -141,6 +152,11 @@ func truncate(s string, maxLen int) string {
 		maxLen--
 	}
 	return s[:maxLen]
+}
+
+// Truncate shortens s to at most maxLen bytes at a valid UTF-8 boundary.
+func Truncate(s string, maxLen int) string {
+	return truncate(s, maxLen)
 }
 
 // extractJSONArray finds the first top-level JSON array in raw by matching

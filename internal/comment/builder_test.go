@@ -39,8 +39,8 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	if !strings.Contains(got, "How to get debug logs") {
 		t.Error("missing debug instructions")
 	}
-	if !strings.Contains(got, "Troubleshooting Guide") {
-		t.Error("missing troubleshooting guide link")
+	if !strings.Contains(got, "Project docs") {
+		t.Error("missing project docs link in footer")
 	}
 	if !strings.Contains(got, "Bot suggestion") {
 		t.Error("missing bot disclosure")
@@ -219,5 +219,35 @@ func TestBuild_PreambleAppearsFirst(t *testing.T) {
 	preamble := "I checked this issue against the project's documentation and known issues."
 	if !strings.HasPrefix(got, preamble) {
 		t.Errorf("output should start with preamble, got: %q", got[:min(len(got), 100)])
+	}
+}
+
+func TestBuild_UnlabelledIssueWithPhase2(t *testing.T) {
+	result := TriageResult{
+		IsBug:         false,
+		IsEnhancement: false,
+		Phase2: []phases.Suggestion{
+			{Title: "Network Timeout", DocURL: "https://example.com/timeout", Reason: "similar network timeout reported"},
+		},
+	}
+	got := Build(result)
+
+	if got == "" {
+		t.Fatal("Build() should not return empty when Phase2 has suggestions for unlabelled issue")
+	}
+	if !strings.Contains(got, "checked this issue") {
+		t.Error("missing preamble")
+	}
+	if !strings.Contains(got, "Possibly related") {
+		t.Error("missing suggestions header")
+	}
+	if !strings.Contains(got, "[Network Timeout](https://example.com/timeout)") {
+		t.Error("missing suggestion link")
+	}
+	if !strings.Contains(got, "Troubleshooting Guide") {
+		t.Error("missing troubleshooting guide link in footer")
+	}
+	if !strings.Contains(got, "share feedback") {
+		t.Error("missing feedback link")
 	}
 }

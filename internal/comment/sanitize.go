@@ -15,6 +15,11 @@ var (
 	dangerousSchemeRe = regexp.MustCompile(`(?i)^(javascript|data|vbscript):`)
 )
 
+// SanitizeLLMOutput strips images, dangerous links, script tags, and HTML from LLM text.
+func SanitizeLLMOutput(s string) string {
+	return sanitizeLLMOutput(s)
+}
+
 func sanitizeLLMOutput(s string) string {
 	s = gfmImageRe.ReplaceAllString(s, "")
 	s = gfmRefImageRe.ReplaceAllString(s, "")

@@ -140,7 +140,7 @@ func TestCollectPhasesRun(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := collectPhasesRun(tt.result)
+			got := collectPhasesRun(tt.result, false)
 			if len(got) != len(tt.want) {
 				t.Fatalf("collectPhasesRun() returned %v, want %v", got, tt.want)
 			}
