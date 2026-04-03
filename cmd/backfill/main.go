@@ -85,13 +85,20 @@ func main() {
 
 		result.Phase1 = phases.Phase1(iss.Body)
 
-		p2, err := phases.Phase2(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body, "", nil)
+		queryText := fmt.Sprintf("%s\n%s", phases.Truncate(iss.Title, 200), phases.StripCodeFences(iss.Body, 1500))
+		preEmbedding, embedErr := llmClient.Embed(ctx, queryText)
+		if embedErr != nil {
+			issLog.Warn("shared embed failed, falling back to per-phase embedding", "error", embedErr)
+			preEmbedding = nil
+		}
+
+		p2, err := phases.Phase2(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body, "", preEmbedding)
 		if err != nil {
 			issLog.Error("phase 2 failed", "error", err)
 		}
 		result.Phase2 = p2
 
-		p4a, err := phases.Phase4a(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body, nil)
+		p4a, err := phases.Phase4a(ctx, s, llmClient, issLog, dataRepo, iss.Title, iss.Body, preEmbedding)
 		if err != nil {
 			issLog.Error("phase 4a failed", "error", err)
 		}

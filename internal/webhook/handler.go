@@ -399,16 +399,6 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		issueLog.Info("using source repo for data lookups", "dataRepo", dataRepo)
 	}
 
-	// Compute embedding once for reuse across phases
-	cleanBody := phases.StripCodeFences(issue.Body, 1500)
-	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
-	embedding, embedErr := h.llm.Embed(ctx, queryText)
-	if embedErr != nil {
-		issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
-		// Pass nil so phases fall back to their own embed calls (which may also fail).
-		embedding = nil
-	}
-
 	// Determine issue type
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
@@ -420,6 +410,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	result.IsEnhancement = isEnhancement
 	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
 	var phaseErrors []string // track LLM phase errors for shadow-mode fallback
+	var embedding []float32
 
 	if !cfg.Capabilities.Triage {
 		issueLog.Info("triage capability disabled, skipping phases")
@@ -428,6 +419,16 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	// Phase 1: Missing info (always runs when triage enabled)
 	if cfg.Capabilities.Triage {
 		result.Phase1 = phases.Phase1(issue.Body)
+
+		// Compute embedding once for reuse across Phase 2 and Phase 4a
+		cleanBody := phases.StripCodeFences(issue.Body, 1500)
+		queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
+		var embedErr error
+		embedding, embedErr = h.llm.Embed(ctx, queryText)
+		if embedErr != nil {
+			issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
+			embedding = nil
+		}
 	}
 
 	// Code navigation: fetch relevant source files for Phase 2 context (bugs only)
@@ -587,6 +588,17 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		dataRepo = h.sourceRepo
 	}
 
+	isBug := hasLabel(issue.Labels, "bug")
+	isEnhancement := hasLabel(issue.Labels, "enhancement")
+
+	var result comment.TriageResult
+	result.IsBug = isBug
+	result.IsEnhancement = isEnhancement
+	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
+	var phaseErrors []string
+
+	result.Phase1 = phases.Phase1(issue.Body)
+
 	// Compute embedding once for reuse across phases
 	cleanBody := phases.StripCodeFences(issue.Body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
@@ -596,25 +608,17 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		embedding = nil
 	}
 
-	isBug := hasLabel(issue.Labels, "bug")
-	isEnhancement := hasLabel(issue.Labels, "enhancement")
-
-	var result comment.TriageResult
-	result.IsBug = isBug
-	result.IsEnhancement = isEnhancement
-	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
-
-	result.Phase1 = phases.Phase1(issue.Body)
-
 	p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "", embedding)
 	if err != nil {
 		issueLog.Error("retriage phase 2 failed", "error", err)
+		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
 	}
 	result.Phase2 = p2
 
 	p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding)
 	if err != nil {
 		issueLog.Error("retriage phase 4a failed", "error", err)
+		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
 	}
 	result.Phase4a = p4a
 
@@ -653,8 +657,29 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	phasesRun := collectPhasesRun(result, synthesized)
 
 	shadowRepo, ok := h.shadowRepos[repo]
-	if !ok || body == "" {
-		issueLog.Info("retriage produced no output or no shadow repo configured")
+	if !ok {
+		issueLog.Info("no shadow repo configured for retriage")
+		return
+	}
+	if body == "" && len(phaseErrors) > 0 {
+		// Phases errored but nothing to show — create error-note shadow issue
+		const totalSections = 4
+		filled := totalSections - len(result.Phase1.MissingItems)
+		shadowTitle := fmt.Sprintf("[Retriage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
+		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
+		shadowNumber, createErr := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
+		if createErr != nil {
+			issueLog.Error("creating retriage error shadow issue", "error", createErr)
+			return
+		}
+		errNote := fmt.Sprintf("**Note:** Retriage was incomplete due to errors. LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*Reply `/retriage` on the source issue to retry.*", strings.Join(phaseErrors, "\n"))
+		if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errNote); err != nil {
+			issueLog.Error("posting retriage error note", "error", err)
+		}
+		return
+	}
+	if body == "" {
+		issueLog.Info("retriage produced no output")
 		return
 	}
 

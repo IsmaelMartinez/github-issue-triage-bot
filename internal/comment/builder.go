@@ -24,7 +24,8 @@ type TriageResult struct {
 func Build(r TriageResult) string {
 	hasPwaNote := r.IsBug && !r.IsDocBug && r.Phase1.IsPwaReproducible
 	missingCount := countRelevantMissing(r)
-	hasContent := missingCount > 0 ||
+	hasMissingInfo := r.IsBug && missingCount > 0
+	hasContent := hasMissingInfo ||
 		hasPwaNote ||
 		len(r.Phase2) > 0 ||
 		len(r.Phase4a) > 0
