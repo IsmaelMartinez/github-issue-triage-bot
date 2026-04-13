@@ -1,26 +1,36 @@
+version: "2"
 linters:
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
     - gocritic
-
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - fmt.Fprint
-      - fmt.Fprintf
-      - (net/http.ResponseWriter).Write
-  gocritic:
-    disabled-checks:
-      - exitAfterDefer  # os.Exit in main() is idiomatic Go
-
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - (net/http.ResponseWriter).Write
+    gocritic:
+      disabled-checks:
+        - exitAfterDefer
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - terraform
+      - docs
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-dirs:
-    - terraform
-    - docs
   max-issues-per-linter: 20
   max-same-issues: 5
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

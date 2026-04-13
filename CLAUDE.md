@@ -14,7 +14,7 @@ go test ./...
 go vet ./...
 
 # Run linter (matches CI)
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
 golangci-lint run ./...
 
 # Build server, seed, and sync-reactions binaries
@@ -177,7 +177,7 @@ See docs/decisions/ for full records. Summary: chose Gemini for its free tier an
 
 ## Linting
 
-The project uses golangci-lint v1.64.8 with errcheck, govet, staticcheck, gocritic, and other linters configured in `.golangci.yml`. CI runs linting on every PR. See CONTRIBUTING.md for full development setup and code style guidelines.
+The project uses golangci-lint v2.11.4 with errcheck, govet, staticcheck, gocritic, and other linters configured in `.golangci.yml`. CI runs linting on every PR. See CONTRIBUTING.md for full development setup and code style guidelines.
 
 ## Repo Butler
 

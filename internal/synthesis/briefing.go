@@ -12,7 +12,7 @@ func BuildBriefing(date string, findings []Finding) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# [Briefing] Weekly — %s\n\n", date))
+	fmt.Fprintf(&b, "# [Briefing] Weekly — %s\n\n", date)
 
 	sections := map[string][]Finding{
 		"cluster":         nil,
@@ -57,7 +57,7 @@ func writeFinding(b *strings.Builder, f Finding) {
 	if f.Severity == "action_needed" {
 		severity = " [ACTION NEEDED]"
 	}
-	b.WriteString(fmt.Sprintf("**%s**%s\n\n", f.Title, severity))
+	fmt.Fprintf(b, "**%s**%s\n\n", f.Title, severity)
 	if f.Suggestion != "" {
 		b.WriteString(f.Suggestion + "\n\n")
 	}
