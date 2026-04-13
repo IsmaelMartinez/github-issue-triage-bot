@@ -570,9 +570,8 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	// Start agent session for enhancements with shadow repo (requires research capability)
 	if isEnhancement && cfg.Capabilities.Research {
 		if shadowRepo, ok := h.shadowRepos[repo]; ok {
-			h.agentHandler.SetProjectMeta(cfg.Project.Name, cfg.Project.Description)
 			issueLog.Info("starting agent session", "shadowRepo", shadowRepo)
-			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body); err != nil {
+			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body, cfg.Project.Name, cfg.Project.Description); err != nil {
 				issueLog.Error("starting agent session", "error", err)
 			}
 		}
