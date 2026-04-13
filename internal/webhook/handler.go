@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,7 @@ type Handler struct {
 	wg            sync.WaitGroup
 	ctx           context.Context
 	agentHandler  *agent.AgentHandler
+	structural    *safety.StructuralValidator
 	shadowRepos   map[string]string
 	mirror        *mirror.Service
 	configCaches  map[string]*config.Cache
@@ -87,6 +89,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		logger:        logger,
 		ctx:           ctx,
 		agentHandler:  agentHandler,
+		structural:    structural,
 		shadowRepos:   shadowRepos,
 		mirror:        mirrorSvc,
 		configCaches:  make(map[string]*config.Cache),
@@ -356,6 +359,14 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	if !cfg.IsEnabled() {
 		issueLog.Info("bot is disabled via butler.json, skipping")
 		return
+	}
+
+	// Register the project's docs URL host with the safety validator so
+	// LLM-generated links to project documentation are not rejected.
+	if cfg.Project.DocsURL != "" {
+		if u, err := url.Parse(cfg.Project.DocsURL); err == nil && u.Hostname() != "" {
+			h.structural.AllowHost(u.Hostname())
+		}
 	}
 
 	// Set LLM daily limit from config
