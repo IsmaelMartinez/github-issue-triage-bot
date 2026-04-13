@@ -63,7 +63,7 @@ func New(github *gh.Client, llm llm.Provider, logger *slog.Logger) *Navigator {
 
 // Navigate fetches the repository tree, asks the LLM to identify relevant files,
 // validates the paths, and returns a CodeContext with their contents.
-func (n *Navigator) Navigate(ctx context.Context, installationID int64, repo, title, body string) (CodeContext, error) {
+func (n *Navigator) Navigate(ctx context.Context, installationID int64, repo, title, body, projectName string) (CodeContext, error) {
 	entries, err := n.github.GetTree(ctx, installationID, repo, "main")
 	if err != nil {
 		return CodeContext{}, fmt.Errorf("get tree: %w", err)
@@ -84,7 +84,10 @@ func (n *Navigator) Navigate(ctx context.Context, installationID int64, repo, ti
 		tree = tree[:maxTreePromptSize] + "\n  ... (truncated)\n"
 	}
 
-	systemPrompt := `You are analysing a bug report for a desktop application. Given the bug report and the repository's source file tree, identify the 3-5 most relevant source files that would help diagnose or understand this issue.
+	if projectName == "" {
+		projectName = "a software project"
+	}
+	systemPrompt := fmt.Sprintf(`You are analysing a bug report for %s. Given the bug report and the repository's source file tree, identify the 3-5 most relevant source files that would help diagnose or understand this issue.`, projectName) + `
 
 Focus on files that:
 - Implement the feature or subsystem mentioned in the bug

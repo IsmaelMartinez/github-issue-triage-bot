@@ -2,8 +2,19 @@ package config
 
 import "encoding/json"
 
+// ProjectMeta holds per-repo metadata used to parameterize LLM prompts and
+// bot output. Defaults match the teams-for-linux deployment for backward
+// compatibility; other repos override these in their butler.json.
+type ProjectMeta struct {
+	Name         string `json:"name"`          // human-readable project name (e.g. "Teams for Linux")
+	Description  string `json:"description"`   // architecture description for research prompts
+	DocsURL      string `json:"docs_url"`      // base URL for project documentation site
+	DebugCommand string `json:"debug_command"` // shell command users run to capture debug logs
+}
+
 type ButlerConfig struct {
 	Enabled          *bool              `json:"enabled"` // nil treated as true (kill switch)
+	Project          ProjectMeta        `json:"project"`
 	Capabilities     Capabilities       `json:"capabilities"`
 	DocPaths         []string           `json:"doc_paths"`
 	Upstream         []UpstreamDep      `json:"upstream"`
@@ -39,6 +50,19 @@ type SynthesisConfig struct {
 
 func DefaultConfig() ButlerConfig {
 	return ButlerConfig{
+		Project: ProjectMeta{
+			Name: "Teams for Linux",
+			Description: "an Electron desktop wrapper around the Microsoft Teams web app.\n\n" +
+				"Project architecture:\n" +
+				"- Desktop client: Electron + Node.js wrapping the Teams web app in a BrowserWindow\n" +
+				"- Custom CSS injection for theming (user-provided CSS files loaded at startup)\n" +
+				"- Configuration via config.json and CLI flags (Electron flags, proxy, notifications, etc.)\n" +
+				"- System tray integration, notifications, and keyboard shortcuts via Electron APIs\n" +
+				"- Preload scripts for bridging web app and native features\n" +
+				"- The app cannot modify the Teams web UI itself — features must work through Electron APIs, CSS injection, or configuration",
+			DocsURL:      "https://ismaelmartinez.github.io/teams-for-linux",
+			DebugCommand: `ELECTRON_ENABLE_LOGGING=true teams-for-linux --logConfig='{"transports":{"console":{"level":"debug"}}}'`,
+		},
 		Capabilities:     Capabilities{Triage: true, Research: true},
 		DocPaths:         []string{"docs/**", "*.md"},
 		Synthesis:        SynthesisConfig{Frequency: "weekly", Day: "monday"},

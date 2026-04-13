@@ -13,7 +13,7 @@ import (
 
 // Phase4a matches enhancement requests against the feature index (roadmap, ADRs, research)
 // using vector similarity search and LLM-based semantic matching.
-func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, preEmbedding []float32) ([]ContextMatch, error) {
+func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, preEmbedding []float32, projectName string) ([]ContextMatch, error) {
 	logger.Info("phase4a start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
@@ -49,8 +49,11 @@ func Phase4a(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *
 		summaries = append(summaries, fmt.Sprintf("[%d] (%s) %s: %s", i, status, d.Title, truncate(summary, 120)))
 	}
 
-	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
-Match this issue against our existing roadmap items, architecture decisions (ADRs), and research documents.
+	if projectName == "" {
+		projectName = "this"
+	}
+	systemPrompt := fmt.Sprintf(`You are a helpful assistant for the %q open source project.
+Match this issue against our existing roadmap items, architecture decisions (ADRs), and research documents.`, projectName) + `
 
 Return a JSON array of 0-3 matches. Only include items with a meaningful connection to the issue (same feature area, overlapping goals, related technical decisions).
 

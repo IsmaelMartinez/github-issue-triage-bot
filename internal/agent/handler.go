@@ -40,7 +40,7 @@ func NewAgentHandler(s *store.Store, l llm.Provider, g *gh.Client, structural *s
 // StartSession creates a mirror issue in the shadow repo and posts a context
 // brief summarising related documents and issues. Maintainers can then reply
 // with "research" to trigger full synthesis, or "reject" to close the session.
-func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, title, body string) error {
+func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, title, body string, projectName, projectDescription string) error {
 	log := h.logger.With("sourceRepo", sourceRepo, "issue", issueNumber, "shadowRepo", shadowRepo)
 
 	// Create mirror issue in shadow repo
@@ -54,7 +54,7 @@ func (h *AgentHandler) StartSession(ctx context.Context, installationID int64, s
 
 	// Run the rest of the session setup, posting error feedback on the shadow
 	// issue if anything fails after issue creation.
-	if err := h.startSessionAfterCreate(ctx, installationID, sourceRepo, issueNumber, shadowRepo, shadowNumber, title, body, log); err != nil {
+	if err := h.startSessionAfterCreate(ctx, installationID, sourceRepo, issueNumber, shadowRepo, shadowNumber, title, body, projectName, projectDescription, log); err != nil {
 		errMsg := fmt.Sprintf("Something went wrong setting up the context brief. A maintainer can trigger a retry with `/retriage`.\n\n<details><summary>Error details</summary>\n\n```\n%s\n```\n</details>", err.Error())
 		if _, postErr := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errMsg); postErr != nil {
 			log.Error("failed to post error feedback on shadow issue", "error", postErr)
@@ -69,15 +69,15 @@ func (h *AgentHandler) retryContextBrief(ctx context.Context, installationID int
 	return h.buildAndPostContextBrief(ctx, installationID, sess.ID, sess.Repo, sess.IssueNumber, sess.ShadowRepo, sess.ShadowIssueNumber, title, body, log)
 }
 
-func (h *AgentHandler) startSessionAfterCreate(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, shadowNumber int, title, body string, log *slog.Logger) error {
-	// Create session
+func (h *AgentHandler) startSessionAfterCreate(ctx context.Context, installationID int64, sourceRepo string, issueNumber int, shadowRepo string, shadowNumber int, title, body string, projectName, projectDescription string, log *slog.Logger) error {
+	// Create session — store project metadata in context for later use by HandleComment
 	sessionID, err := h.store.CreateSession(ctx, store.AgentSession{
 		Repo:              sourceRepo,
 		IssueNumber:       issueNumber,
 		ShadowRepo:        shadowRepo,
 		ShadowIssueNumber: shadowNumber,
 		Stage:             store.StageNew,
-		Context:           map[string]any{"title": title, "body": body},
+		Context:           map[string]any{"title": title, "body": body, "project_name": projectName, "project_description": projectDescription},
 	})
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
@@ -152,7 +152,7 @@ func (h *AgentHandler) buildAndPostContextBrief(ctx context.Context, installatio
 	return nil
 }
 
-func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, title, body string, clarificationAnswers []string, roundTrips ...int) error {
+func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessionID int64, shadowRepo string, shadowNumber int, sourceRepo string, issueNumber int, title, body string, clarificationAnswers []string, projectName, projectDescription string, roundTrips ...int) error {
 	// Preserve round-trip count if provided (default 0 for initial research)
 	currentRoundTrips := 0
 	if len(roundTrips) > 0 {
@@ -193,7 +193,7 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 	}
 
 	// Synthesize research
-	doc, err := SynthesizeResearch(ctx, h.llm, title, researchBody, docSummaries, issueSummaries)
+	doc, err := SynthesizeResearch(ctx, h.llm, title, researchBody, docSummaries, issueSummaries, projectName, projectDescription)
 	if err != nil {
 		return fmt.Errorf("synthesize research: %w", err)
 	}
@@ -381,7 +381,8 @@ func (h *AgentHandler) handleContextBriefResponse(ctx context.Context, installat
 		log.Info("research requested, starting full research pipeline")
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, nil)
+		pName, pDesc := sessionProjectMeta(sess)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, nil, pName, pDesc)
 
 	case SignalUseAsContext:
 		log.Info("context brief acknowledged, closing session")
@@ -408,8 +409,9 @@ func (h *AgentHandler) handleContextBriefResponse(ctx context.Context, installat
 		log.Info("feedback on context brief, starting research with additional context")
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
+		pName, pDesc := sessionProjectMeta(sess)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, pName, pDesc)
 	}
 }
 
@@ -441,9 +443,10 @@ func (h *AgentHandler) handleClarifyingResponse(ctx context.Context, installatio
 	// Enrich body with clarification and proceed to research
 	title, _ := sess.Context["title"].(string)
 	body, _ := sess.Context["body"].(string)
+	pName, pDesc := sessionProjectMeta(sess)
 	answers := []string{commentBody}
 
-	return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, answers, sess.RoundTripCount)
+	return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, answers, pName, pDesc, sess.RoundTripCount)
 }
 
 func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID int64, sess *store.AgentSession, signal ApprovalSignal, commentBody string, commentUser string, log *slog.Logger) error {
@@ -476,8 +479,9 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 		}
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
+		pName, pDesc := sessionProjectMeta(sess)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, newRoundTrips)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, pName, pDesc, newRoundTrips)
 
 	case SignalPromote:
 		if gate != nil {
@@ -502,8 +506,9 @@ func (h *AgentHandler) handleReviewResponse(ctx context.Context, installationID 
 		}
 		title, _ := sess.Context["title"].(string)
 		body, _ := sess.Context["body"].(string)
+		pName, pDesc := sessionProjectMeta(sess)
 		feedback := []string{commentBody}
-		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, newRoundTrips)
+		return h.startResearch(ctx, installationID, sess.ID, sess.ShadowRepo, sess.ShadowIssueNumber, sess.Repo, sess.IssueNumber, title, body, feedback, pName, pDesc, newRoundTrips)
 	}
 }
 
@@ -625,6 +630,13 @@ func (h *AgentHandler) handlePromote(ctx context.Context, installationID int64, 
 
 	log.Info("promoted research to public issue")
 	return nil
+}
+
+// sessionProjectMeta extracts project name and description from session context.
+func sessionProjectMeta(sess *store.AgentSession) (string, string) {
+	name, _ := sess.Context["project_name"].(string)
+	desc, _ := sess.Context["project_description"].(string)
+	return name, desc
 }
 
 // hashString returns the first 8 bytes of the SHA-256 hash of s as hex.

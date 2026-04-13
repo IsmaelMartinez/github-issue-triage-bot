@@ -17,7 +17,9 @@ func TestBuild_EmptyResult(t *testing.T) {
 
 func TestBuild_BugWithMissingInfo(t *testing.T) {
 	result := TriageResult{
-		IsBug: true,
+		IsBug:        true,
+		DocsURL:      "https://example.com/docs",
+		DebugCommand: "my-app --debug",
 		Phase1: phases.Phase1Result{
 			MissingItems: []phases.MissingItem{
 				{Label: "Reproduction steps", Detail: "Step-by-step instructions"},
@@ -39,6 +41,9 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	if !strings.Contains(got, "How to get debug logs") {
 		t.Error("missing debug instructions")
 	}
+	if !strings.Contains(got, "my-app --debug") {
+		t.Error("debug instructions should contain configured debug command")
+	}
 	if !strings.Contains(got, "Project docs") {
 		t.Error("missing project docs link in footer")
 	}
@@ -47,6 +52,23 @@ func TestBuild_BugWithMissingInfo(t *testing.T) {
 	}
 	if !strings.Contains(got, "share feedback") {
 		t.Error("missing feedback link")
+	}
+}
+
+func TestBuild_BugWithMissingInfoNoDebugCommand(t *testing.T) {
+	result := TriageResult{
+		IsBug: true,
+		Phase1: phases.Phase1Result{
+			MissingItems: []phases.MissingItem{
+				{Label: "Debug console output", Detail: "Log output"},
+				{Label: "Reproduction steps", Detail: "Step-by-step instructions"},
+			},
+		},
+	}
+	got := Build(result)
+
+	if strings.Contains(got, "How to get debug logs") {
+		t.Error("should omit debug instructions when DebugCommand is empty")
 	}
 }
 
@@ -110,6 +132,7 @@ func TestBuild_Phase4aSanitizesNonInfeasibleBranch(t *testing.T) {
 func TestBuild_Enhancement(t *testing.T) {
 	result := TriageResult{
 		IsEnhancement: true,
+		DocsURL:       "https://example.com/docs",
 		Phase4a: []phases.ContextMatch{
 			{Topic: "Dark Mode", Status: "planned", DocURL: "https://example.com/dark", Source: "roadmap", Reason: "appears related"},
 		},
@@ -125,8 +148,8 @@ func TestBuild_Enhancement(t *testing.T) {
 	if !strings.Contains(got, "[Dark Mode](https://example.com/dark)") {
 		t.Error("missing context link")
 	}
-	if !strings.Contains(got, "Roadmap") {
-		t.Error("missing roadmap tip link")
+	if !strings.Contains(got, "Project docs") {
+		t.Error("missing project docs link in footer")
 	}
 }
 
@@ -226,6 +249,7 @@ func TestBuild_UnlabelledIssueWithPhase2(t *testing.T) {
 	result := TriageResult{
 		IsBug:         false,
 		IsEnhancement: false,
+		DocsURL:       "https://example.com/docs",
 		Phase2: []phases.Suggestion{
 			{Title: "Network Timeout", DocURL: "https://example.com/timeout", Reason: "similar network timeout reported"},
 		},
@@ -244,8 +268,8 @@ func TestBuild_UnlabelledIssueWithPhase2(t *testing.T) {
 	if !strings.Contains(got, "[Network Timeout](https://example.com/timeout)") {
 		t.Error("missing suggestion link")
 	}
-	if !strings.Contains(got, "Troubleshooting Guide") {
-		t.Error("missing troubleshooting guide link in footer")
+	if !strings.Contains(got, "Project docs") {
+		t.Error("missing project docs link in footer")
 	}
 	if !strings.Contains(got, "share feedback") {
 		t.Error("missing feedback link")

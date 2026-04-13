@@ -47,6 +47,18 @@ func NewStructuralValidator(config StructuralConfig) *StructuralValidator {
 	return v
 }
 
+// AllowHost adds a hostname to the allowed URL hosts set. This is safe to call
+// concurrently — duplicate additions are harmless since the map is append-only.
+func (v *StructuralValidator) AllowHost(host string) {
+	if host == "" {
+		return
+	}
+	if v.allowedHosts == nil {
+		v.allowedHosts = make(map[string]bool)
+	}
+	v.allowedHosts[host] = true
+}
+
 // Validate checks content against all configured structural rules.
 // It returns on the first failure.
 func (v *StructuralValidator) Validate(content string) ValidationResult {

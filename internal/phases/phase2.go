@@ -18,7 +18,7 @@ var reStripCodeFences = regexp.MustCompile("(?s)```[\\s\\S]*?```")
 
 // Phase2 searches for matching troubleshooting documentation using vector similarity
 // and then asks the LLM to pick the best matches with actionable suggestions.
-func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, codeContext string, preEmbedding []float32) ([]Suggestion, error) {
+func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *slog.Logger, repo, title, body string, codeContext string, preEmbedding []float32, projectName string) ([]Suggestion, error) {
 	logger.Info("phase2 start")
 	cleanBody := stripCodeFences(body, 1500)
 	queryText := fmt.Sprintf("%s\n%s", truncate(title, 200), cleanBody)
@@ -54,8 +54,11 @@ func Phase2(ctx context.Context, s store.PhaseQuerier, l llm.Provider, logger *s
 		summaries = append(summaries, fmt.Sprintf("[%d] %s (%s): %s", i, d.Title, category, truncate(desc, 200)))
 	}
 
-	systemPrompt := `You are a helpful assistant for the "Teams for Linux" open source project.
-Match this issue against our documentation: troubleshooting guides, configuration options, architecture decisions (ADRs), roadmap items, and research documents.
+	if projectName == "" {
+		projectName = "this"
+	}
+	systemPrompt := fmt.Sprintf(`You are a helpful assistant for the %q open source project.
+Match this issue against our documentation: troubleshooting guides, configuration options, architecture decisions (ADRs), roadmap items, and research documents.`, projectName) + `
 
 Return a JSON array of 0-3 matches. Only include sections with a strong connection (same symptoms, same error message, same component, or a documented decision/limitation that explains the behaviour). For each match, estimate a relevance percentage (60-95). Only include matches above 60%%.
 

@@ -211,7 +211,7 @@ func TestPhase4a(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := Phase4a(context.Background(), tt.store, tt.llm, testLogger(), "test/repo", "Enhancement Request", "Add dark mode support", nil)
+			results, err := Phase4a(context.Background(), tt.store, tt.llm, testLogger(), "test/repo", "Enhancement Request", "Add dark mode support", nil, "")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -250,7 +250,7 @@ func TestPhase4a_InfeasibleWithRejectedStatus(t *testing.T) {
 		},
 	}
 
-	results, err := Phase4a(context.Background(), storeMock, llmMock, testLogger(), "test/repo", "Title", "Body", nil)
+	results, err := Phase4a(context.Background(), storeMock, llmMock, testLogger(), "test/repo", "Title", "Body", nil, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

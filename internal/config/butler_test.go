@@ -115,3 +115,57 @@ func TestCodeNavigationDefault(t *testing.T) {
 		t.Error("code navigation should be enabled when set")
 	}
 }
+
+func TestProjectMetaDefaults(t *testing.T) {
+	c := DefaultConfig()
+	if c.Project.Name != "Teams for Linux" {
+		t.Errorf("default project name = %q, want %q", c.Project.Name, "Teams for Linux")
+	}
+	if c.Project.DocsURL == "" {
+		t.Error("default DocsURL should not be empty")
+	}
+	if c.Project.DebugCommand == "" {
+		t.Error("default DebugCommand should not be empty")
+	}
+	if c.Project.Description == "" {
+		t.Error("default Description should not be empty")
+	}
+}
+
+func TestProjectMetaParsing(t *testing.T) {
+	input := `{"project":{"name":"My App","docs_url":"https://docs.myapp.io","debug_command":"myapp --debug","description":"a web dashboard"}}`
+	cfg, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if cfg.Project.Name != "My App" {
+		t.Errorf("Name = %q, want %q", cfg.Project.Name, "My App")
+	}
+	if cfg.Project.DocsURL != "https://docs.myapp.io" {
+		t.Errorf("DocsURL = %q, want %q", cfg.Project.DocsURL, "https://docs.myapp.io")
+	}
+	if cfg.Project.DebugCommand != "myapp --debug" {
+		t.Errorf("DebugCommand = %q, want %q", cfg.Project.DebugCommand, "myapp --debug")
+	}
+	if cfg.Project.Description != "a web dashboard" {
+		t.Errorf("Description = %q, want %q", cfg.Project.Description, "a web dashboard")
+	}
+}
+
+func TestProjectMetaEmptyOverride(t *testing.T) {
+	// Explicitly setting empty strings should override defaults
+	input := `{"project":{"name":"","docs_url":"","debug_command":""}}`
+	cfg, err := Parse([]byte(input))
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+	if cfg.Project.Name != "" {
+		t.Errorf("Name should be empty when explicitly set, got %q", cfg.Project.Name)
+	}
+	if cfg.Project.DocsURL != "" {
+		t.Errorf("DocsURL should be empty when explicitly set, got %q", cfg.Project.DocsURL)
+	}
+	if cfg.Project.DebugCommand != "" {
+		t.Errorf("DebugCommand should be empty when explicitly set, got %q", cfg.Project.DebugCommand)
+	}
+}
