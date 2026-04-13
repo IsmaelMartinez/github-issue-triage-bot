@@ -80,7 +80,7 @@ func TestEnhancementResearchFlow_SkipClarification(t *testing.T) {
 	}
 
 	// Phase 2: Synthesize research (since clarification was skipped)
-	doc, err := SynthesizeResearch(ctx, mock, "Add Ctrl+M mute toggle", "When in a call, pressing Ctrl+M should toggle mute.", nil, nil)
+	doc, err := SynthesizeResearch(ctx, mock, "Add Ctrl+M mute toggle", "When in a call, pressing Ctrl+M should toggle mute.", nil, nil, "", "")
 	if err != nil {
 		t.Fatalf("SynthesizeResearch: %v", err)
 	}

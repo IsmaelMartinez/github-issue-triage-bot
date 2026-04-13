@@ -17,12 +17,14 @@ import (
 // AgentHandler manages the enhancement research agent lifecycle,
 // coordinating between shadow repos, LLM analysis, and human review.
 type AgentHandler struct {
-	store      *store.Store
-	llm        llm.Provider
-	github     *gh.Client
-	structural *safety.StructuralValidator
-	llmSafety  *safety.LLMValidator
-	logger     *slog.Logger
+	store              *store.Store
+	llm                llm.Provider
+	github             *gh.Client
+	structural         *safety.StructuralValidator
+	llmSafety          *safety.LLMValidator
+	logger             *slog.Logger
+	projectName        string // from butler.json Project.Name
+	projectDescription string // from butler.json Project.Description
 }
 
 // NewAgentHandler creates a new AgentHandler with all required dependencies.
@@ -35,6 +37,12 @@ func NewAgentHandler(s *store.Store, l llm.Provider, g *gh.Client, structural *s
 		llmSafety:  llmSafety,
 		logger:     logger,
 	}
+}
+
+// SetProjectMeta configures the project name and description used in LLM prompts.
+func (h *AgentHandler) SetProjectMeta(name, description string) {
+	h.projectName = name
+	h.projectDescription = description
 }
 
 // StartSession creates a mirror issue in the shadow repo and posts a context
@@ -193,7 +201,7 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 	}
 
 	// Synthesize research
-	doc, err := SynthesizeResearch(ctx, h.llm, title, researchBody, docSummaries, issueSummaries)
+	doc, err := SynthesizeResearch(ctx, h.llm, title, researchBody, docSummaries, issueSummaries, h.projectName, h.projectDescription)
 	if err != nil {
 		return fmt.Errorf("synthesize research: %w", err)
 	}

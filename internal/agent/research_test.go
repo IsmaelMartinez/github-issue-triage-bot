@@ -111,6 +111,7 @@ func TestSynthesizeResearch(t *testing.T) {
 		"Add dark mode", "I want dark mode support",
 		[]string{"Theming guide from docs"},
 		[]string{"Issue #42: Color scheme request"},
+		"", "",
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

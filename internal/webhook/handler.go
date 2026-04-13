@@ -409,6 +409,8 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
 	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
+	result.DocsURL = cfg.Project.DocsURL
+	result.DebugCommand = cfg.Project.DebugCommand
 	var phaseErrors []string // track LLM phase errors for shadow-mode fallback
 	var embedding []float32
 
@@ -434,7 +436,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	// Code navigation: fetch relevant source files for Phase 2 context (bugs only)
 	var codeCtx string
 	if isBug && cfg.Capabilities.Triage && cfg.Capabilities.CodeNavigation {
-		cc, err := h.codeNav.Navigate(ctx, installationID, dataRepo, issue.Title, issue.Body)
+		cc, err := h.codeNav.Navigate(ctx, installationID, dataRepo, issue.Title, issue.Body, cfg.Project.Name)
 		if err != nil {
 			issueLog.Error("code navigation failed", "error", err)
 		} else {
@@ -444,7 +446,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 
 	// Phase 2: Solution suggestions
 	if cfg.Capabilities.Triage {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx, embedding)
+		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx, embedding, cfg.Project.Name)
 		if err != nil {
 			issueLog.Error("phase 2 failed", "error", err)
 			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
@@ -455,7 +457,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 
 	// Phase 4a: Enhancement context
 	if cfg.Capabilities.Triage {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding)
+		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding, cfg.Project.Name)
 		if err != nil {
 			issueLog.Error("phase 4a failed", "error", err)
 			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
@@ -471,6 +473,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		IsBug:         isBug,
 		IsEnhancement: isEnhancement,
 		IsDocBug:      result.IsDocBug,
+		ProjectName:   cfg.Project.Name,
 		Phase1:        result.Phase1,
 		Phase2:        result.Phase2,
 		Phase4a:       result.Phase4a,
@@ -567,6 +570,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 	// Start agent session for enhancements with shadow repo (requires research capability)
 	if isEnhancement && cfg.Capabilities.Research {
 		if shadowRepo, ok := h.shadowRepos[repo]; ok {
+			h.agentHandler.SetProjectMeta(cfg.Project.Name, cfg.Project.Description)
 			issueLog.Info("starting agent session", "shadowRepo", shadowRepo)
 			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body); err != nil {
 				issueLog.Error("starting agent session", "error", err)
@@ -588,6 +592,8 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		dataRepo = h.sourceRepo
 	}
 
+	cfg := h.getConfig(ctx, installationID, repo)
+
 	isBug := hasLabel(issue.Labels, "bug")
 	isEnhancement := hasLabel(issue.Labels, "enhancement")
 
@@ -595,6 +601,8 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 	result.IsBug = isBug
 	result.IsEnhancement = isEnhancement
 	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
+	result.DocsURL = cfg.Project.DocsURL
+	result.DebugCommand = cfg.Project.DebugCommand
 	var phaseErrors []string
 
 	result.Phase1 = phases.Phase1(issue.Body)
@@ -608,14 +616,14 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		embedding = nil
 	}
 
-	p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "", embedding)
+	p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "", embedding, cfg.Project.Name)
 	if err != nil {
 		issueLog.Error("retriage phase 2 failed", "error", err)
 		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
 	}
 	result.Phase2 = p2
 
-	p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding)
+	p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding, cfg.Project.Name)
 	if err != nil {
 		issueLog.Error("retriage phase 4a failed", "error", err)
 		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
@@ -629,6 +637,7 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 		IsBug:         isBug,
 		IsEnhancement: isEnhancement,
 		IsDocBug:      result.IsDocBug,
+		ProjectName:   cfg.Project.Name,
 		Phase1:        result.Phase1,
 		Phase2:        result.Phase2,
 		Phase4a:       result.Phase4a,

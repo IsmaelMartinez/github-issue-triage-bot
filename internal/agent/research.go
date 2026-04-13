@@ -56,17 +56,18 @@ Respond with JSON matching this schema:
 Set confidence to how confident you are that you understand the request (1.0 = perfectly clear, 0.0 = completely unclear).
 If needs_clarification is false, questions should be an empty array.`
 
-const synthesizeResearchSystemPrompt = `You are a software engineering researcher for teams-for-linux, an Electron desktop wrapper around the Microsoft Teams web app.
+func synthesizeResearchSystemPrompt(projectName, projectDescription string) string {
+	if projectName == "" {
+		projectName = "the project"
+	}
+	header := fmt.Sprintf("You are a software engineering researcher for %s", projectName)
+	if projectDescription != "" {
+		header += ", " + projectDescription
+	}
+	header += "."
+	return header + `
 
-Project architecture:
-- Desktop client: Electron + Node.js wrapping the Teams web app in a BrowserWindow
-- Custom CSS injection for theming (user-provided CSS files loaded at startup)
-- Configuration via config.json and CLI flags (Electron flags, proxy, notifications, etc.)
-- System tray integration, notifications, and keyboard shortcuts via Electron APIs
-- Preload scripts for bridging web app and native features
-- The app cannot modify the Teams web UI itself — features must work through Electron APIs, CSS injection, or configuration
-
-Given an enhancement request and related context (similar issues, ADRs, past research), produce a research document that evaluates implementation approaches grounded in this architecture. Reference related ADRs or past issues when relevant.
+Given an enhancement request and related context (similar issues, ADRs, past research), produce a research document that evaluates implementation approaches grounded in the project's architecture. Reference related ADRs or past issues when relevant.
 
 Generate 2-3 distinct approaches with trade-offs. Be specific and actionable.
 
@@ -78,6 +79,7 @@ Respond with JSON matching this schema:
   "recommendation": "string",
   "open_questions": ["string"]
 }`
+}
 
 // AnalyzeEnhancement uses an LLM to determine if an enhancement request has
 // enough detail to proceed with research, returning clarifying questions if not.
@@ -99,7 +101,7 @@ func AnalyzeEnhancement(ctx context.Context, provider llm.Provider, title, body 
 
 // SynthesizeResearch uses an LLM to produce a research document with multiple
 // implementation approaches, trade-offs, and a recommendation.
-func SynthesizeResearch(ctx context.Context, provider llm.Provider, title, body string, relatedDocs []string, relatedIssues []string) (*ResearchDocument, error) {
+func SynthesizeResearch(ctx context.Context, provider llm.Provider, title, body string, relatedDocs []string, relatedIssues []string, projectName, projectDescription string) (*ResearchDocument, error) {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Enhancement title: %s\n\nEnhancement body:\n%s", title, body)
 
@@ -113,7 +115,7 @@ func SynthesizeResearch(ctx context.Context, provider llm.Provider, title, body 
 		sb.WriteString(joinWithIndex(relatedIssues))
 	}
 
-	raw, err := provider.GenerateJSONWithSystem(ctx, synthesizeResearchSystemPrompt, sb.String(), 0.5, 8192)
+	raw, err := provider.GenerateJSONWithSystem(ctx, synthesizeResearchSystemPrompt(projectName, projectDescription), sb.String(), 0.5, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("synthesize research: %w", err)
 	}

@@ -16,6 +16,7 @@ type SynthesisInput struct {
 	IsBug         bool
 	IsEnhancement bool
 	IsDocBug      bool
+	ProjectName   string
 	Phase1        Phase1Result
 	Phase2        []Suggestion
 	Phase4a       []ContextMatch
@@ -43,7 +44,11 @@ func ShouldSynthesize(input SynthesisInput) bool {
 	return true
 }
 
-const synthesisSystemPrompt = `You are a triage assistant for the "Teams for Linux" open-source project. Write a single, concise GitHub comment responding to a new issue. Write like a knowledgeable maintainer — direct, helpful, no filler.
+func synthesisSystemPrompt(projectName string) string {
+	if projectName == "" {
+		projectName = "this"
+	}
+	return fmt.Sprintf(`You are a triage assistant for the %q open-source project. Write a single, concise GitHub comment responding to a new issue. Write like a knowledgeable maintainer — direct, helpful, no filler.`, projectName) + `
 
 Rules:
 - Keep the response under 1500 characters.
@@ -54,6 +59,7 @@ Rules:
 - If nothing useful was found, return exactly: EMPTY
 
 Return a JSON object with a single field "comment" containing your markdown response (or "EMPTY").`
+}
 
 // Synthesize calls the LLM to produce a single cohesive comment from all phase
 // outputs. Returns empty string if the LLM determines there is nothing useful
@@ -61,7 +67,7 @@ Return a JSON object with a single field "comment" containing your markdown resp
 func Synthesize(ctx context.Context, l llm.Provider, input SynthesisInput) (string, error) {
 	userContent := buildSynthesisPrompt(input)
 
-	raw, err := l.GenerateJSONWithSystem(ctx, synthesisSystemPrompt, userContent, 0.3, 2048)
+	raw, err := l.GenerateJSONWithSystem(ctx, synthesisSystemPrompt(input.ProjectName), userContent, 0.3, 2048)
 	if err != nil {
 		return "", fmt.Errorf("synthesize: %w", err)
 	}
