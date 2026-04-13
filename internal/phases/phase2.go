@@ -203,9 +203,10 @@ func extractBalanced(raw string, open, close byte, fallback string) string {
 		if inString {
 			continue
 		}
-		if ch == open {
+		switch ch {
+		case open:
 			depth++
-		} else if ch == close {
+		case close:
 			depth--
 			if depth == 0 {
 				return raw[start : i+1]

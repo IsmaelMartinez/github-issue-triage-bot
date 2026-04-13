@@ -103,10 +103,10 @@ func buildSynthesisPrompt(input SynthesisInput) string {
 	if len(input.Phase2) > 0 || len(input.Phase4a) > 0 {
 		b.WriteString("\nCONTEXT (only use these URLs):\n")
 		for _, s := range input.Phase2 {
-			b.WriteString(fmt.Sprintf("- [%s](%s): %s\n", s.Title, s.DocURL, s.Reason))
+			fmt.Fprintf(&b, "- [%s](%s): %s\n", s.Title, s.DocURL, s.Reason)
 		}
 		for _, c := range input.Phase4a {
-			b.WriteString(fmt.Sprintf("- [%s](%s): %s\n", c.Topic, c.DocURL, c.Reason))
+			fmt.Fprintf(&b, "- [%s](%s): %s\n", c.Topic, c.DocURL, c.Reason)
 		}
 	}
 
@@ -114,7 +114,7 @@ func buildSynthesisPrompt(input SynthesisInput) string {
 	if len(input.Phase1.MissingItems) > 0 {
 		b.WriteString("\nMISSING INFORMATION:\n")
 		for _, item := range input.Phase1.MissingItems {
-			b.WriteString(fmt.Sprintf("- %s: %s\n", item.Label, item.Detail))
+			fmt.Fprintf(&b, "- %s: %s\n", item.Label, item.Detail)
 		}
 	}
 

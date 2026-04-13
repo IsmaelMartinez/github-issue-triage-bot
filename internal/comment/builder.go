@@ -81,11 +81,14 @@ func Build(r TriageResult) string {
 			if statusLabel == "" {
 				statusLabel = ctx.Status
 			}
-			sourceLabel := "Roadmap"
-			if ctx.Source == "adr" {
+			var sourceLabel string
+			switch ctx.Source {
+			case "adr":
 				sourceLabel = "ADR"
-			} else if ctx.Source == "research" {
+			case "research":
 				sourceLabel = "Research"
+			default:
+				sourceLabel = "Roadmap"
 			}
 
 			url := sanitizeURL(ctx.DocURL)
