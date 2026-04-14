@@ -63,7 +63,7 @@ gh workflow run seed.yml -f seed_type=features -f data_file=data/feature-index.j
 
 The service receives GitHub webhook events (issue opened/closed/reopened, issue comments, issue edits) and runs a focused triage pipeline. Phase 3 (duplicate detection) and Phase 4b (misclassification) were removed in favour of GitHub native tooling — see `docs/plans/2026-03-15-lean-bot-pivot-design.md`.
 
-Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): searches roadmap/ADR/research documents for related context. All phases run for every issue regardless of labels; a single embedding is computed once and shared across Phase 2 and Phase 4a.
+Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): searches roadmap/ADR/research documents for related context. All phases run for every issue regardless of labels; a single embedding is computed once and shared across Phase 2 and Phase 4a. Phase identifiers stored in the database use friendly names (`missing_info`, `doc_search`, `enhancement_context`, `synthesis`) — see `migrations/013_rename_phases.sql`; the Go source files still use the historic `phase1.go` / `phase2.go` / `phase4a.go` naming.
 
 A synthesis step (`internal/phases/synthesis.go`) takes all phase outputs and produces one coherent response via an LLM call, weaving doc matches with missing-info requests (e.g., "this looks like [doc X], debug logs would help confirm"). The `ShouldSynthesize` guard skips the LLM call for trivially simple cases (single missing item, no doc matches). On synthesis failure, the comment builder (`internal/comment/builder.go`) produces a fallback concatenated response. Debug log instructions and the feedback footer are appended deterministically after synthesis. When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue. The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends, stuck sessions, and orphaned triage, creating GitHub alert issues when thresholds are violated.
 
@@ -78,7 +78,7 @@ For enhancement issues with a configured shadow repo, the bot also starts an age
 ## Project Structure
 
 ```
-cmd/server/main.go           # HTTP server entry point (/webhook, /health, /health-check, /ingest, /synthesize, /report, /report/trends, /dashboard)
+cmd/server/main.go           # HTTP server entry point (/webhook, /health, /cleanup, /health-check, /ingest, /pause, /unpause, /synthesize, /dashboard, /report, /report/trends, /api/triage/, /api/agent/)
 cmd/server/dashboard.go       # Live dashboard handler (go:embed template, /dashboard endpoint)
 cmd/server/template.html      # Dashboard template (sidebar layout, Chart.js charts, drill-down)
 cmd/seed/main.go              # CLI to import JSON indexes into database
@@ -100,6 +100,7 @@ internal/store/feedback.go    # Feedback signal storage and stats
 internal/store/models.go      # Shared data types (includes agent stage/gate constants)
 internal/store/events.go      # Event journal (repo_events) queries
 internal/store/references.go  # Cross-reference index (doc_references) queries
+internal/codenav/             # Code navigation: fetches relevant source files to augment Phase 2 prompts (opt-in via butler.json code_navigation capability)
 internal/agent/handler.go     # Agent handler: context brief (default) and research flows
 internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
 internal/agent/research.go    # Enhancement analysis and research synthesis prompts
@@ -123,14 +124,15 @@ scripts/generate-upstream-index.sh # Generate seed JSON from upstream dependency
 data/                         # Seed data (feature index, Electron upstream docs)
 internal/webhook/journal.go   # Event journal writes from webhook events
 internal/webhook/autoingest.go # Auto-ingest changed docs on push
-migrations/                   # Database migrations (001-012)
+migrations/                   # Database migrations (001-014; 005 was superseded in-flight and skipped)
 terraform/main.tf             # GCP infrastructure (Cloud Run, AR, budget, secrets)
 .github/workflows/deploy.yml  # CI/CD: test on PR, build+deploy on push to main
 .github/workflows/dashboard.yml # Daily maintenance: stale cleanup, health check, reaction sync
 .github/workflows/seed.yml    # Manual seed workflow (workflow_dispatch)
 .github/workflows/event-ingest.yml # Daily event ingestion from GitHub API
 .github/workflows/synthesis.yml    # Weekly synthesis briefing cron (Monday 06:00 UTC)
-docs/decisions/               # Architecture decision records
+docs/adr/                     # Architecture decision records (technical choices: provider, infra, security)
+docs/decisions/               # Project decision records (design pivots, strategic changes)
 docs/plans/                   # Implementation plans and design docs
 .golangci.yml                 # Linter configuration
 CONTRIBUTING.md               # Developer setup and contribution guidelines
@@ -165,7 +167,7 @@ Phase 1 is pure string parsing (no network calls) and has the most comprehensive
 
 The comment builder produces concise output: a single-sentence preamble, no greeting line, a compact footer with a feedback hint. Keep builder output minimal. All LLM prompts and bot output (debug command, doc links, project name) are parameterized via `config.ProjectMeta` in the per-repo butler.json `project` field. Defaults match the teams-for-linux deployment.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), INGEST_SECRET (optional, authenticates /ingest and /synthesize endpoints; empty disables auth), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), INGEST_SECRET (optional, authenticates /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause; empty disables auth), MAX_DAILY_LLM_CALLS (optional integer, overrides the default Gemini call budget), MIRROR_CACHE_DIR (optional, directory for the shadow-repo mirror service; defaults to os.TempDir()), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
 
 ## Issue Template Headers
 
