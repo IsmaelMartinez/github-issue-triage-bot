@@ -63,9 +63,10 @@ Cloud Run (Go binary)
         |       +-- Missing info check: template parsing (no LLM)
         |       +-- Known solutions: pgvector search + Gemini (bugs)
         |       +-- Related context: pgvector search + Gemini (enhancements)
+        |       +-- Synthesis: weave phase outputs into a single coherent comment (Gemini)
         |       |
         |       v
-        |   Post comment / store for dashboard (silent mode)
+        |   Post to shadow repo for maintainer review (lgtm to promote to public issue)
         |
         +-- Enhancement Researcher Agent (if shadow repo configured)
         |       +-- Create mirror issue in shadow repo
@@ -90,15 +91,15 @@ Neon PostgreSQL + pgvector             GitHub Pages Dashboard
  agent_sessions, feedback_signals)
 ```
 
-### Silent mode
+### Shadow-repo review gate
 
-The bot defaults to silent (observer) mode, controlled by the `SILENT_MODE` environment variable (default: `"true"`). In silent mode, triage results are stored in the database for dashboard review but no comments are posted on GitHub issues. Set `SILENT_MODE=false` to enable public commenting. Agent sessions in shadow repos are unaffected by this setting. See `docs/decisions/002-silent-mode.md` for the full rationale.
+Every triage comment and agent session is first mirrored into a private shadow repository configured via `SHADOW_REPOS`. Maintainers review the draft there and reply with `lgtm` to promote a curated summary to the public issue, or `reject` to discard. Nothing reaches public issues without explicit approval. This pattern replaced the original silent-mode observer design (see `docs/decisions/003-shadow-repo-pattern.md`, which supersedes `docs/decisions/002-silent-mode.md`).
 
 ### Environment variables
 
 The server requires `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, and `WEBHOOK_SECRET`. `GEMINI_API_KEY` is optional (the bot logs a warning and skips LLM phases if unset). `GITHUB_PRIVATE_KEY` should contain the PEM content either as raw PEM text or base64-encoded PEM.
 
-Optional variables controlling runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks). `SILENT_MODE` (default `"true"`) controls whether triage comments are posted publicly or stored silently for dashboard review — set to `"false"` to enable posting. `SHADOW_REPOS` defines shadow repo mappings for the Enhancement Researcher agent as comma-separated `owner/repo:owner/shadow` pairs (e.g., `IsmaelMartinez/teams-for-linux:IsmaelMartinez/triage-bot-shadow`). `PORT` sets the HTTP listen port (defaults to 8080).
+Optional variables controlling runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks). `SHADOW_REPOS` defines shadow repo mappings as comma-separated `owner/repo:owner/shadow` pairs (e.g., `IsmaelMartinez/teams-for-linux:IsmaelMartinez/triage-bot-shadow`); without it, the bot skips mirroring and posts nothing publicly. `INGEST_SECRET` authenticates the `/cleanup`, `/health-check`, `/ingest`, `/synthesize`, `/pause`, and `/unpause` endpoints (empty disables auth). `MAX_DAILY_LLM_CALLS` overrides the default daily Gemini budget. `MIRROR_CACHE_DIR` sets the shadow-repo mirror cache (defaults to the system temp dir). `PORT` sets the HTTP listen port (defaults to 8080).
 
 ### Deployment
 

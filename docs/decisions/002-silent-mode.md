@@ -1,7 +1,9 @@
 # Silent Mode — Observe Before Acting
 
 Date: 2026-03-04
-Status: Accepted
+Status: Superseded by [ADR-003](003-shadow-repo-pattern.md) (2026-03-05)
+
+> **Note (2026-04-14):** The `SILENT_MODE` environment variable and the `triage_results` draft-comment table were removed when the shadow-repo review gate landed (migration `008_drop_triage_results.sql`). All triage and agent output now flows through a shadow repository instead. This record is retained for historical context only.
 
 ## Context
 

@@ -18,8 +18,7 @@ export GEMINI_API_KEY="..."
 export GITHUB_APP_ID="..."
 export GITHUB_PRIVATE_KEY="..."   # base64-encoded PEM
 export WEBHOOK_SECRET="..."
-export SILENT_MODE="false"          # optional, default "true" (observer mode)
-export SHADOW_REPOS="owner/repo:owner/shadow"  # optional, comma-separated mappings
+export SHADOW_REPOS="owner/repo:owner/shadow"  # optional, comma-separated mappings; without it nothing is posted publicly
 ```
 
 Build and run:
