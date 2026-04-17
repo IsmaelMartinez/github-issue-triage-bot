@@ -54,7 +54,7 @@ Outcome decisions:
 - Read simili-bot's README for current install instructions and required secrets.
 - Add the GitHub Action workflow to `IsmaelMartinez/teams-for-linux`.
 - Configure in `similarity-only` mode with a conservative threshold (start at the tool's recommended default).
-- Add `GEMINI_API_KEY` and any Qdrant credentials to teams-for-linux repo secrets (separate key from the triage bot to keep quota attribution clean).
+- Add `GEMINI_API_KEY` (same key as the triage bot) and any Qdrant credentials to teams-for-linux repo secrets.
 
 ### Step 2: Seed the index
 
@@ -83,7 +83,7 @@ Outcome decisions:
 ## Risks and Mitigations
 
 - **Two bots commenting on the same issue is confusing.** Mitigation: similarity-only mode keeps simili-bot's output to a single "related issues" comment with clear attribution. Monitor user reactions in the weekly review; if confusion is observed, pause the trial.
-- **Gemini quota contention.** Mitigation: use a separate API key for simili-bot so the triage bot's `MAX_DAILY_LLM_CALLS` budget is not eroded. Watch both dashboards weekly.
+- **Gemini quota contention.** Both bots share a single API key, so simili-bot's embedding calls count against the same free-tier quota as the triage bot. Mitigation: watch the triage bot dashboard's LLM usage panel weekly; if the combined load threatens the daily budget, lower simili-bot's call frequency (e.g. seed less often, trigger only on issue open) before considering a split key.
 - **Simili-bot suggests already-closed duplicates as "related".** Usually fine, but can be noisy. Mitigation: note in weekly review; tune threshold if needed.
 - **Sunk-cost pressure to adopt even if metrics are weak.** Mitigation: pre-committed numeric thresholds in Success Criteria above. If they miss, document and drop.
 
