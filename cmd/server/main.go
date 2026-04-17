@@ -176,6 +176,16 @@ func main() {
 
 		closed := 0
 		for _, ss := range stale {
+			// Orphaned agent sessions have ShadowIssueNumber == 0 (NULL in the DB);
+			// there's no shadow issue to close, so just mark the session complete.
+			if ss.ShadowIssueNumber == 0 {
+				if ss.SessionType == "agent" {
+					_ = s.MarkSessionComplete(r.Context(), ss.ID)
+				}
+				closed++
+				logger.Info("closed orphaned agent session with no shadow issue", "session_id", ss.ID, "shadow_repo", ss.ShadowRepo)
+				continue
+			}
 			note := "This shadow issue has been automatically closed after 14 days without a response."
 			if _, err := ghClient.CreateComment(r.Context(), installID, ss.ShadowRepo, ss.ShadowIssueNumber, note); err != nil {
 				logger.Error("failed to comment on stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
