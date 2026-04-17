@@ -130,7 +130,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 	})
-	allowedRepos := map[string]bool{"IsmaelMartinez/teams-for-linux": true}
+	allowedRepos := map[string]bool{
+		"IsmaelMartinez/teams-for-linux":         true,
+		"IsmaelMartinez/github-issue-triage-bot": true, // default alert_repo for /health-check
+	}
 	if sourceRepo != "" {
 		allowedRepos[sourceRepo] = true
 	}

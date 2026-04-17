@@ -103,11 +103,12 @@ func (s *Store) ListStaleSessions(ctx context.Context, staleDuration time.Durati
 	cutoff := time.Now().Add(-staleDuration)
 	var results []StaleSession
 
-	// Stale agent sessions (not in a terminal stage)
+	// Stale agent sessions (not in a terminal stage).
+	// shadow_issue_number can be NULL when shadow issue creation failed mid-session; skip those rows.
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, shadow_repo, shadow_issue_number
 		FROM agent_sessions
-		WHERE stage NOT IN ('complete') AND created_at < $1
+		WHERE stage NOT IN ('complete') AND created_at < $1 AND shadow_issue_number IS NOT NULL
 	`, cutoff)
 	if err != nil {
 		return nil, fmt.Errorf("list stale agent sessions: %w", err)
