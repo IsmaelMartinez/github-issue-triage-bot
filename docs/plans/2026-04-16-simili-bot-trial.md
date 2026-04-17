@@ -25,7 +25,7 @@ After 30 days of running on teams-for-linux:
 - **No regressions:** triage bot's Phase 1 fill rate and dashboard metrics do not degrade (i.e. users are not confused by two bots commenting).
 
 Outcome decisions:
-- All four hit → adopt permanently, update roadmap "What We're Not Doing" to cite the result, note in README.
+- All five hit → adopt permanently, update roadmap "What We're Not Doing" to cite the result, note in README.
 - Precision or noise fails → tune threshold / mode, extend trial 14 days, re-measure.
 - Coverage fails but precision holds → keep as a supplement, document the gap.
 - Cost fails → drop, document why, revisit if Gemini pricing changes.
@@ -59,7 +59,7 @@ Outcome decisions:
 ### Step 2: Seed the index
 
 - Use simili-bot's bulk-seed path (or a one-shot backfill Action run) to embed the closed-issue corpus.
-- Confirm index size roughly matches the 1,362 issues the triage bot has embedded.
+- Confirm index size roughly matches the total number of closed issues the triage bot has embedded at the time of seeding.
 
 ### Step 3: Open a tracking issue
 
@@ -83,7 +83,7 @@ Outcome decisions:
 ## Risks and Mitigations
 
 - **Two bots commenting on the same issue is confusing.** Mitigation: similarity-only mode keeps simili-bot's output to a single "related issues" comment with clear attribution. Monitor user reactions in the weekly review; if confusion is observed, pause the trial.
-- **Gemini quota contention.** Both bots share a single API key, so simili-bot's embedding calls count against the same free-tier quota as the triage bot. Mitigation: watch the triage bot dashboard's LLM usage panel weekly; if the combined load threatens the daily budget, lower simili-bot's call frequency (e.g. seed less often, trigger only on issue open) before considering a split key.
+- **Gemini quota contention.** Both bots share a single API key, so simili-bot's embedding calls count against the same free-tier quota as the triage bot. Mitigation: watch the triage bot dashboard's LLM usage panel weekly; if the combined load threatens the daily budget, lower simili-bot's call frequency (e.g. sync the index less often, trigger only on issue open) before considering a split key.
 - **Simili-bot suggests already-closed duplicates as "related".** Usually fine, but can be noisy. Mitigation: note in weekly review; tune threshold if needed.
 - **Sunk-cost pressure to adopt even if metrics are weak.** Mitigation: pre-committed numeric thresholds in Success Criteria above. If they miss, document and drop.
 
