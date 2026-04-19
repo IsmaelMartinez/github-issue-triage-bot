@@ -1,4 +1,4 @@
-CREATE TABLE repo_events (
+CREATE TABLE IF NOT EXISTS repo_events (
     id          BIGSERIAL PRIMARY KEY,
     repo        TEXT NOT NULL,
     event_type  TEXT NOT NULL,
@@ -8,5 +8,5 @@ CREATE TABLE repo_events (
     metadata    JSONB DEFAULT '{}',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_repo_events_repo_type ON repo_events(repo, event_type);
-CREATE INDEX idx_repo_events_repo_created ON repo_events(repo, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_repo_events_repo_type ON repo_events(repo, event_type);
+CREATE INDEX IF NOT EXISTS idx_repo_events_repo_created ON repo_events(repo, created_at DESC);
