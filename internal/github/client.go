@@ -31,21 +31,25 @@ func New(appID int64, privateKey []byte) *Client {
 	return &Client{
 		appID:      appID,
 		privateKey: privateKey,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Transport: newRetryTransport(http.DefaultTransport), Timeout: 30 * time.Second},
 		baseURL:    "https://api.github.com",
 	}
 }
 
 // installationClient returns an HTTP client scoped to a specific installation.
+// The underlying transport includes retry-on-transient-error wrappers at two
+// levels: one for the installation-token mint (against api.github.com) and one
+// for the outgoing API request itself. This absorbs brief TLS/5xx blips that
+// would otherwise silently drop user signals like `lgtm`.
 func (c *Client) installationClient(installationID int64) (*http.Client, error) {
-	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
+	itr, err := ghinstallation.New(newRetryTransport(http.DefaultTransport), c.appID, installationID, c.privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("create installation transport: %w", err)
 	}
 	if c.baseURL != "https://api.github.com" {
 		itr.BaseURL = c.baseURL
 	}
-	return &http.Client{Transport: itr, Timeout: 30 * time.Second}, nil
+	return &http.Client{Transport: newRetryTransport(itr), Timeout: 30 * time.Second}, nil
 }
 
 // CreateComment posts a comment on a GitHub issue and returns the comment ID.

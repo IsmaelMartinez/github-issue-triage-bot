@@ -15,7 +15,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /server /usr/local/bin/server
 COPY --from=builder /seed /usr/local/bin/seed
-COPY migrations /migrations
+# Migrations are embedded into the server binary via go:embed — no filesystem copy needed.
 
 USER appuser
 EXPOSE 8080
