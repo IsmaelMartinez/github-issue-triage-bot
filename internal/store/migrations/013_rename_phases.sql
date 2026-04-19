@@ -26,3 +26,4 @@ UPDATE triage_sessions SET phases_run = array_replace(phases_run, 'phase2', 'doc
 UPDATE triage_sessions SET phases_run = array_replace(phases_run, 'phase4a', 'enhancement_context');
 UPDATE triage_sessions SET phases_run = array_remove(phases_run, 'phase3');
 UPDATE triage_sessions SET phases_run = array_remove(phases_run, 'phase4b');
+-- No-op trailing comment to force CI re-evaluation.
