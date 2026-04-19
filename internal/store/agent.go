@@ -103,9 +103,12 @@ func (s *Store) ListStaleSessions(ctx context.Context, staleDuration time.Durati
 	cutoff := time.Now().Add(-staleDuration)
 	var results []StaleSession
 
-	// Stale agent sessions (not in a terminal stage)
+	// Stale agent sessions (not in a terminal stage).
+	// shadow_issue_number can be NULL when shadow issue creation failed mid-session.
+	// COALESCE to 0 so these rows still surface for cleanup; the caller uses 0 as the
+	// sentinel for "no shadow issue to close" and marks the session complete directly.
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, shadow_repo, shadow_issue_number
+		SELECT id, shadow_repo, COALESCE(shadow_issue_number, 0)
 		FROM agent_sessions
 		WHERE stage NOT IN ('complete') AND created_at < $1
 	`, cutoff)
