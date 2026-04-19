@@ -160,7 +160,7 @@ func main() {
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
 		if err != nil {
 			logger.Error("failed to list stale sessions", "error", err)
-			http.Error(w, "failed to list stale sessions", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("failed to list stale sessions: %v", err), http.StatusInternalServerError)
 			return
 		}
 
