@@ -37,12 +37,13 @@ func New(appID int64, privateKey []byte) *Client {
 }
 
 // installationClient returns an HTTP client scoped to a specific installation.
-// The underlying transport includes retry-on-transient-error wrappers at two
-// levels: one for the installation-token mint (against api.github.com) and one
-// for the outgoing API request itself. This absorbs brief TLS/5xx blips that
-// would otherwise silently drop user signals like `lgtm`.
+// The outer retry transport wraps the whole call (both the ghinstallation
+// token-mint and the subsequent API request) so a transient TLS/5xx failure
+// during either phase triggers a fresh attempt instead of silently dropping
+// user signals like `lgtm`. One retry layer is intentional; nesting retries
+// around ghinstallation's internal transport would amplify to N² attempts.
 func (c *Client) installationClient(installationID int64) (*http.Client, error) {
-	itr, err := ghinstallation.New(newRetryTransport(http.DefaultTransport), c.appID, installationID, c.privateKey)
+	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("create installation transport: %w", err)
 	}

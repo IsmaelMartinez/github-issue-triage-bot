@@ -24,11 +24,17 @@ func newRetryTransport(base http.RoundTripper) *retryTransport {
 	return &retryTransport{base: base, attempts: 3, baseWait: 200 * time.Millisecond}
 }
 
+// maxBufferedBody caps the request body size we buffer for replay.
+// GitHub API request payloads are small (comment bodies, issue fields); 1 MiB
+// leaves ample headroom while preventing a malicious caller from exhausting
+// memory through the retry layer.
+const maxBufferedBody = 1 << 20
+
 func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Buffer the body so we can replay it on retry. GitHub API payloads are small.
+	// Buffer the body so we can replay it on retry. Bounded by maxBufferedBody.
 	var body []byte
 	if req.Body != nil {
-		b, err := io.ReadAll(req.Body)
+		b, err := io.ReadAll(io.LimitReader(req.Body, maxBufferedBody))
 		if err != nil {
 			return nil, err
 		}
@@ -36,29 +42,29 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		body = b
 	}
 
-	var lastResp *http.Response
-	var lastErr error
 	for attempt := 0; attempt < rt.attempts; attempt++ {
 		if body != nil {
 			req.Body = io.NopCloser(bytes.NewReader(body))
 		}
 		resp, err := rt.base.RoundTrip(req)
-		if !shouldRetry(resp, err) {
+		// Final attempt: return whatever we got, including the open body,
+		// so the caller can read it.
+		if !shouldRetry(resp, err) || attempt == rt.attempts-1 {
 			return resp, err
 		}
 		if resp != nil {
 			_ = resp.Body.Close()
 		}
-		lastResp, lastErr = resp, err
-		if attempt < rt.attempts-1 {
-			select {
-			case <-req.Context().Done():
-				return nil, req.Context().Err()
-			case <-time.After(rt.baseWait * (1 << attempt)):
-			}
+
+		timer := time.NewTimer(rt.baseWait * (1 << attempt))
+		select {
+		case <-req.Context().Done():
+			timer.Stop()
+			return nil, req.Context().Err()
+		case <-timer.C:
 		}
 	}
-	return lastResp, lastErr
+	return nil, nil // unreachable: the loop always returns on the final attempt
 }
 
 func shouldRetry(resp *http.Response, err error) bool {

@@ -15,11 +15,33 @@ import (
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
 
+// migrationLockKey is an arbitrary 64-bit constant used as the PostgreSQL
+// advisory-lock key for serialising migration runs. It is held for the
+// duration of one process's migration attempt; concurrent deployers wait.
+const migrationLockKey int64 = 712345678
+
 // Migrate applies any pending SQL migrations embedded under migrations/.
 // Applied migrations are tracked in schema_migrations by filename. Each file
 // is applied inside a transaction. Missing migrations are applied in sorted
 // filename order; filename 005 is intentionally skipped per project history.
+// A session-level PostgreSQL advisory lock serialises concurrent invocations
+// so that overlapping Cloud Run deployments can't race on the migration.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire connection for migration lock: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrationLockKey); err != nil {
+		return fmt.Errorf("acquire migration advisory lock: %w", err)
+	}
+	defer func() {
+		if _, err := conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", migrationLockKey); err != nil {
+			logger.Warn("failed to release migration advisory lock", "error", err)
+		}
+	}()
+
 	return migrateFS(ctx, pool, embeddedMigrations, "migrations", logger)
 }
 
