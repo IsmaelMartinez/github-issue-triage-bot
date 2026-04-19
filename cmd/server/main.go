@@ -76,6 +76,11 @@ func main() {
 	}
 	logger.Info("connected to database")
 
+	if err := store.Migrate(ctx, pool, logger); err != nil {
+		logger.Error("failed to apply migrations", "error", err)
+		os.Exit(1)
+	}
+
 	// Clean up old webhook delivery records (30-day retention)
 	if deleted, err := s.CleanupOldDeliveries(ctx, 30*24*time.Hour); err != nil {
 		logger.Error("cleanup old deliveries failed", "error", err)

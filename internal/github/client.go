@@ -31,12 +31,17 @@ func New(appID int64, privateKey []byte) *Client {
 	return &Client{
 		appID:      appID,
 		privateKey: privateKey,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Transport: newRetryTransport(http.DefaultTransport), Timeout: 30 * time.Second},
 		baseURL:    "https://api.github.com",
 	}
 }
 
 // installationClient returns an HTTP client scoped to a specific installation.
+// The outer retry transport wraps the whole call (both the ghinstallation
+// token-mint and the subsequent API request) so a transient TLS/5xx failure
+// during either phase triggers a fresh attempt instead of silently dropping
+// user signals like `lgtm`. One retry layer is intentional; nesting retries
+// around ghinstallation's internal transport would amplify to N² attempts.
 func (c *Client) installationClient(installationID int64) (*http.Client, error) {
 	itr, err := ghinstallation.New(http.DefaultTransport, c.appID, installationID, c.privateKey)
 	if err != nil {
@@ -45,7 +50,7 @@ func (c *Client) installationClient(installationID int64) (*http.Client, error) 
 	if c.baseURL != "https://api.github.com" {
 		itr.BaseURL = c.baseURL
 	}
-	return &http.Client{Transport: itr, Timeout: 30 * time.Second}, nil
+	return &http.Client{Transport: newRetryTransport(itr), Timeout: 30 * time.Second}, nil
 }
 
 // CreateComment posts a comment on a GitHub issue and returns the comment ID.
