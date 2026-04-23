@@ -138,6 +138,8 @@ func extractList(content string, re *regexp.Regexp) []string {
 }
 
 func firstSentenceKey(content string) string {
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "`")
 	for i, r := range content {
 		if !(r == '-' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
 			return strings.ToLower(content[:i])

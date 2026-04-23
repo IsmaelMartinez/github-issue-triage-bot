@@ -70,3 +70,65 @@ func TestParseSeedFile(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSeedFile_ExtractsFields(t *testing.T) {
+	data, err := os.ReadFile("../../docs/hats-teams-for-linux.md")
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range got.Hats {
+		if h.Name == "other" {
+			continue
+		}
+		if h.Posture == "" {
+			t.Errorf("hat %q has empty posture", h.Name)
+		}
+		if len(h.RetrievalLabels) == 0 {
+			t.Errorf("hat %q has no retrieval labels", h.Name)
+		}
+		if len(h.RetrievalBoostKeywords) == 0 {
+			t.Errorf("hat %q has no retrieval keywords", h.Name)
+		}
+	}
+
+	display := got.Find("display-session-media")
+	if display == nil {
+		t.Fatal("no display-session-media hat")
+	}
+	if display.Posture != "ambiguous-workaround-menu" {
+		t.Errorf("display posture = %q", display.Posture)
+	}
+	if !contains(display.RetrievalLabels, "wayland") {
+		t.Errorf("display labels missing wayland: %v", display.RetrievalLabels)
+	}
+	if !contains(display.RetrievalBoostKeywords, "ozone") {
+		t.Errorf("display keywords missing ozone: %v", display.RetrievalBoostKeywords)
+	}
+
+	reg := got.Find("internal-regression-network")
+	if reg == nil {
+		t.Fatal("no internal-regression-network hat")
+	}
+	if reg.Posture != "internal-regression" {
+		t.Errorf("reg posture = %q", reg.Posture)
+	}
+	if !contains(reg.RetrievalLabels, "network") {
+		t.Errorf("reg labels missing network: %v", reg.RetrievalLabels)
+	}
+	if !contains(reg.RetrievalBoostKeywords, "iframe") {
+		t.Errorf("reg keywords missing iframe: %v", reg.RetrievalBoostKeywords)
+	}
+}
+
+func contains(xs []string, want string) bool {
+	for _, x := range xs {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}
