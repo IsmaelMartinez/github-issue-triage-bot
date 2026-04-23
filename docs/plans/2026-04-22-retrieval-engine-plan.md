@@ -1549,11 +1549,11 @@ git commit -m "feat(upstream): cross-reference blocked issues against new Electr
 - Create: `cmd/server/upstream.go`
 - Modify: `cmd/server/main.go`
 
-- [ ] **Step 1: Confirm the existing auth pattern**
+- [x] **Step 1: Confirm the existing auth pattern**
 
 Read `cmd/server/main.go` handlers for `/cleanup` and `/ingest` to confirm the OIDC-Bearer auth middleware or helper function name. Replicate that for the new handler. If the code uses a wrapper like `withAuth(handler)`, use it.
 
-- [ ] **Step 2: Write the handler**
+- [x] **Step 2: Write the handler**
 
 `cmd/server/upstream.go`:
 
@@ -1642,7 +1642,7 @@ func toOutputMatches(ms []upstream.Match) []upstreamMatch {
 }
 ```
 
-- [ ] **Step 3: Add supporting helpers and wiring in `cmd/server/main.go`**
+- [x] **Step 3: Add supporting helpers and wiring in `cmd/server/main.go`**
 
 Helper methods on `server`:
 
@@ -1683,7 +1683,7 @@ mux.Handle("/upstream-watch", withAuth(http.HandlerFunc(srv.upstreamWatchHandler
 
 Replace `withAuth` with the actual middleware name from the existing code.
 
-- [ ] **Step 4: Write a unit test for the handler**
+- [x] **Step 4: Write a unit test for the handler**
 
 Add to `cmd/server/upstream_test.go` (create the file):
 
@@ -1721,12 +1721,12 @@ func TestUpstreamWatchHandler_BadBody(t *testing.T) {
 
 Happy-path tests will come with integration wiring in a later pass — they require the full server constructor.
 
-- [ ] **Step 5: Run all tests and build**
+- [x] **Step 5: Run all tests and build**
 
 Run: `go build ./... && go test ./cmd/server/ -v && go test ./... -count=1`
 Expected: build succeeds, new tests pass, no regressions elsewhere.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/server/upstream.go cmd/server/upstream_test.go cmd/server/main.go
