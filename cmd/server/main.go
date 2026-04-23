@@ -459,6 +459,14 @@ func main() {
 		srv.upstreamWatchHandler(w, r)
 	})
 
+	mux.HandleFunc("/brief-preview", func(w http.ResponseWriter, r *http.Request) {
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		srv.briefPreviewHandler(w, r)
+	})
+
 	// Live dashboard
 	sortedRepos := make([]string, 0, len(allowedRepos))
 	for r := range allowedRepos {
