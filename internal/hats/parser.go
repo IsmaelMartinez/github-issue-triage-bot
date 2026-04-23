@@ -141,7 +141,7 @@ func firstSentenceKey(content string) string {
 	content = strings.TrimSpace(content)
 	content = strings.TrimLeft(content, "*_`")
 	for i, r := range content {
-		if !(r == '-' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+		if r != '-' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
 			return strings.ToLower(content[:i])
 		}
 	}
