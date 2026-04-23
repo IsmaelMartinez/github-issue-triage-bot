@@ -25,6 +25,7 @@ type EventStore interface {
 type Watcher struct {
 	gh     ReleaseLister
 	events EventStore
+	idx    Indexer
 	lookN  int
 	window time.Duration
 }
@@ -78,5 +79,45 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 	if err := w.events.RecordEvents(ctx, fresh); err != nil {
 		return nil, err
 	}
+	if w.idx != nil {
+		for _, ev := range fresh {
+			body, _ := ev.Metadata["body"].(string)
+			tag, _ := ev.Metadata["tag"].(string)
+			doc := store.Document{
+				Repo:     ev.Repo,
+				DocType:  "upstream_release",
+				Title:    tag,
+				Content:  body,
+				Metadata: ev.Metadata,
+			}
+			if err := w.idx.UpsertEmbedded(ctx, doc); err != nil {
+				return fresh, err
+			}
+		}
+	}
 	return fresh, nil
+}
+
+// Indexer handles embedding and upserting a document into the vector store.
+// A small interface so tests can stub it without pulling in LLM or store
+// concrete types.
+type Indexer interface {
+	UpsertEmbedded(ctx context.Context, doc store.Document) error
+}
+
+// WithIndexer sets an optional indexer. When set, Sync also embeds and
+// upserts the release notes as a Document with doc_type "upstream_release".
+func (w *Watcher) WithIndexer(i Indexer) *Watcher {
+	w.idx = i
+	return w
+}
+
+// IngestAdapter bridges the existing ingest.EmbedAndUpsert into the Indexer
+// interface without the upstream package depending on ingest directly.
+type IngestAdapter struct {
+	EmbedFunc func(ctx context.Context, doc store.Document) error
+}
+
+func (a IngestAdapter) UpsertEmbedded(ctx context.Context, doc store.Document) error {
+	return a.EmbedFunc(ctx, doc)
 }

@@ -81,3 +81,50 @@ func TestWatcher_PropagatesError(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+type fakeIndexer struct {
+	upserted []store.Document
+}
+
+func (f *fakeIndexer) UpsertEmbedded(ctx context.Context, doc store.Document) error {
+	f.upserted = append(f.upserted, doc)
+	return nil
+}
+
+func TestWatcher_EmbedsNewReleases(t *testing.T) {
+	rel := []gh.Release{
+		{TagName: "v41.0.0", Name: "41.0.0", Body: "fixes input method", PublishedAt: time.Now()},
+	}
+	events := &fakeEvents{existing: map[string]bool{}}
+	idx := &fakeIndexer{}
+	w := NewWatcher(&fakeReleases{releases: rel}, events).WithIndexer(idx)
+	if _, err := w.Sync(context.Background(), 1, "teams-for-linux", "electron/electron"); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(idx.upserted) != 1 {
+		t.Fatalf("len(upserted) = %d, want 1", len(idx.upserted))
+	}
+	got := idx.upserted[0]
+	if got.DocType != "upstream_release" {
+		t.Errorf("doc_type = %q", got.DocType)
+	}
+	if got.Repo != "teams-for-linux" {
+		t.Errorf("repo = %q", got.Repo)
+	}
+	if got.Title != "v41.0.0" {
+		t.Errorf("title = %q", got.Title)
+	}
+}
+
+func TestWatcher_NoIndexerSkipsEmbedding(t *testing.T) {
+	rel := []gh.Release{{TagName: "v1.0.0", Body: "x"}}
+	events := &fakeEvents{existing: map[string]bool{}}
+	w := NewWatcher(&fakeReleases{releases: rel}, events)
+	if _, err := w.Sync(context.Background(), 1, "r", "u"); err != nil {
+		t.Fatal(err)
+	}
+	// No indexer configured; test passes if no panic and the recorded event landed.
+	if len(events.recorded) != 1 {
+		t.Errorf("events recorded = %d, want 1", len(events.recorded))
+	}
+}
