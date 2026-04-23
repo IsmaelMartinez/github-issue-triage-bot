@@ -37,7 +37,7 @@ When the maintainer signals `lgtm` or `promote` on a shadow-repo brief, a second
 
 ### Changelog watcher
 
-A daily cron job fetches upstream release notes from configured dependencies (Electron by default for Electron apps, extensible per repo). For each release the watcher embeds the release notes, searches the vector store for open `blocked` issues whose symptoms plausibly match, and posts a note to the shadow repo listing candidate matches with a confidence score. The maintainer decides whether to comment on the `blocked` issues.
+A daily cron job fetches upstream release notes from configured dependencies (Electron by default for Electron apps, extensible per repo). For each release the watcher embeds the release notes, searches the vector store for open `blocked` issues whose symptoms plausibly match, and posts a note to the shadow repo listing candidate matches with a confidence score. The maintainer decides whether to comment on the `blocked` issues. A persistent `cross_reference_index` keyed on (consumer_repo, release_tag, issue_number) records each processed (issue, release) pair so the watcher does not re-notify on the same match when a re-run cross-references older releases against newly-labelled `blocked` issues.
 
 This replaces the ambient practice of the maintainer scanning Electron release notes by hand, which is the signal that currently closes issues like #2169 (Electron 39.8.2 VideoFrame fix) and #2335 (Electron 41 Wayland input work).
 
@@ -53,7 +53,7 @@ Class — one-line label, drawn from `hats.md`.
 
 Regression window — if the reporter names a working version, the span of versions between working and reported. Empty otherwise. The bot asks for the working version in the diagnostic asks when missing.
 
-Recent changes in regression window — populated only when a regression window exists. Output of `git log <working>..<reported>` keyword-filtered to the symptom domain (keywords extracted by the LLM from the issue body). Each PR gets a one-line relevance note.
+Recent changes in regression window — populated only when a regression window exists. Output of `git log <working>..<reported>` keyword-filtered to the symptom domain (keywords extracted by the LLM from the issue body). Each PR gets a one-line relevance note. The list is capped at the 50 most recent merged PRs in the window; if the window spans more than 50 PRs the brief notes the truncation so the maintainer can narrow the working version.
 
 Similar past issues — top N issues from vector search, filtered to `high` and `medium` relevance only. Each entry: issue number, one-line summary, how it was resolved, and the relevance tag. The LLM decides `high` or `medium` based on symptom overlap; `low` is dropped so the brief stays clean and readers can trust the list.
 
@@ -75,7 +75,7 @@ Triage posture tag — one of `upstream-likely`, `internal-regression`, `config-
 
 Markdown file at repo root or under `.github/`. One H2 per hat. Each hat defines: the symptom signature the LLM should match, the retrieval filter (which past-issue labels, which doc classes, which upstream dependencies to weight as soft reranking rather than hard filter), the reasoning posture, and one or two example issue numbers that anchor the hat with concrete past cases.
 
-The file is git-tracked and edited by the maintainer like any doc. The LLM loads the entire file as system prompt, so keep it under a few thousand tokens — rule of thumb is eight to twelve hats, each under a paragraph.
+The file is git-tracked and edited by the maintainer like any doc. The LLM loads the entire file as system prompt, so keep it under a few thousand tokens — rule of thumb is eight to twelve hats, each under a paragraph. A loader-side size check emits a warning when the file approaches the LLM's context window; at that point the taxonomy should be split by domain (separate files per repo area) rather than retrieved via RAG, because keeping the whole taxonomy visible to the LLM at classification time is load-bearing for hat-selection quality.
 
 Initial seed for teams-for-linux: `display-session-media`, `internal-regression-network`, `tray-notifications`, `upstream-blocked`, `packaging`, `configuration-cli`, `enhancement-demand-gating`, `auth-network-edge`. Each has example issues drawn from past triage: #2169 and #2138 anchor `display-session-media`; #2293 anchors `internal-regression-network`; #2239, #2248, #2095 anchor `tray-notifications`; #2335 and #2137 anchor `upstream-blocked`; #2239 also anchors `packaging`; #2143 and #2205 anchor `configuration-cli`; #2107 anchors `enhancement-demand-gating`; #2326 and #2364 anchor `auth-network-edge`.
 
@@ -119,7 +119,7 @@ The regression-window diff runner has deterministic unit tests against a fixture
 
 The changelog watcher has integration tests against cached Electron release notes.
 
-The promotion drafter is tested by running it over fixture briefs and asserting schema plus absence of banned patterns (no "you should try", no "fix this by", no direct imperatives outside the workarounds section).
+The promotion drafter is tested by running it over fixture briefs and asserting schema plus absence of banned patterns (no "you should try", no "fix this by", no direct imperatives outside the workarounds section). A secondary LLM safety-review pass (the existing `internal/safety/llm_validator.go`) runs after schema validation and before posting; it catches prompt-injection, off-topic drift, and tone issues that pattern-matching cannot. Unit tests cover the LLM validator against fixture outputs with known problematic cases.
 
 ## Security and safety
 
@@ -127,7 +127,7 @@ The shadow-repo destination reduces blast radius: the bot cannot say something w
 
 The changelog watcher only reads upstream release notes; it does not execute or install anything. Its output lands in shadow only.
 
-The regression-window diff runs `git log` read-only on the repo clone; no write operations.
+The regression-window diff uses the GitHub REST API (`/repos/{owner}/{repo}/git/ref/tags/{tag}` → `/repos/{owner}/{repo}/git/commits/{sha}` → `/search/issues?q=repo:X is:pr is:merged merged:A..B`), not shell `git log`. Tag strings come from GitHub's releases API or are extracted from the reporter's issue body via a strict numeric-semver regex (`[0-9]+\.[0-9]+(?:\.[0-9]+)?`) before being used as URL path components, so there is no shell-injection surface.
 
 The setup skill generates files as drafts for the maintainer to edit before committing. The skill does not commit or push directly.
 

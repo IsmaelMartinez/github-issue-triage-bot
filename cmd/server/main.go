@@ -61,8 +61,13 @@ func main() {
 
 	sourceRepo := os.Getenv("SOURCE_REPO")
 	ingestSecret := os.Getenv("INGEST_SECRET")
+	// Cron-triggered endpoints (/cleanup, /health-check, /ingest, /synthesize, /pause, /unpause,
+	// /upstream-watch, /brief-preview) rely on either (a) INGEST_SECRET being empty with Cloud Run's
+	// IAM layer handling auth, or (b) setting INGEST_SECRET and having callers send
+	// "Authorization: Bearer <INGEST_SECRET>". The Workload-Identity-token pattern used by the
+	// GitHub Actions workflows only works in mode (a).
 	if ingestSecret == "" {
-		logger.Warn("INGEST_SECRET not set — /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause are unauthenticated")
+		logger.Warn("INGEST_SECRET not set — /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause, /upstream-watch, /brief-preview are unauthenticated at app layer (Cloud Run IAM may still gate)")
 	}
 
 	port := os.Getenv("PORT")
