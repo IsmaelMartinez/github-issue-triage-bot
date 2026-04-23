@@ -13,15 +13,16 @@ type ProjectMeta struct {
 }
 
 type ButlerConfig struct {
-	Enabled          *bool              `json:"enabled"` // nil treated as true (kill switch)
-	Project          ProjectMeta        `json:"project"`
-	Capabilities     Capabilities       `json:"capabilities"`
-	DocPaths         []string           `json:"doc_paths"`
-	Upstream         []UpstreamDep      `json:"upstream"`
-	Synthesis        SynthesisConfig    `json:"synthesis"`
-	ShadowRepo       string             `json:"shadow_repo"`
-	Thresholds       map[string]float64 `json:"thresholds"`
-	MaxDailyLLMCalls int                `json:"max_daily_llm_calls"`
+	Enabled          *bool               `json:"enabled"` // nil treated as true (kill switch)
+	Project          ProjectMeta         `json:"project"`
+	Capabilities     Capabilities        `json:"capabilities"`
+	DocPaths         []string            `json:"doc_paths"`
+	Upstream         []UpstreamDep       `json:"upstream"`
+	Synthesis        SynthesisConfig     `json:"synthesis"`
+	ShadowRepo       string              `json:"shadow_repo"`
+	Thresholds       map[string]float64  `json:"thresholds"`
+	MaxDailyLLMCalls int                 `json:"max_daily_llm_calls"`
+	ResearchBrief    ResearchBriefConfig `json:"research_brief"`
 }
 
 // IsEnabled returns false only when Enabled is explicitly set to false.
@@ -48,6 +49,11 @@ type SynthesisConfig struct {
 	Day       string `json:"day"`
 }
 
+type ResearchBriefConfig struct {
+	Enabled  bool   `json:"enabled"`
+	HatsPath string `json:"hats_path"`
+}
+
 func DefaultConfig() ButlerConfig {
 	return ButlerConfig{
 		Project: ProjectMeta{
@@ -67,6 +73,10 @@ func DefaultConfig() ButlerConfig {
 		DocPaths:         []string{"docs/**", "*.md"},
 		Synthesis:        SynthesisConfig{Frequency: "weekly", Day: "monday"},
 		MaxDailyLLMCalls: 50,
+		ResearchBrief: ResearchBriefConfig{
+			Enabled:  false,
+			HatsPath: ".github/hats.md",
+		},
 		Thresholds: map[string]float64{
 			"troubleshooting":  0.70,
 			"adr":              0.55,

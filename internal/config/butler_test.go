@@ -169,3 +169,29 @@ func TestProjectMetaEmptyOverride(t *testing.T) {
 		t.Errorf("DebugCommand should be empty when explicitly set, got %q", cfg.Project.DebugCommand)
 	}
 }
+
+func TestParse_ResearchBriefDefaults(t *testing.T) {
+	got, err := Parse([]byte(`{"project":{"name":"X"}}`))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if got.ResearchBrief.Enabled {
+		t.Errorf("ResearchBrief.Enabled default = true, want false")
+	}
+	if got.ResearchBrief.HatsPath != ".github/hats.md" {
+		t.Errorf("HatsPath default = %q, want %q", got.ResearchBrief.HatsPath, ".github/hats.md")
+	}
+}
+
+func TestParse_ResearchBriefOverride(t *testing.T) {
+	got, err := Parse([]byte(`{"project":{"name":"X"},"research_brief":{"enabled":true,"hats_path":"docs/hats.md"}}`))
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if !got.ResearchBrief.Enabled {
+		t.Errorf("Enabled = false, want true")
+	}
+	if got.ResearchBrief.HatsPath != "docs/hats.md" {
+		t.Errorf("HatsPath = %q, want docs/hats.md", got.ResearchBrief.HatsPath)
+	}
+}
