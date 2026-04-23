@@ -4,6 +4,8 @@ package upstream
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
@@ -80,6 +82,7 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 		return nil, err
 	}
 	if w.idx != nil {
+		var errs []error
 		for _, ev := range fresh {
 			body, _ := ev.Metadata["body"].(string)
 			tag, _ := ev.Metadata["tag"].(string)
@@ -91,8 +94,11 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 				Metadata: ev.Metadata,
 			}
 			if err := w.idx.UpsertEmbedded(ctx, doc); err != nil {
-				return fresh, err
+				errs = append(errs, fmt.Errorf("embed %s: %w", tag, err))
 			}
+		}
+		if len(errs) > 0 {
+			return fresh, errors.Join(errs...)
 		}
 	}
 	return fresh, nil

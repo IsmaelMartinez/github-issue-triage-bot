@@ -128,3 +128,39 @@ func TestWatcher_NoIndexerSkipsEmbedding(t *testing.T) {
 		t.Errorf("events recorded = %d, want 1", len(events.recorded))
 	}
 }
+
+type failingIndexer struct {
+	failAt   int // 1-based: fail on the Nth call
+	upserted []store.Document
+	calls    int
+}
+
+func (f *failingIndexer) UpsertEmbedded(ctx context.Context, doc store.Document) error {
+	f.calls++
+	if f.calls == f.failAt {
+		return errors.New("transient embed failure")
+	}
+	f.upserted = append(f.upserted, doc)
+	return nil
+}
+
+func TestWatcher_ContinuesEmbeddingOnError(t *testing.T) {
+	rel := []gh.Release{
+		{TagName: "v1.0.0", Body: "a"},
+		{TagName: "v1.0.1", Body: "b"},
+		{TagName: "v1.0.2", Body: "c"},
+	}
+	events := &fakeEvents{existing: map[string]bool{}}
+	idx := &failingIndexer{failAt: 2}
+	w := NewWatcher(&fakeReleases{releases: rel}, events).WithIndexer(idx)
+	fresh, err := w.Sync(context.Background(), 1, "r", "u")
+	if err == nil {
+		t.Fatal("want aggregated error")
+	}
+	if len(fresh) != 3 {
+		t.Errorf("len(fresh) = %d, want 3 (journal still complete)", len(fresh))
+	}
+	if len(idx.upserted) != 2 {
+		t.Errorf("upserted = %d, want 2 (one failure does not stop the loop)", len(idx.upserted))
+	}
+}
