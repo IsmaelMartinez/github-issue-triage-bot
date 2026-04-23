@@ -1903,7 +1903,7 @@ git commit -m "feat(store): add ApplyHatBoost soft rerank for hat-aware retrieva
 - Create: `cmd/server/brief_preview.go`
 - Modify: `cmd/server/main.go`
 
-- [ ] **Step 1: Define the smoke-test contract**
+- [x] **Step 1: Define the smoke-test contract**
 
 Request: `POST /brief-preview` with body `{"repo": "owner/repo", "issue_number": 2169}`.
 Response JSON fields:
@@ -1915,7 +1915,7 @@ Response JSON fields:
 
 No LLM call for the hat selection yet — for the smoke test, accept an optional `"hat": "display-session-media"` in the request and use it directly. This isolates retrieval from brief generation.
 
-- [ ] **Step 2: Write the handler**
+- [x] **Step 2: Write the handler**
 
 `cmd/server/brief_preview.go`:
 
@@ -2093,7 +2093,7 @@ mux.Handle("/brief-preview", withAuth(http.HandlerFunc(srv.briefPreviewHandler))
 
 The helpers `srv.resolveCurrentReleaseTag` and `srv.installationIDFor` belong alongside the existing config resolution; implement them as thin wrappers over `gh.GetLatestReleases` (pick first) and `gh.ListInstallations` (first matching repo) respectively.
 
-- [ ] **Step 3: Write a minimal handler test**
+- [x] **Step 3: Write a minimal handler test**
 
 `cmd/server/brief_preview_test.go`:
 
@@ -2138,7 +2138,7 @@ func TestBriefPreviewHandler_InvalidJSON(t *testing.T) {
 
 Happy-path coverage requires the full server wiring and is covered by an integration test added separately.
 
-- [ ] **Step 4: Build, vet, test**
+- [x] **Step 4: Build, vet, test**
 
 Run: `go build ./... && go vet ./... && go test ./... -count=1`
 Expected: build succeeds, no regressions, new handler tests pass.
@@ -2158,7 +2158,7 @@ Manual smoke test (once deployed):
 
 Expect: JSON with `class: "display-session-media"`, non-empty `similar_past_issues`, docs reordered to favour wayland/ozone content, regression_prs empty (since the test is historical), upstream_candidates including #2169 itself or related blocked entries.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cmd/server/brief_preview.go cmd/server/brief_preview_test.go cmd/server/main.go internal/regression/
