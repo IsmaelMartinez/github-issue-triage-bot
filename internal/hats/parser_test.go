@@ -132,3 +132,20 @@ func contains(xs []string, want string) bool {
 	}
 	return false
 }
+
+func TestFirstSentenceKey_HandlesFormattingWrappers(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"`demand-gating-needed`.", "demand-gating-needed"},
+		{"**demand-gating-needed**.", "demand-gating-needed"},
+		{"*config-dependent*.", "config-dependent"},
+		{"  `ambiguous-workaround-menu` by default", "ambiguous-workaround-menu"},
+		{"internal-regression — narrative", "internal-regression"},
+	}
+	for _, c := range cases {
+		if got := firstSentenceKey(c.in); got != c.want {
+			t.Errorf("firstSentenceKey(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

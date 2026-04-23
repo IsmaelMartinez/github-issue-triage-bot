@@ -20,7 +20,11 @@ type Hat struct {
 	RetrievalBoostKeywords []string
 	Posture                Posture
 	Phase1Asks             string
-	AnchorIssueNumbers     []int
+	// AnchorIssueNumbers collects every `#NNN` reference that appears in the
+	// Anchors paragraph, including PR numbers cited in parentheticals. Issue
+	// and PR numbers share a namespace on GitHub, so downstream consumers can
+	// treat these uniformly — but they are not a curated subset of issues.
+	AnchorIssueNumbers []int
 }
 
 // Taxonomy is the parsed content of a hats.md file.
