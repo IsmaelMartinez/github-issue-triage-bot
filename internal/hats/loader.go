@@ -27,6 +27,11 @@ func NewLoader(f FetchFunc, ttl time.Duration) *Loader {
 // Get returns the current taxonomy, refreshing if the cache is expired.
 // On fetch error, returns the stale cached taxonomy if one exists;
 // otherwise returns the fetch error.
+//
+// The returned Taxonomy is a shallow copy of the cached value — Hats and
+// their inner slices share backing storage with the cache, so callers must
+// treat the result as read-only. Mutating any slice will corrupt future
+// cache reads.
 func (l *Loader) Get() (Taxonomy, error) {
 	l.mu.RLock()
 	fresh := l.cached != nil && time.Since(l.fetched) < l.ttl
@@ -74,6 +79,11 @@ type ContentFetcher interface {
 // GitHubFetchFunc wires a ContentFetcher into a FetchFunc for a given
 // repo and path. Each call to the returned FetchFunc issues one
 // GetFileContents call — the caller owns retry/timeout policy.
+//
+// The context is captured at construction time; pass a long-lived
+// context (typically context.Background() or a shutdown-tied context).
+// A request-scoped context would apply its cancellation or deadline to
+// every future refresh.
 func GitHubFetchFunc(ctx context.Context, f ContentFetcher, installationID int64, repo, path string) FetchFunc {
 	return func() ([]byte, error) {
 		return f.GetFileContents(ctx, installationID, repo, path)
