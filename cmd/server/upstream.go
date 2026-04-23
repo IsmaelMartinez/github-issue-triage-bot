@@ -21,6 +21,38 @@ type upstreamTarget struct {
 	UpstreamRepo   string
 }
 
+// upstreamMatch is the per-release payload reported back to the caller.
+type upstreamMatch struct {
+	ReleaseTag string `json:"release_tag"`
+	Issues     []int  `json:"candidate_issues"`
+}
+
+// upstreamResult is the per-target entry in the /upstream-watch response. Error
+// is set (and Synced/Matches left zero) when SyncAndCrossReference fails for
+// this target; the batch continues regardless so one flaky installation does
+// not abandon the rest.
+type upstreamResult struct {
+	Repo    string          `json:"repo"`
+	Synced  int             `json:"synced"`
+	Matches []upstreamMatch `json:"matches"`
+	Error   string          `json:"error,omitempty"`
+}
+
+// toOutputMatches flattens the watcher's Match slice into the JSON shape we
+// return. Kept as a free function so it is trivially testable without a full
+// *server.
+func toOutputMatches(matches []upstream.Match) []upstreamMatch {
+	mm := make([]upstreamMatch, 0, len(matches))
+	for _, m := range matches {
+		nums := make([]int, 0, len(m.Candidates))
+		for _, c := range m.Candidates {
+			nums = append(nums, c.Number)
+		}
+		mm = append(mm, upstreamMatch{ReleaseTag: m.Release.TagName, Issues: nums})
+	}
+	return mm
+}
+
 // upstreamWatchHandler runs the upstream watcher across all configured
 // installations. Expects POST; authentication is applied by the caller when
 // registering the handler (see main.go).
@@ -53,31 +85,21 @@ func (srv *server) upstreamWatchHandler(w http.ResponseWriter, r *http.Request) 
 		WithIndexer(srv.upstreamIndexer()).
 		WithBlockedFinder(srv.store, srv.llm)
 
-	type upstreamMatch struct {
-		ReleaseTag string `json:"release_tag"`
-		Issues     []int  `json:"candidate_issues"`
-	}
-	type result struct {
-		Repo    string          `json:"repo"`
-		Synced  int             `json:"synced"`
-		Matches []upstreamMatch `json:"matches"`
-	}
-	out := make([]result, 0, len(targets))
+	out := make([]upstreamResult, 0, len(targets))
 	for _, t := range targets {
 		matches, err := watcher.SyncAndCrossReference(ctx, t.InstallationID, t.ConsumerRepo, t.UpstreamRepo)
+		res := upstreamResult{Repo: t.ConsumerRepo}
 		if err != nil {
-			http.Error(w, fmt.Sprintf("sync %s: %v", t.ConsumerRepo, err), http.StatusInternalServerError)
-			return
+			srv.logger.Warn("upstream sync failed",
+				"consumer_repo", t.ConsumerRepo,
+				"upstream_repo", t.UpstreamRepo,
+				"error", err)
+			res.Error = err.Error()
+		} else {
+			res.Synced = len(matches)
+			res.Matches = toOutputMatches(matches)
 		}
-		mm := make([]upstreamMatch, 0, len(matches))
-		for _, m := range matches {
-			nums := make([]int, 0, len(m.Candidates))
-			for _, c := range m.Candidates {
-				nums = append(nums, c.Number)
-			}
-			mm = append(mm, upstreamMatch{ReleaseTag: m.Release.TagName, Issues: nums})
-		}
-		out = append(out, result{Repo: t.ConsumerRepo, Synced: len(matches), Matches: mm})
+		out = append(out, res)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
