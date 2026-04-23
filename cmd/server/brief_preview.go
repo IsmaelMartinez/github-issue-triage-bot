@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -17,8 +16,7 @@ import (
 )
 
 // workingVersionRe captures a prior working version phrase like "works in
-// v1.2.3" or "worked in 1.2". Anchors the regression-window PR diff in Step 6
-// of the handler.
+// v1.2.3" or "worked in 1.2".
 var workingVersionRe = regexp.MustCompile(`(?i)(?:works\s+in|worked\s+in|working\s+on|prior\s+working)\s+v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)`)
 
 type briefPreviewRequest struct {
@@ -33,16 +31,6 @@ type briefPreviewResponse struct {
 	Docs               []store.SimilarDocument `json:"docs"`
 	RegressionPRs      []regression.PRSummary  `json:"regression_prs"`
 	UpstreamCandidates []int                   `json:"upstream_candidates"`
-}
-
-// issuePayload is the minimal GitHub issue shape we need for the smoke test.
-// Scoped to this file because there is no project-wide issue fetcher yet;
-// the rest of the bot consumes issue data from webhook payloads.
-type issuePayload struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
-	State  string `json:"state"`
 }
 
 // briefPreviewHandler validates that every retrieval piece the research-brief
@@ -72,28 +60,26 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	installID, err := srv.installationIDFor(ctx, req.Repo)
+	installID, err := srv.installationIDFor(ctx)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("installation: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// 1. Fetch the issue via GitHub API. The store has no GetIssue helper,
-	// so we hit /repos/{owner}/{repo}/issues/{number} directly.
-	issue, err := srv.fetchIssueForPreview(ctx, installID, req.Repo, req.IssueNumber)
+	issue, err := srv.gh.GetIssue(ctx, installID, req.Repo, req.IssueNumber)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("get issue: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// 2. Embed title + body so the three retrieval calls share one vector.
+	// Embed title + body so the three retrieval calls share one vector.
 	vec, err := srv.llm.Embed(ctx, issue.Title+"\n\n"+issue.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("embed: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// 3. Load hats.md for this repo. Construct a fresh loader per request —
+	// Load hats.md for this repo. Construct a fresh loader per request —
 	// /brief-preview is manual/smoke only, so cache reuse is not worth
 	// complicating the server struct.
 	var hat *hats.Hat
@@ -111,8 +97,8 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Similar docs, with a soft rerank when the caller named a hat.
-	docs, docsErr := srv.store.FindSimilarDocuments(ctx, req.Repo, allDocTypes(), vec, 5)
+	// Similar docs, with a soft rerank when the caller named a hat.
+	docs, docsErr := srv.store.FindSimilarDocuments(ctx, req.Repo, store.AllSeedableDocTypes, vec, 5)
 	if docsErr != nil {
 		srv.logger.Warn("brief-preview: similar docs", "error", docsErr, "repo", req.Repo)
 		docs = nil
@@ -121,14 +107,13 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		docs = store.ApplyHatBoost(docs, hat.RetrievalBoostKeywords, 0.05)
 	}
 
-	// 5. Similar past issues.
 	similar, simErr := srv.store.FindSimilarIssues(ctx, req.Repo, vec, req.IssueNumber, 5)
 	if simErr != nil {
 		srv.logger.Warn("brief-preview: similar issues", "error", simErr, "repo", req.Repo)
 		similar = nil
 	}
 
-	// 6. Regression-window PR diff: only runs when the issue body names a
+	// Regression-window PR diff only runs when the issue body names a
 	// prior working version. Resolve current from the latest release tag.
 	var prs []regression.PRSummary
 	if m := workingVersionRe.FindStringSubmatch(issue.Body); m != nil {
@@ -151,7 +136,7 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 7. Upstream candidates: open `blocked` issues near this issue's embedding.
+	// Upstream candidates: open `blocked` issues near this issue's embedding.
 	var upstreamNums []int
 	blocked, blkErr := srv.store.FindSimilarBlockedIssues(ctx, req.Repo, vec, 3)
 	if blkErr != nil {
@@ -176,45 +161,10 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// fetchIssueForPreview retrieves an issue by (repo, number) via the GitHub
-// REST API. Scoped to this file because no other call site needs it yet —
-// the webhook flow gets issue data from the event payload, and the agent
-// flow creates/mirrors rather than fetching.
-func (srv *server) fetchIssueForPreview(ctx context.Context, installationID int64, repo string, number int) (*issuePayload, error) {
-	token, err := srv.gh.InstallationToken(ctx, installationID)
-	if err != nil {
-		return nil, fmt.Errorf("installation token: %w", err)
-	}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/issues/%d", repo, number)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "token "+token)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(body))
-	}
-	var issue issuePayload
-	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	return &issue, nil
-}
-
 // installationIDFor picks the first installation the GitHub App is installed
-// on. Matches the pattern used by /cleanup, /health-check, and /synthesize —
-// the bot currently runs as a single-installation deployment, so this is
+// on. The bot currently runs as a single-installation deployment, so this is
 // deliberately simple rather than filtering by repo ownership.
-func (srv *server) installationIDFor(ctx context.Context, repo string) (int64, error) {
+func (srv *server) installationIDFor(ctx context.Context) (int64, error) {
 	ids, err := srv.gh.ListInstallations(ctx)
 	if err != nil {
 		return 0, err
@@ -239,16 +189,9 @@ func className(h *hats.Hat, requested string) string {
 	return "other"
 }
 
-// allDocTypes is the union of every doc_type the retrieval engine can read.
-// Hard-coded rather than referencing store.AllSeedableDocTypes so this
-// endpoint's contract is stable even if the seed universe changes.
-func allDocTypes() []string {
-	return []string{"troubleshooting", "configuration", "adr", "roadmap", "research", "upstream_release", "upstream_issue"}
-}
-
 // extractSymptomKeywords pulls a very small set of candidate keywords from
-// the issue body to drive regression-window PR filtering. Kept deliberately
-// naive — the real brief generator will do this via an LLM call.
+// the issue body to drive regression-window PR filtering.
+// TODO: replace with LLM extraction once the brief generator lands.
 func extractSymptomKeywords(body string) []string {
 	candidates := []string{"iframe", "reload", "network", "auth", "wayland", "ozone", "camera", "screen", "tray", "notification", "sharepoint"}
 	lowered := strings.ToLower(body)

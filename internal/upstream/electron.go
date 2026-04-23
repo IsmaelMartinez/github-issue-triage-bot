@@ -49,7 +49,7 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 		return nil, err
 	}
 	since := time.Now().Add(-w.window)
-	existing, err := w.events.ListEvents(ctx, consumerRepo, since, []string{"upstream_release"}, 1000)
+	existing, err := w.events.ListEvents(ctx, consumerRepo, since, []string{store.DocTypeUpstreamRelease}, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 		}
 		fresh = append(fresh, store.RepoEvent{
 			Repo:      consumerRepo,
-			EventType: "upstream_release",
+			EventType: store.DocTypeUpstreamRelease,
 			SourceRef: r.TagName,
 			Summary:   r.Name,
 			Metadata: map[string]any{
@@ -90,7 +90,7 @@ func (w *Watcher) Sync(ctx context.Context, installationID int64, consumerRepo, 
 			tag, _ := ev.Metadata["tag"].(string)
 			doc := store.Document{
 				Repo:     ev.Repo,
-				DocType:  "upstream_release",
+				DocType:  store.DocTypeUpstreamRelease,
 				Title:    tag,
 				Content:  body,
 				Metadata: ev.Metadata,

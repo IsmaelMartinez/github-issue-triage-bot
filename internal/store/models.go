@@ -55,13 +55,18 @@ type SimilarIssue struct {
 	Distance float64
 }
 
+// Document type constants.
+const (
+	DocTypeUpstreamRelease = "upstream_release"
+)
+
 // EnhancementDocTypes lists the document types that Phase 4a searches for
 // enhancement context.
 var EnhancementDocTypes = []string{"roadmap", "adr", "research"}
 
 // UpstreamDocTypes lists the document types for upstream dependency docs
 // (e.g. Electron release notes, version-tagged issues).
-var UpstreamDocTypes = []string{"upstream_release", "upstream_issue"}
+var UpstreamDocTypes = []string{DocTypeUpstreamRelease, "upstream_issue"}
 
 // AllSeedableDocTypes is the union of all valid doc_type values for the seed command.
 var AllSeedableDocTypes = append(

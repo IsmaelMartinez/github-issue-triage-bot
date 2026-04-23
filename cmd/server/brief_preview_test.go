@@ -73,13 +73,6 @@ func TestExtractSymptomKeywords(t *testing.T) {
 	}
 }
 
-func TestAllDocTypes(t *testing.T) {
-	got := allDocTypes()
-	if len(got) != 7 {
-		t.Errorf("allDocTypes length = %d, want 7", len(got))
-	}
-}
-
 func TestWorkingVersionRe(t *testing.T) {
 	cases := []struct {
 		in   string

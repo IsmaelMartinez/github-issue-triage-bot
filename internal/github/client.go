@@ -669,6 +669,12 @@ func (c *Client) ListMergedPRsBetween(ctx context.Context, installationID int64,
 
 // GetLatestReleases returns up to n most-recent non-draft releases for repo.
 func (c *Client) GetLatestReleases(ctx context.Context, installationID int64, repo string, n int) ([]Release, error) {
+	if n <= 0 {
+		n = 10
+	}
+	if n > 100 {
+		n = 100
+	}
 	client, err := c.installationClient(installationID)
 	if err != nil {
 		return nil, fmt.Errorf("installation client: %w", err)
@@ -856,6 +862,53 @@ func (c *Client) searchMergedPRs(ctx context.Context, client *http.Client, query
 		})
 	}
 	return out, nil
+}
+
+// Issue is a minimal subset of a GitHub issue.
+type Issue struct {
+	Number int
+	Title  string
+	Body   string
+	State  string
+	URL    string
+}
+
+// GetIssue returns a single issue by number for the given repo.
+func (c *Client) GetIssue(ctx context.Context, installationID int64, repo string, number int) (*Issue, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.baseURL, repo, number)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var raw struct {
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		State   string `json:"state"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode issue: %w", err)
+	}
+	return &Issue{Number: raw.Number, Title: raw.Title, Body: raw.Body, State: raw.State, URL: raw.HTMLURL}, nil
 }
 
 // CloseIssue closes a GitHub issue by setting its state to "closed".
