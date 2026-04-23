@@ -28,6 +28,8 @@ type Watcher struct {
 	gh     ReleaseLister
 	events EventStore
 	idx    Indexer
+	bf     BlockedFinder
+	emb    Embedder
 	lookN  int
 	window time.Duration
 }
@@ -126,4 +128,89 @@ type IngestAdapter struct {
 
 func (a IngestAdapter) UpsertEmbedded(ctx context.Context, doc store.Document) error {
 	return a.EmbedFunc(ctx, doc)
+}
+
+// Embedder embeds text to a 768-d vector.
+type Embedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+// BlockedFinder finds open issues with the "blocked" label near an embedding.
+type BlockedFinder interface {
+	FindSimilarBlockedIssues(ctx context.Context, repo string, embedding []float32, limit int) ([]store.SimilarIssue, error)
+}
+
+// WithBlockedFinder installs the cross-reference dependency. When both a
+// BlockedFinder and an Embedder are set, SyncAndCrossReference can run.
+func (w *Watcher) WithBlockedFinder(bf BlockedFinder, e Embedder) *Watcher {
+	w.bf = bf
+	w.emb = e
+	return w
+}
+
+// Match is a single release paired with candidate blocked issues whose
+// embedding is near enough to suggest the release may fix them.
+type Match struct {
+	Release    gh.Release
+	Event      store.RepoEvent
+	Candidates []store.SimilarIssue
+}
+
+// blockedMatchDistanceThreshold filters out weak cross-reference matches.
+// pgvector's <=> operator returns cosine distance; values below this are
+// "quite similar" in the 768-d Gemini embedding space.
+const blockedMatchDistanceThreshold = 0.35
+
+// SyncAndCrossReference runs Sync and, for each new release, finds open
+// issues labelled "blocked" whose embedding is near the release notes. It
+// returns a Match per release that has at least one candidate within the
+// distance threshold. If either the BlockedFinder or the Embedder is unset,
+// it returns (nil, nil) after Sync without attempting cross-reference.
+func (w *Watcher) SyncAndCrossReference(ctx context.Context, installationID int64, consumerRepo, upstreamRepo string) ([]Match, error) {
+	recorded, err := w.Sync(ctx, installationID, consumerRepo, upstreamRepo)
+	if err != nil {
+		return nil, err
+	}
+	if w.bf == nil || w.emb == nil {
+		return nil, nil
+	}
+	var out []Match
+	for _, ev := range recorded {
+		body, _ := ev.Metadata["body"].(string)
+		if body == "" {
+			body = ev.Summary
+		}
+		vec, err := w.emb.Embed(ctx, body)
+		if err != nil {
+			return out, err
+		}
+		cands, err := w.bf.FindSimilarBlockedIssues(ctx, consumerRepo, vec, 5)
+		if err != nil {
+			return out, err
+		}
+		var kept []store.SimilarIssue
+		for _, c := range cands {
+			if c.Distance < blockedMatchDistanceThreshold {
+				kept = append(kept, c)
+			}
+		}
+		if len(kept) > 0 {
+			out = append(out, Match{Release: toRelease(ev), Event: ev, Candidates: kept})
+		}
+	}
+	return out, nil
+}
+
+func toRelease(ev store.RepoEvent) gh.Release {
+	return gh.Release{
+		TagName: ev.SourceRef,
+		Name:    ev.Summary,
+		Body:    stringOrEmpty(ev.Metadata["body"]),
+		HTMLURL: stringOrEmpty(ev.Metadata["html_url"]),
+	}
+}
+
+func stringOrEmpty(v any) string {
+	s, _ := v.(string)
+	return s
 }

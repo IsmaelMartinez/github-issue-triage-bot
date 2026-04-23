@@ -164,3 +164,55 @@ func TestWatcher_ContinuesEmbeddingOnError(t *testing.T) {
 		t.Errorf("upserted = %d, want 2 (one failure does not stop the loop)", len(idx.upserted))
 	}
 }
+
+type fakeBlockedFinder struct {
+	issues []store.SimilarIssue
+}
+
+func (f *fakeBlockedFinder) FindSimilarBlockedIssues(ctx context.Context, repo string, embedding []float32, limit int) ([]store.SimilarIssue, error) {
+	return f.issues, nil
+}
+
+type stubEmbedder struct{}
+
+func (stubEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	return make([]float32, 768), nil
+}
+
+func TestWatcher_CrossReferencesBlockedIssues(t *testing.T) {
+	rel := []gh.Release{
+		{TagName: "v39.8.2", Body: "fix VideoFrame prototype via contextBridge", PublishedAt: time.Now()},
+	}
+	bf := &fakeBlockedFinder{issues: []store.SimilarIssue{
+		{Issue: store.Issue{Number: 2169, Title: "Camera broken"}, Distance: 0.20},
+		{Issue: store.Issue{Number: 9999, Title: "Unrelated"}, Distance: 0.90},
+	}}
+	w := NewWatcher(&fakeReleases{releases: rel}, &fakeEvents{existing: map[string]bool{}}).
+		WithBlockedFinder(bf, stubEmbedder{})
+	matches, err := w.SyncAndCrossReference(context.Background(), 1, "teams-for-linux", "electron/electron")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("matches = %d, want 1", len(matches))
+	}
+	if matches[0].Release.TagName != "v39.8.2" {
+		t.Errorf("wrong release: %s", matches[0].Release.TagName)
+	}
+	if len(matches[0].Candidates) != 1 || matches[0].Candidates[0].Number != 2169 {
+		t.Errorf("wrong candidates: %v", matches[0].Candidates)
+	}
+}
+
+func TestWatcher_NoCrossReferenceWithoutDependencies(t *testing.T) {
+	rel := []gh.Release{{TagName: "v1.0.0", Body: "x"}}
+	events := &fakeEvents{existing: map[string]bool{}}
+	w := NewWatcher(&fakeReleases{releases: rel}, events)
+	matches, err := w.SyncAndCrossReference(context.Background(), 1, "r", "u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matches != nil {
+		t.Errorf("matches = %v, want nil (no deps)", matches)
+	}
+}

@@ -193,6 +193,56 @@ func (s *Store) FindSimilarIssues(ctx context.Context, repo string, embedding []
 	return results, tx.Commit(ctx)
 }
 
+// FindSimilarBlockedIssues returns open issues that carry the "blocked"
+// label and whose embedding is near the given vector, ordered by ascending
+// cosine distance.
+func (s *Store) FindSimilarBlockedIssues(ctx context.Context, repo string, embedding []float32, limit int) ([]SimilarIssue, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
+
+	if _, err := tx.Exec(ctx, "SET LOCAL ivfflat.probes = 6"); err != nil {
+		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
+	}
+
+	rows, err := tx.Query(ctx, `
+		SELECT id, repo, number, title, summary, state, labels, milestone,
+		       embedding, created_at, updated_at, closed_at,
+		       embedding <=> $1 AS distance
+		FROM issues
+		WHERE repo = $2
+		  AND state = 'open'
+		  AND $3 = ANY(labels)
+		ORDER BY embedding <=> $1
+		LIMIT $4
+	`, pgvector.NewVector(embedding), repo, "blocked", limit)
+	if err != nil {
+		return nil, fmt.Errorf("find similar blocked issues: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SimilarIssue
+	for rows.Next() {
+		var si SimilarIssue
+		var vec pgvector.Vector
+		if err := rows.Scan(
+			&si.ID, &si.Repo, &si.Number, &si.Title, &si.Summary, &si.State,
+			&si.Labels, &si.Milestone, &vec, &si.CreatedAt, &si.UpdatedAt, &si.ClosedAt,
+			&si.Distance,
+		); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		si.Embedding = vec.Slice()
+		results = append(results, si)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, tx.Commit(ctx)
+}
+
 // RecentIssuesWithEmbeddings returns issues opened within the time window that have embeddings.
 func (s *Store) RecentIssuesWithEmbeddings(ctx context.Context, repo string, since time.Time) ([]Issue, error) {
 	rows, err := s.pool.Query(ctx, `
