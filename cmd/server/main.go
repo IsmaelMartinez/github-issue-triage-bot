@@ -24,6 +24,18 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/webhook"
 )
 
+// server bundles the long-lived dependencies that request handlers need.
+// Handlers added as methods on *server can reach the store, GitHub client,
+// LLM client, logger, and the set of repos the deployment is configured to
+// handle without threading each of them through a closure.
+type server struct {
+	store        *store.Store
+	gh           *gh.Client
+	llm          llm.Provider
+	logger       *slog.Logger
+	allowedRepos map[string]bool
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
@@ -145,6 +157,14 @@ func main() {
 	for source, shadow := range shadowRepos {
 		allowedRepos[source] = true
 		allowedRepos[shadow] = true
+	}
+
+	srv := &server{
+		store:        s,
+		gh:           ghClient,
+		llm:          llmClient,
+		logger:       logger,
+		allowedRepos: allowedRepos,
 	}
 	mux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -429,6 +449,14 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"ok","findings":%d}`, findingCount)
+	})
+
+	mux.HandleFunc("/upstream-watch", func(w http.ResponseWriter, r *http.Request) {
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		srv.upstreamWatchHandler(w, r)
 	})
 
 	// Live dashboard
