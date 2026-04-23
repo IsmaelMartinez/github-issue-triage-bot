@@ -66,6 +66,10 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "repo and issue_number required", http.StatusBadRequest)
 		return
 	}
+	if !srv.allowedRepos[req.Repo] {
+		http.Error(w, "repo not in allow-list", http.StatusForbidden)
+		return
+	}
 	ctx := r.Context()
 
 	installID, err := srv.installationIDFor(ctx, req.Repo)
@@ -97,7 +101,7 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	if cfgErr != nil {
 		srv.logger.Warn("brief-preview: loading butler.json", "error", cfgErr, "repo", req.Repo)
 	} else {
-		fetch := hats.GitHubFetchFunc(ctx, srv.gh, installID, req.Repo, cfg.ResearchBrief.HatsPath)
+		fetch := hats.GitHubFetchFunc(context.Background(), srv.gh, installID, req.Repo, cfg.ResearchBrief.HatsPath)
 		loader := hats.NewLoader(fetch, 5*time.Minute)
 		tax, hatsErr := loader.Get()
 		if hatsErr != nil {

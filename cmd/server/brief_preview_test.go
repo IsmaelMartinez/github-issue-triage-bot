@@ -35,6 +35,17 @@ func TestBriefPreviewHandler_MissingFields(t *testing.T) {
 	}
 }
 
+func TestBriefPreviewHandler_RejectsUnknownRepo(t *testing.T) {
+	srv := &server{allowedRepos: map[string]bool{}}
+	rr := httptest.NewRecorder()
+	body := strings.NewReader(`{"repo":"owner/repo","issue_number":1}`)
+	req := httptest.NewRequest(http.MethodPost, "/brief-preview", body)
+	srv.briefPreviewHandler(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rr.Code)
+	}
+}
+
 func TestClassName(t *testing.T) {
 	if got := className(nil, ""); got != "other" {
 		t.Errorf("className(nil, \"\") = %q, want other", got)
