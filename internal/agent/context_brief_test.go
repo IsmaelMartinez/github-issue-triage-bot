@@ -143,7 +143,7 @@ func TestNeutralizeMentions(t *testing.T) {
 		{"email@domain.com stays", "email@domain.com stays"},
 		{"trailing punctuation @user!", "trailing punctuation user!"},
 		{"org team ref @owner/team keeps slash", "org team ref owner/team keeps slash"},
-		{"double at @@user stays inert", "double at @@user stays inert"},
+		{"double at @@user collapses", "double at user collapses"},
 		{"no mentions here", "no mentions here"},
 		{"", ""},
 	}
