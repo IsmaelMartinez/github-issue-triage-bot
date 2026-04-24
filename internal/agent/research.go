@@ -183,7 +183,7 @@ type ContextBrief struct {
 	Issues     []store.SimilarIssue
 }
 
-const contextBriefSummaryPrompt = `You are a technical analyst. Given an enhancement request title and body, write a 2-3 sentence summary of what is being requested and why it matters. Be concise and factual. Do not suggest solutions.
+const contextBriefSummaryPrompt = `You are a technical analyst. Given an enhancement request title and body, write a 2-3 sentence summary of what is being requested and why it matters. Be concise and factual. Do not suggest solutions. Do not include URLs, hyperlinks, or external citations of any kind — summarise only what the request itself says.
 
 Respond with JSON: {"summary": "string"}`
 
