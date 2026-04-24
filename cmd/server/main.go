@@ -200,56 +200,11 @@ func main() {
 			return
 		}
 
-		// Retry any promotions that were requested via `lgtm` but failed to post
-		// publicly (typically a cold-start TLS hiccup against api.github.com).
-		// We scope installations to whatever the ghClient can see and re-attempt
-		// before the stale-session pass, so a successful retry here clears the
-		// session rather than closing it as stale.
-		promotionsRetried, promotionsFailed := 0, 0
-		if pending, err := s.ListPendingPromotions(r.Context()); err != nil {
-			logger.Error("list pending promotions", "error", err)
-		} else if len(pending) > 0 {
-			installations, err := ghClient.ListInstallations(r.Context())
-			if err != nil || len(installations) == 0 {
-				logger.Error("get installations for pending promotion retry", "error", err)
-			} else {
-				installID := installations[0]
-				for _, ts := range pending {
-					// Guard against double-posting if a previous retry attempt
-					// crashed after CreateComment succeeded but before the
-					// marker was cleared. If a bot_comments row already exists
-					// for this source issue, skip the GitHub call and just
-					// clear the bookkeeping.
-					already, err := s.HasBotComment(r.Context(), ts.Repo, ts.IssueNumber)
-					if err != nil {
-						logger.Error("check existing bot comment", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
-						promotionsFailed++
-						continue
-					}
-					if !already {
-						commentID, err := ghClient.CreateComment(r.Context(), installID, ts.Repo, ts.IssueNumber, ts.TriageComment)
-						if err != nil {
-							logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
-							promotionsFailed++
-							continue
-						}
-						if err := s.RecordBotComment(r.Context(), store.BotComment{
-							Repo:        ts.Repo,
-							IssueNumber: ts.IssueNumber,
-							CommentID:   commentID,
-							PhasesRun:   ts.PhasesRun,
-						}); err != nil {
-							logger.Error("record bot comment after retry", "error", err)
-						}
-					}
-					_ = ghClient.CloseIssue(r.Context(), installID, ts.ShadowRepo, ts.ShadowIssueNumber)
-					_ = s.ClearPendingPromotion(r.Context(), ts.ID)
-					_ = s.MarkTriageSessionClosed(r.Context(), ts.ID)
-					promotionsRetried++
-					logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber, "skipped_comment", already)
-				}
-			}
-		}
+		// Retry promotions that were requested via `lgtm` but failed to post
+		// publicly (typically a cold-start TLS hiccup). Running before the
+		// stale-session pass means a successful retry clears the session
+		// rather than closing it as stale.
+		promotionsRetried, promotionsFailed := retryPendingPromotions(r.Context(), s, ghClient, logger)
 
 		staleDuration := 14 * 24 * time.Hour
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
@@ -705,6 +660,38 @@ func main() {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+// retryPendingPromotions re-attempts triage-session promotions whose lgtm was
+// received but the follow-up CreateComment failed. Returns counts of retried
+// and failed attempts. Safe to call when nothing is pending.
+func retryPendingPromotions(ctx context.Context, s *store.Store, ghClient *gh.Client, logger *slog.Logger) (retried, failed int) {
+	pending, err := s.ListPendingPromotions(ctx)
+	if err != nil {
+		logger.Error("list pending promotions", "error", err)
+		return 0, 0
+	}
+	if len(pending) == 0 {
+		return 0, 0
+	}
+	installations, err := ghClient.ListInstallations(ctx)
+	if err != nil || len(installations) == 0 {
+		logger.Error("get installations for pending promotion retry", "error", err)
+		return 0, 0
+	}
+	installID := installations[0]
+	for _, ts := range pending {
+		if err := webhook.PromoteTriageSession(ctx, ghClient, s, installID, ts); err != nil {
+			logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
+			failed++
+			continue
+		}
+		_ = s.ClearPendingPromotion(ctx, ts.ID)
+		_ = s.MarkTriageSessionClosed(ctx, ts.ID)
+		retried++
+		logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber)
+	}
+	return retried, failed
 }
 
 func requireEnv(key string) string {

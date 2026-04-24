@@ -50,7 +50,8 @@ func (c *Client) WarmTLS(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+	// Drain fully so the connection returns to the idle pool for reuse.
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.Body.Close()
 }
 
