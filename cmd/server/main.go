@@ -122,19 +122,24 @@ func main() {
 	}
 	ghClient := gh.New(appID, privateKey)
 
-	// Warm the TLS session to api.github.com before the first webhook arrives.
-	// Cold-start instances have been observed to time out the TLS handshake when
+	// Warm the TLS session to api.github.com in the background. Cold-start
+	// instances have been observed to time out the TLS handshake when
 	// ghinstallation mints a fresh installation token, silently dropping
-	// maintainer `lgtm` signals. A throwaway GET primes DNS and TLS state. We
-	// cap it at 5s and swallow errors: if this fails, the existing retryTransport
-	// and the pending-promotion cleanup pass still cover the signal.
-	warmCtx, warmCancel := context.WithTimeout(ctx, 5*time.Second)
-	if err := ghClient.WarmTLS(warmCtx); err != nil {
-		logger.Warn("api.github.com TLS warmup failed", "error", err)
-	} else {
+	// maintainer `lgtm` signals. A throwaway GET primes DNS and TLS state and
+	// populates the idle-connection pool for the first real webhook. Running
+	// asynchronously avoids adding ~10s to cold-start latency; if the first
+	// webhook races the warmup, it just pays its own TLS handshake cost (same
+	// as today), while every subsequent request benefits from the pooled
+	// connection.
+	go func() {
+		warmCtx, warmCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer warmCancel()
+		if err := ghClient.WarmTLS(warmCtx); err != nil {
+			logger.Warn("api.github.com TLS warmup failed", "error", err)
+			return
+		}
 		logger.Info("api.github.com TLS warmup ok")
-	}
-	warmCancel()
+	}()
 
 	// Parse shadow repos configuration
 	shadowRepos := parseShadowRepos(os.Getenv("SHADOW_REPOS"))
@@ -210,25 +215,38 @@ func main() {
 			} else {
 				installID := installations[0]
 				for _, ts := range pending {
-					commentID, err := ghClient.CreateComment(r.Context(), installID, ts.Repo, ts.IssueNumber, ts.TriageComment)
+					// Guard against double-posting if a previous retry attempt
+					// crashed after CreateComment succeeded but before the
+					// marker was cleared. If a bot_comments row already exists
+					// for this source issue, skip the GitHub call and just
+					// clear the bookkeeping.
+					already, err := s.HasBotComment(r.Context(), ts.Repo, ts.IssueNumber)
 					if err != nil {
-						logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
+						logger.Error("check existing bot comment", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
 						promotionsFailed++
 						continue
 					}
-					if err := s.RecordBotComment(r.Context(), store.BotComment{
-						Repo:        ts.Repo,
-						IssueNumber: ts.IssueNumber,
-						CommentID:   commentID,
-						PhasesRun:   ts.PhasesRun,
-					}); err != nil {
-						logger.Error("record bot comment after retry", "error", err)
+					if !already {
+						commentID, err := ghClient.CreateComment(r.Context(), installID, ts.Repo, ts.IssueNumber, ts.TriageComment)
+						if err != nil {
+							logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
+							promotionsFailed++
+							continue
+						}
+						if err := s.RecordBotComment(r.Context(), store.BotComment{
+							Repo:        ts.Repo,
+							IssueNumber: ts.IssueNumber,
+							CommentID:   commentID,
+							PhasesRun:   ts.PhasesRun,
+						}); err != nil {
+							logger.Error("record bot comment after retry", "error", err)
+						}
 					}
 					_ = ghClient.CloseIssue(r.Context(), installID, ts.ShadowRepo, ts.ShadowIssueNumber)
 					_ = s.ClearPendingPromotion(r.Context(), ts.ID)
 					_ = s.MarkTriageSessionClosed(r.Context(), ts.ID)
 					promotionsRetried++
-					logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber)
+					logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber, "skipped_comment", already)
 				}
 			}
 		}

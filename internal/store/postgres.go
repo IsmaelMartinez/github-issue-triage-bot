@@ -348,6 +348,18 @@ func (s *Store) RecordBotComment(ctx context.Context, comment BotComment) error 
 	return err
 }
 
+// HasBotComment reports whether a bot_comments row already exists for the
+// given source-repo issue. Used by the promotion retry pass so a mid-flight
+// crash that left pending_promotion_at set doesn't cause a double-post on the
+// next cron cycle.
+func (s *Store) HasBotComment(ctx context.Context, repo string, issueNumber int) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM bot_comments WHERE repo = $1 AND issue_number = $2)
+	`, repo, issueNumber).Scan(&exists)
+	return exists, err
+}
+
 // Ping verifies database connectivity.
 func (s *Store) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
