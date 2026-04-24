@@ -622,6 +622,295 @@ func (c *Client) GetTree(ctx context.Context, installationID int64, repo, ref st
 	return blobs, nil
 }
 
+// MergedPR is a subset of fields from GitHub's closed-PRs search.
+type MergedPR struct {
+	Number   int
+	Title    string
+	Body     string
+	MergedAt time.Time
+	URL      string
+	Labels   []string
+}
+
+// Release is a subset of fields from GitHub's releases list.
+type Release struct {
+	TagName     string
+	Name        string
+	Body        string
+	PublishedAt time.Time
+	Prerelease  bool
+	Draft       bool
+	HTMLURL     string
+}
+
+// ListMergedPRsBetween returns PRs merged between two git tags on the given repo,
+// using the closed-PRs search API. Tags must exist in the repo; the method
+// resolves them to dates via the /git/ref/tags + /git/commits chain, following
+// annotated-tag indirection when necessary.
+func (c *Client) ListMergedPRsBetween(ctx context.Context, installationID int64, repo, fromTag, toTag string) ([]MergedPR, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	fromTime, err := c.commitDateForTag(ctx, client, repo, fromTag)
+	if err != nil {
+		return nil, fmt.Errorf("from tag %q: %w", fromTag, err)
+	}
+	toTime, err := c.commitDateForTag(ctx, client, repo, toTag)
+	if err != nil {
+		return nil, fmt.Errorf("to tag %q: %w", toTag, err)
+	}
+
+	query := fmt.Sprintf("repo:%s is:pr is:merged merged:%s..%s",
+		repo, fromTime.Format("2006-01-02"), toTime.Format("2006-01-02"))
+	return c.searchMergedPRs(ctx, client, query)
+}
+
+// GetLatestReleases returns up to n most-recent non-draft releases for repo.
+func (c *Client) GetLatestReleases(ctx context.Context, installationID int64, repo string, n int) ([]Release, error) {
+	if n <= 0 {
+		n = 10
+	}
+	if n > 100 {
+		n = 100
+	}
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/releases?per_page=%d", c.baseURL, repo, n)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var raw []struct {
+		TagName     string    `json:"tag_name"`
+		Name        string    `json:"name"`
+		Body        string    `json:"body"`
+		PublishedAt time.Time `json:"published_at"`
+		Prerelease  bool      `json:"prerelease"`
+		Draft       bool      `json:"draft"`
+		HTMLURL     string    `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode releases: %w", err)
+	}
+	out := make([]Release, 0, len(raw))
+	for _, r := range raw {
+		if r.Draft {
+			continue
+		}
+		out = append(out, Release(r))
+	}
+	return out, nil
+}
+
+// commitDateForTag resolves a tag to its commit's committer date.
+// Follows annotated-tag indirection (ref.Object.Type == "tag") by fetching
+// /git/tags/{sha} before resolving the underlying commit.
+func (c *Client) commitDateForTag(ctx context.Context, client *http.Client, repo, tag string) (time.Time, error) {
+	refURL := fmt.Sprintf("%s/repos/%s/git/ref/tags/%s", c.baseURL, repo, tag)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, refURL, nil)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return time.Time{}, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var ref struct {
+		Object struct {
+			SHA  string `json:"sha"`
+			Type string `json:"type"`
+		} `json:"object"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&ref); err != nil {
+		return time.Time{}, fmt.Errorf("decode ref: %w", err)
+	}
+
+	sha := ref.Object.SHA
+	if ref.Object.Type == "tag" {
+		tagURL := fmt.Sprintf("%s/repos/%s/git/tags/%s", c.baseURL, repo, sha)
+		treq, err := http.NewRequestWithContext(ctx, http.MethodGet, tagURL, nil)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("create request: %w", err)
+		}
+		treq.Header.Set("Accept", "application/vnd.github+json")
+
+		tresp, err := client.Do(treq)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("send request: %w", err)
+		}
+		defer tresp.Body.Close()
+
+		if tresp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(io.LimitReader(tresp.Body, 4096))
+			return time.Time{}, fmt.Errorf("github API returned %d: %s", tresp.StatusCode, string(respBody))
+		}
+
+		var annotated struct {
+			Object struct {
+				SHA string `json:"sha"`
+			} `json:"object"`
+		}
+		if err := json.NewDecoder(tresp.Body).Decode(&annotated); err != nil {
+			return time.Time{}, fmt.Errorf("decode tag: %w", err)
+		}
+		sha = annotated.Object.SHA
+	}
+
+	commitURL := fmt.Sprintf("%s/repos/%s/git/commits/%s", c.baseURL, repo, sha)
+	creq, err := http.NewRequestWithContext(ctx, http.MethodGet, commitURL, nil)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("create request: %w", err)
+	}
+	creq.Header.Set("Accept", "application/vnd.github+json")
+
+	cresp, err := client.Do(creq)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("send request: %w", err)
+	}
+	defer cresp.Body.Close()
+
+	if cresp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(cresp.Body, 4096))
+		return time.Time{}, fmt.Errorf("github API returned %d: %s", cresp.StatusCode, string(respBody))
+	}
+
+	var commit struct {
+		Committer struct {
+			Date time.Time `json:"date"`
+		} `json:"committer"`
+	}
+	if err := json.NewDecoder(cresp.Body).Decode(&commit); err != nil {
+		return time.Time{}, fmt.Errorf("decode commit: %w", err)
+	}
+	return commit.Committer.Date, nil
+}
+
+func (c *Client) searchMergedPRs(ctx context.Context, client *http.Client, query string) ([]MergedPR, error) {
+	url := fmt.Sprintf("%s/search/issues?per_page=100&q=%s", c.baseURL, neturl.QueryEscape(query))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var payload struct {
+		Items []struct {
+			Number   int       `json:"number"`
+			Title    string    `json:"title"`
+			Body     string    `json:"body"`
+			HTMLURL  string    `json:"html_url"`
+			ClosedAt time.Time `json:"closed_at"`
+			Labels   []struct {
+				Name string `json:"name"`
+			} `json:"labels"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode search: %w", err)
+	}
+	out := make([]MergedPR, 0, len(payload.Items))
+	for _, it := range payload.Items {
+		labels := make([]string, 0, len(it.Labels))
+		for _, lb := range it.Labels {
+			labels = append(labels, lb.Name)
+		}
+		out = append(out, MergedPR{
+			Number:   it.Number,
+			Title:    it.Title,
+			Body:     it.Body,
+			MergedAt: it.ClosedAt,
+			URL:      it.HTMLURL,
+			Labels:   labels,
+		})
+	}
+	return out, nil
+}
+
+// Issue is a minimal subset of a GitHub issue.
+type Issue struct {
+	Number int
+	Title  string
+	Body   string
+	State  string
+	URL    string
+}
+
+// GetIssue returns a single issue by number for the given repo.
+func (c *Client) GetIssue(ctx context.Context, installationID int64, repo string, number int) (*Issue, error) {
+	client, err := c.installationClient(installationID)
+	if err != nil {
+		return nil, fmt.Errorf("installation client: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.baseURL, repo, number)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var raw struct {
+		Number  int    `json:"number"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+		State   string `json:"state"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("decode issue: %w", err)
+	}
+	return &Issue{Number: raw.Number, Title: raw.Title, Body: raw.Body, State: raw.State, URL: raw.HTMLURL}, nil
+}
+
 // CloseIssue closes a GitHub issue by setting its state to "closed".
 func (c *Client) CloseIssue(ctx context.Context, installationID int64, repo string, issueNumber int) error {
 	client, err := c.installationClient(installationID)

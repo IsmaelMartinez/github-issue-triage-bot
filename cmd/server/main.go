@@ -24,6 +24,18 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/webhook"
 )
 
+// server bundles the long-lived dependencies that request handlers need.
+// Handlers added as methods on *server can reach the store, GitHub client,
+// LLM client, logger, and the set of repos the deployment is configured to
+// handle without threading each of them through a closure.
+type server struct {
+	store        *store.Store
+	gh           *gh.Client
+	llm          llm.Provider
+	logger       *slog.Logger
+	allowedRepos map[string]bool
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
@@ -49,8 +61,13 @@ func main() {
 
 	sourceRepo := os.Getenv("SOURCE_REPO")
 	ingestSecret := os.Getenv("INGEST_SECRET")
+	// Cron-triggered endpoints (/cleanup, /health-check, /ingest, /synthesize, /pause, /unpause,
+	// /upstream-watch, /brief-preview) rely on either (a) INGEST_SECRET being empty with Cloud Run's
+	// IAM layer handling auth, or (b) setting INGEST_SECRET and having callers send
+	// "Authorization: Bearer <INGEST_SECRET>". The Workload-Identity-token pattern used by the
+	// GitHub Actions workflows only works in mode (a).
 	if ingestSecret == "" {
-		logger.Warn("INGEST_SECRET not set — /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause are unauthenticated")
+		logger.Warn("INGEST_SECRET not set — /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause, /upstream-watch, /brief-preview are unauthenticated at app layer (Cloud Run IAM may still gate)")
 	}
 
 	port := os.Getenv("PORT")
@@ -145,6 +162,14 @@ func main() {
 	for source, shadow := range shadowRepos {
 		allowedRepos[source] = true
 		allowedRepos[shadow] = true
+	}
+
+	srv := &server{
+		store:        s,
+		gh:           ghClient,
+		llm:          llmClient,
+		logger:       logger,
+		allowedRepos: allowedRepos,
 	}
 	mux.HandleFunc("/cleanup", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -429,6 +454,22 @@ func main() {
 
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"status":"ok","findings":%d}`, findingCount)
+	})
+
+	mux.HandleFunc("/upstream-watch", func(w http.ResponseWriter, r *http.Request) {
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		srv.upstreamWatchHandler(w, r)
+	})
+
+	mux.HandleFunc("/brief-preview", func(w http.ResponseWriter, r *http.Request) {
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		srv.briefPreviewHandler(w, r)
 	})
 
 	// Live dashboard
