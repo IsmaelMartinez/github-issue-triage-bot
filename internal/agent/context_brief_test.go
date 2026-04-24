@@ -107,3 +107,50 @@ func TestBuildContextBrief_EmptyResults(t *testing.T) {
 		t.Error("expected footer in markdown")
 	}
 }
+
+func TestFormatContextBriefMarkdown_NeutralizesMentions(t *testing.T) {
+	brief := &ContextBrief{
+		Summary:    "Summary referencing @summaryUser.",
+		SourceRepo: "owner/repo",
+		IssueNum:   7,
+		Title:      "Test",
+		Issues: []store.SimilarIssue{
+			{Issue: store.Issue{Number: 1938, Title: "Extended MQTT status", State: "open", Summary: "great work of @Donnyp751 allows to propagate status"}},
+		},
+	}
+
+	md := FormatContextBriefMarkdown(brief)
+
+	if strings.Contains(md, "@Donnyp751") {
+		t.Errorf("expected @Donnyp751 to be neutralized, got:\n%s", md)
+	}
+	if !strings.Contains(md, "Donnyp751") {
+		t.Errorf("expected username to be preserved without the @, got:\n%s", md)
+	}
+	if strings.Contains(md, "@summaryUser") {
+		t.Errorf("expected @summaryUser to be neutralized, got:\n%s", md)
+	}
+}
+
+func TestNeutralizeMentions(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"great work of @Donnyp751", "great work of Donnyp751"},
+		{"@someone at start", "someone at start"},
+		{"hello @a, @b and @c.", "hello a, b and c."},
+		{"email@domain.com stays", "email@domain.com stays"},
+		{"trailing punctuation @user!", "trailing punctuation user!"},
+		{"org team ref @owner/team keeps slash", "org team ref owner/team keeps slash"},
+		{"double at @@user collapses", "double at user collapses"},
+		{"no mentions here", "no mentions here"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		got := neutralizeMentions(c.in)
+		if got != c.want {
+			t.Errorf("neutralizeMentions(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

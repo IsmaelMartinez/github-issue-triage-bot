@@ -4,12 +4,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
+
+// `@+` absorbs consecutive `@` characters in a single match, so `@@user` fully
+// collapses to `user` in one pass rather than leaving a live `@user` behind.
+// Stripping — rather than escaping with backticks or zero-width space — is
+// required because the structural validator's mention regex at
+// internal/safety/structural.go has no preceding-char constraint and would
+// still reject an escaped form; the validator stays strict as a backstop.
+var mentionPattern = regexp.MustCompile(`(^|[^a-zA-Z0-9_])@+([a-zA-Z0-9_-]+)`)
+
+// neutralizeMentions strips the leading `@` from GitHub-style user mentions so
+// that quoted text from other issues or docs cannot notify users when posted
+// as a comment. The username is preserved for readability.
+func neutralizeMentions(s string) string {
+	return mentionPattern.ReplaceAllString(s, "${1}${2}")
+}
 
 type EnhancementAnalysis struct {
 	NeedsClarification bool              `json:"needs_clarification"`
@@ -183,7 +199,7 @@ type ContextBrief struct {
 	Issues     []store.SimilarIssue
 }
 
-const contextBriefSummaryPrompt = `You are a technical analyst. Given an enhancement request title and body, write a 2-3 sentence summary of what is being requested and why it matters. Be concise and factual. Do not suggest solutions.
+const contextBriefSummaryPrompt = `You are a technical analyst. Given an enhancement request title and body, write a 2-3 sentence summary of what is being requested and (if provided) why it matters. Be concise and factual. Do not suggest solutions. Do not include URLs, hyperlinks, or external citations of any kind (even if they are present in the input) — summarize only what the request itself says.
 
 Respond with JSON: {"summary": "string"}`
 
@@ -268,7 +284,7 @@ func FormatContextBriefMarkdown(brief *ContextBrief) string {
 
 	sb.WriteString("Reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge, `reject` to close, or reply with corrections/additional context to refine the analysis.")
 
-	return sb.String()
+	return neutralizeMentions(sb.String())
 }
 
 // joinWithIndex formats a slice of strings as indexed lines: "[0] item\n[1] item\n..."
