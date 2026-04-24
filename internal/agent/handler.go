@@ -173,7 +173,7 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 	}
 	var docSummaries []string
 	for _, d := range similarDocs {
-		docSummaries = append(docSummaries, fmt.Sprintf("[%s] %s: %s", d.DocType, d.Title, truncate(d.Content, 500)))
+		docSummaries = append(docSummaries, neutralizeMentions(fmt.Sprintf("[%s] %s: %s", d.DocType, d.Title, truncate(d.Content, 500))))
 	}
 
 	// Search for similar issues
@@ -183,7 +183,7 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 	}
 	var issueSummaries []string
 	for _, i := range similarIssues {
-		issueSummaries = append(issueSummaries, fmt.Sprintf("#%d %s: %s", i.Number, i.Title, truncate(i.Summary, 300)))
+		issueSummaries = append(issueSummaries, neutralizeMentions(fmt.Sprintf("#%d %s: %s", i.Number, i.Title, truncate(i.Summary, 300))))
 	}
 
 	// Enrich body with clarification answers if present
