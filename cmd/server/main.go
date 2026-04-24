@@ -122,6 +122,25 @@ func main() {
 	}
 	ghClient := gh.New(appID, privateKey)
 
+	// Warm the TLS session to api.github.com in the background. Cold-start
+	// instances have been observed to time out the TLS handshake when
+	// ghinstallation mints a fresh installation token, silently dropping
+	// maintainer `lgtm` signals. A throwaway GET primes DNS and TLS state and
+	// populates the idle-connection pool for the first real webhook. Running
+	// asynchronously avoids adding ~10s to cold-start latency; if the first
+	// webhook races the warmup, it just pays its own TLS handshake cost (same
+	// as today), while every subsequent request benefits from the pooled
+	// connection.
+	go func() {
+		warmCtx, warmCancel := context.WithTimeout(ctx, 15*time.Second)
+		defer warmCancel()
+		if err := ghClient.WarmTLS(warmCtx); err != nil {
+			logger.Warn("api.github.com TLS warmup failed", "error", err)
+			return
+		}
+		logger.Info("api.github.com TLS warmup ok")
+	}()
+
 	// Parse shadow repos configuration
 	shadowRepos := parseShadowRepos(os.Getenv("SHADOW_REPOS"))
 	if len(shadowRepos) > 0 {
@@ -181,6 +200,12 @@ func main() {
 			return
 		}
 
+		// Retry promotions that were requested via `lgtm` but failed to post
+		// publicly (typically a cold-start TLS hiccup). Running before the
+		// stale-session pass means a successful retry clears the session
+		// rather than closing it as stale.
+		promotionsRetried, promotionsFailed := retryPendingPromotions(r.Context(), s, ghClient, logger)
+
 		staleDuration := 14 * 24 * time.Hour
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
 		if err != nil {
@@ -236,7 +261,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
+		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d,"promotions_retried":%d,"promotions_failed":%d}`, closed, len(stale), promotionsRetried, promotionsFailed)
 	})
 	mux.HandleFunc("/health-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -635,6 +660,38 @@ func main() {
 		logger.Error("server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+// retryPendingPromotions re-attempts triage-session promotions whose lgtm was
+// received but the follow-up CreateComment failed. Returns counts of retried
+// and failed attempts. Safe to call when nothing is pending.
+func retryPendingPromotions(ctx context.Context, s *store.Store, ghClient *gh.Client, logger *slog.Logger) (retried, failed int) {
+	pending, err := s.ListPendingPromotions(ctx)
+	if err != nil {
+		logger.Error("list pending promotions", "error", err)
+		return 0, 0
+	}
+	if len(pending) == 0 {
+		return 0, 0
+	}
+	installations, err := ghClient.ListInstallations(ctx)
+	if err != nil || len(installations) == 0 {
+		logger.Error("get installations for pending promotion retry", "error", err)
+		return 0, 0
+	}
+	installID := installations[0]
+	for _, ts := range pending {
+		if err := webhook.PromoteTriageSession(ctx, ghClient, s, installID, ts); err != nil {
+			logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
+			failed++
+			continue
+		}
+		_ = s.ClearPendingPromotion(ctx, ts.ID)
+		_ = s.MarkTriageSessionClosed(ctx, ts.ID)
+		retried++
+		logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber)
+	}
+	return retried, failed
 }
 
 func requireEnv(key string) string {

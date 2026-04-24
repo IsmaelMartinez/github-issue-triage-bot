@@ -23,7 +23,7 @@ func TestEmbeddedMigrations(t *testing.T) {
 	if len(names) < 10 {
 		t.Fatalf("expected at least 10 embedded migrations, got %d: %v", len(names), names)
 	}
-	want := "009_triage_session_closed_at.sql"
+	want := "015_triage_session_pending_promotion.sql"
 	found := false
 	for _, n := range names {
 		if n == want {

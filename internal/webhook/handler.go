@@ -294,19 +294,16 @@ func (h *Handler) handleTriageComment(ctx context.Context, installationID int64,
 
 	switch signal {
 	case agent.SignalApproved:
-		commentID, err := h.github.CreateComment(ctx, installationID, ts.Repo, ts.IssueNumber, ts.TriageComment)
-		if err != nil {
-			return true, fmt.Errorf("post triage comment publicly: %w", err)
+		if err := PromoteTriageSession(ctx, h.github, h.store, installationID, *ts); err != nil {
+			// Record that a promotion is owed so the daily cleanup cron can retry.
+			// Without this, a transient cold-start TLS failure against api.github.com
+			// silently drops the maintainer's `lgtm` signal.
+			if markErr := h.store.MarkPendingPromotion(ctx, ts.ID); markErr != nil {
+				log.Error("recording pending promotion", "error", markErr)
+			}
+			return true, err
 		}
-		if err := h.store.RecordBotComment(ctx, store.BotComment{
-			Repo:        ts.Repo,
-			IssueNumber: ts.IssueNumber,
-			CommentID:   commentID,
-			PhasesRun:   ts.PhasesRun,
-		}); err != nil {
-			log.Error("recording bot comment after promotion", "error", err)
-		}
-		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
+		_ = h.store.ClearPendingPromotion(ctx, ts.ID)
 		log.Info("triage comment promoted to public issue")
 		return true, nil
 

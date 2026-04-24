@@ -430,3 +430,35 @@ func TestListMergedPRsBetween(t *testing.T) {
 		t.Errorf("prs[1].Number = %d, want 102", prs[1].Number)
 	}
 }
+
+func TestWarmTLS(t *testing.T) {
+	t.Run("hits /zen and returns nil on success", func(t *testing.T) {
+		mux := http.NewServeMux()
+		var hit bool
+		mux.HandleFunc("/zen", func(w http.ResponseWriter, _ *http.Request) {
+			hit = true
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Practicality beats purity."))
+		})
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		c := newTestClient(srv.URL)
+		if err := c.WarmTLS(context.Background()); err != nil {
+			t.Fatalf("WarmTLS() error = %v", err)
+		}
+		if !hit {
+			t.Error("expected /zen endpoint to be hit")
+		}
+	})
+
+	t.Run("propagates context cancellation", func(t *testing.T) {
+		c := New(1, []byte(testRSAKey))
+		c.baseURL = "http://127.0.0.1:1" // unreachable
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := c.WarmTLS(ctx); err == nil {
+			t.Error("expected error from cancelled context, got nil")
+		}
+	})
+}

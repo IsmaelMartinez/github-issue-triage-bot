@@ -36,6 +36,25 @@ func New(appID int64, privateKey []byte) *Client {
 	}
 }
 
+// WarmTLS issues one throwaway unauthenticated GET to api.github.com to prime
+// DNS resolution and the TLS session before the first real request arrives.
+// Cold-start Cloud Run instances have been observed to time out the TLS
+// handshake on the first call to /app/installations/*/access_tokens, which
+// silently drops maintainer `lgtm` signals.
+func (c *Client) WarmTLS(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/zen", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	// Drain fully so the connection returns to the idle pool for reuse.
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.Body.Close()
+}
+
 // installationClient returns an HTTP client scoped to a specific installation.
 // The outer retry transport wraps the whole call (both the ghinstallation
 // token-mint and the subsequent API request) so a transient TLS/5xx failure
