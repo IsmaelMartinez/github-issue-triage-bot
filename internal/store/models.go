@@ -137,14 +137,15 @@ type AuditEntry struct {
 
 // TriageSession tracks a shadow issue created for triage review.
 type TriageSession struct {
-	ID                int64
-	Repo              string
-	IssueNumber       int
-	ShadowRepo        string
-	ShadowIssueNumber int
-	TriageComment     string
-	PhasesRun         []string
-	CreatedAt         time.Time
+	ID                 int64
+	Repo               string
+	IssueNumber        int
+	ShadowRepo         string
+	ShadowIssueNumber  int
+	TriageComment      string
+	PhasesRun          []string
+	CreatedAt          time.Time
+	PendingPromotionAt *time.Time
 }
 
 // FeedbackSignal records a user feedback event (edit fill or @mention).

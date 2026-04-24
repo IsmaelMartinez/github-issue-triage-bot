@@ -122,6 +122,20 @@ func main() {
 	}
 	ghClient := gh.New(appID, privateKey)
 
+	// Warm the TLS session to api.github.com before the first webhook arrives.
+	// Cold-start instances have been observed to time out the TLS handshake when
+	// ghinstallation mints a fresh installation token, silently dropping
+	// maintainer `lgtm` signals. A throwaway GET primes DNS and TLS state. We
+	// cap it at 5s and swallow errors: if this fails, the existing retryTransport
+	// and the pending-promotion cleanup pass still cover the signal.
+	warmCtx, warmCancel := context.WithTimeout(ctx, 5*time.Second)
+	if err := ghClient.WarmTLS(warmCtx); err != nil {
+		logger.Warn("api.github.com TLS warmup failed", "error", err)
+	} else {
+		logger.Info("api.github.com TLS warmup ok")
+	}
+	warmCancel()
+
 	// Parse shadow repos configuration
 	shadowRepos := parseShadowRepos(os.Getenv("SHADOW_REPOS"))
 	if len(shadowRepos) > 0 {
@@ -181,6 +195,44 @@ func main() {
 			return
 		}
 
+		// Retry any promotions that were requested via `lgtm` but failed to post
+		// publicly (typically a cold-start TLS hiccup against api.github.com).
+		// We scope installations to whatever the ghClient can see and re-attempt
+		// before the stale-session pass, so a successful retry here clears the
+		// session rather than closing it as stale.
+		promotionsRetried, promotionsFailed := 0, 0
+		if pending, err := s.ListPendingPromotions(r.Context()); err != nil {
+			logger.Error("list pending promotions", "error", err)
+		} else if len(pending) > 0 {
+			installations, err := ghClient.ListInstallations(r.Context())
+			if err != nil || len(installations) == 0 {
+				logger.Error("get installations for pending promotion retry", "error", err)
+			} else {
+				installID := installations[0]
+				for _, ts := range pending {
+					commentID, err := ghClient.CreateComment(r.Context(), installID, ts.Repo, ts.IssueNumber, ts.TriageComment)
+					if err != nil {
+						logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
+						promotionsFailed++
+						continue
+					}
+					if err := s.RecordBotComment(r.Context(), store.BotComment{
+						Repo:        ts.Repo,
+						IssueNumber: ts.IssueNumber,
+						CommentID:   commentID,
+						PhasesRun:   ts.PhasesRun,
+					}); err != nil {
+						logger.Error("record bot comment after retry", "error", err)
+					}
+					_ = ghClient.CloseIssue(r.Context(), installID, ts.ShadowRepo, ts.ShadowIssueNumber)
+					_ = s.ClearPendingPromotion(r.Context(), ts.ID)
+					_ = s.MarkTriageSessionClosed(r.Context(), ts.ID)
+					promotionsRetried++
+					logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber)
+				}
+			}
+		}
+
 		staleDuration := 14 * 24 * time.Hour
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
 		if err != nil {
@@ -236,7 +288,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
+		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d,"promotions_retried":%d,"promotions_failed":%d}`, closed, len(stale), promotionsRetried, promotionsFailed)
 	})
 	mux.HandleFunc("/health-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
