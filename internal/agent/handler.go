@@ -199,7 +199,7 @@ func (h *AgentHandler) startResearch(ctx context.Context, installationID, sessio
 	}
 
 	// Format as markdown
-	researchMD := FormatResearchMarkdown(doc, sourceRepo, issueNumber)
+	researchMD := neutralizeMentions(FormatResearchMarkdown(doc, sourceRepo, issueNumber))
 
 	// Run structural safety check
 	structResult := h.structural.Validate(researchMD)

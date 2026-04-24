@@ -12,7 +12,12 @@ import (
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
 )
 
-var mentionPattern = regexp.MustCompile(`(^|[^a-zA-Z0-9_])@([a-zA-Z0-9_-]+)`)
+// Excluding `@` from the preceding-char class ensures `@@user` does not match
+// at position 1 (which would leave a live `@user` after stripping the first
+// `@`). Stripping — rather than escaping with backticks or zero-width space —
+// is the only approach that also defeats the structural validator's mention
+// regex at internal/safety/structural.go, so it stays strict as a backstop.
+var mentionPattern = regexp.MustCompile(`(^|[^a-zA-Z0-9_@])@([a-zA-Z0-9_-]+)`)
 
 // neutralizeMentions strips the leading `@` from GitHub-style user mentions so
 // that quoted text from other issues or docs cannot notify users when posted
