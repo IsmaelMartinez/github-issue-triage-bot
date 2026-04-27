@@ -23,3 +23,7 @@ terraform/.terraform/
 terraform/terraform.tfstate*
 terraform/terraform.tfvars
 terraform/.terraform.lock.hcl
+
+# Claude Code local state (per-session lock files, etc.)
+.claude/scheduled_tasks.lock
+.claude/worktrees/
