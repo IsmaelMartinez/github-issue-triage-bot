@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"sync/atomic"
@@ -59,8 +60,19 @@ func New(apiKey string, logger *slog.Logger) *Client {
 }
 
 // SetDailyLimit sets the maximum number of LLM API calls per day. 0 means unlimited.
+// Values exceeding math.MaxInt32 are clamped to math.MaxInt32; negative values are
+// clamped to 0 (unlimited) to avoid integer-conversion wraparound.
 func (c *Client) SetDailyLimit(limit int) {
-	c.dailyLimit.Store(int32(limit))
+	var stored int32
+	switch {
+	case limit < 0:
+		stored = 0
+	case limit > math.MaxInt32:
+		stored = math.MaxInt32
+	default:
+		stored = int32(limit)
+	}
+	c.dailyLimit.Store(stored)
 }
 
 // DailyCount returns the current day's LLM call count.
