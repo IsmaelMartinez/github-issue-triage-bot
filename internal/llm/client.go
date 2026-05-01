@@ -65,16 +65,18 @@ func New(apiKey string, logger *slog.Logger) *Client {
 // that checkAndIncrementDaily can Add(1) past the limit without int32 wraparound,
 // which would otherwise cause count>limit to read false and silently bypass the cap.
 func (c *Client) SetDailyLimit(limit int) {
-	var stored int32
-	switch {
-	case limit < 0:
-		stored = 0
-	case limit > math.MaxInt32-1:
-		stored = math.MaxInt32 - 1
-	default:
-		stored = int32(limit)
+	// Reserve one int32 slot of headroom so checkAndIncrementDaily can Add(1)
+	// past the limit without wrapping to a negative value, which would cause
+	// the count>limit check to read false and silently bypass the cap.
+	if limit < 0 {
+		c.dailyLimit.Store(0)
+		return
 	}
-	c.dailyLimit.Store(stored)
+	if limit >= math.MaxInt32 {
+		c.dailyLimit.Store(math.MaxInt32 - 1)
+		return
+	}
+	c.dailyLimit.Store(int32(limit))
 }
 
 // DailyCount returns the current day's LLM call count.
