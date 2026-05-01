@@ -65,7 +65,15 @@ func New(apiKey string, logger *slog.Logger) *Client {
 // that checkAndIncrementDaily can Add(1) past the limit without int32 wraparound,
 // which would otherwise cause count>limit to read false and silently bypass the cap.
 func (c *Client) SetDailyLimit(limit int) {
-	stored := int32(max(0, min(limit, math.MaxInt32-1)))
+	var stored int32
+	switch {
+	case limit < 0:
+		stored = 0
+	case limit > math.MaxInt32-1:
+		stored = math.MaxInt32 - 1
+	default:
+		stored = int32(limit)
+	}
 	c.dailyLimit.Store(stored)
 }
 
