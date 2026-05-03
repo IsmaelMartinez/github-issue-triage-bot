@@ -126,8 +126,11 @@ go run ./cmd/seed issues path/to/issue-index.json
 # Seed feature index (roadmap, ADRs, research)
 go run ./cmd/seed features path/to/feature-index.json
 
-# Seed upstream dependency docs (e.g. Electron release notes)
-go run ./cmd/seed upstream path/to/electron-v39-releases.json
+# Seed upstream dependency docs (e.g. Electron release notes / issues)
+# The upstream index is consumed by the `features` subcommand; entries declare
+# their type via `source` (`upstream_release` or `upstream_issue`).
+go run ./cmd/seed features path/to/electron-v41-releases.json
+go run ./cmd/seed features path/to/electron-v41-issues.json
 ```
 
 After the initial seed, the webhook handler keeps issue data up to date in real-time. A `workflow_dispatch` seed workflow also enables re-seeding from the GitHub Actions UI.
