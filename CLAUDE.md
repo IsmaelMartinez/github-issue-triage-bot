@@ -55,8 +55,12 @@ cd terraform && terraform plan && terraform apply
 gh workflow run seed.yml -f seed_type=features -f data_file=data/feature-index.json
 
 # Seed upstream dependency docs (e.g. Electron release notes)
-./scripts/generate-upstream-index.sh --repo electron/electron --type releases --version 39 --doc-type upstream_release > data/electron-v39-releases.json
-./seed upstream data/electron-v39-releases.json
+# Releases use the major version directly (matches `vNN.` tag prefix);
+# issues use the milestone label form `NN-x-y` (matches Electron's milestone titles).
+./scripts/generate-upstream-index.sh --repo electron/electron --type releases --version 41 --doc-type upstream_release > data/electron-v41-releases.json
+./scripts/generate-upstream-index.sh --repo electron/electron --type issues --version 41-x-y --doc-type upstream_issue > data/electron-v41-issues.json
+./seed features data/electron-v41-releases.json
+./seed features data/electron-v41-issues.json
 ```
 
 ## Architecture
