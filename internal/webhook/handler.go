@@ -495,8 +495,11 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
 			body = comment.Build(result)
 		} else if synthResult != "" {
-			// Sanitise LLM output, append debug instructions and footer
+			// Sanitise LLM output, rewrite bare upstream refs to their
+			// qualified form so GitHub doesn't auto-link them against the
+			// host repo, then append debug instructions and footer.
 			body = comment.SanitizeLLMOutput(synthResult)
+			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
 			if di := comment.DebugInstructions(result); di != "" {
 				body += "\n\n" + di
 			}
@@ -658,8 +661,11 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
 			body = comment.Build(result)
 		} else if synthResult != "" {
-			// Sanitise LLM output, append debug instructions and footer
+			// Sanitise LLM output, rewrite bare upstream refs to their
+			// qualified form so GitHub doesn't auto-link them against the
+			// host repo, then append debug instructions and footer.
 			body = comment.SanitizeLLMOutput(synthResult)
+			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
 			if di := comment.DebugInstructions(result); di != "" {
 				body += "\n\n" + di
 			}
@@ -981,6 +987,24 @@ func sanitizeBody(body string, maxLen int) string {
 		result = result[:maxLen]
 	}
 	return result
+}
+
+// collectUpstreamRefs gathers GitHub issue/PR references from the doc URLs
+// that were sent into the synthesis prompt, so synthesised prose can have
+// bare `#NNN` references rewritten to their qualified `OWNER/REPO#NNN` form.
+func collectUpstreamRefs(input phases.SynthesisInput) []comment.UpstreamRef {
+	urls := make([]string, 0, len(input.Phase2)+len(input.Phase4a))
+	for _, s := range input.Phase2 {
+		if s.DocURL != "" {
+			urls = append(urls, s.DocURL)
+		}
+	}
+	for _, c := range input.Phase4a {
+		if c.DocURL != "" {
+			urls = append(urls, c.DocURL)
+		}
+	}
+	return comment.ExtractUpstreamRefs(urls)
 }
 
 func collectPhasesRun(r comment.TriageResult, synthesized bool) []string {

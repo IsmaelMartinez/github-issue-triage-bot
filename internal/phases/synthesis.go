@@ -56,6 +56,7 @@ Rules:
 - Never greet the user or sign off.
 - If context documents relate to missing information, connect them (e.g., "this looks like X, and debug logs would help confirm").
 - Use markdown sparingly: short paragraphs, a checklist only when 3+ items are missing.
+- For external/upstream issue references (e.g. another GitHub repo), never write a bare ` + "`#NNN`" + ` — GitHub will auto-link it against this repo. Use the qualified ` + "`OWNER/REPO#NNN`" + ` form (e.g. ` + "`electron/electron#50106`" + `) or a markdown link to the CONTEXT doc_url. Bare ` + "`#NNN`" + ` is reserved for issues in this repo.
 - If nothing useful was found, return exactly: EMPTY
 
 Return a JSON object with a single field "comment" containing your markdown response (or "EMPTY").`
