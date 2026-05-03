@@ -27,6 +27,29 @@
 
 set -euo pipefail
 
+# truncate_safely trims text to at most $max chars, but never cuts mid-line.
+# If the byte at position $max is in the middle of a line (i.e. not a newline
+# and not past the end), we drop the trailing partial line. If the text has
+# no newlines at all, we fall through to a hard slice to avoid shrinking to
+# empty.
+truncate_safely() {
+  local text="$1"
+  local max="${2:-2000}"
+  if (( ${#text} <= max )); then
+    printf '%s' "$text"
+    return
+  fi
+  local cut="${text:0:$max}"
+  local next_char="${text:$max:1}"
+  if [[ -n "$next_char" && "$next_char" != $'\n' ]]; then
+    # Drop trailing partial line if there is at least one newline to cut at.
+    if [[ "$cut" == *$'\n'* ]]; then
+      cut="${cut%$'\n'*}"
+    fi
+  fi
+  printf '%s' "$cut"
+}
+
 REPO=""
 TYPE=""
 VERSION=""
@@ -80,8 +103,9 @@ if [[ "$TYPE" == "releases" ]]; then
       published_at=$(echo "$release" | jq -r '.published_at')
       html_url=$(echo "$release" | jq -r '.html_url')
 
-      # Truncate body to 2000 chars
-      summary="${body:0:2000}"
+      # Truncate body to 2000 chars at last newline boundary to avoid
+      # cutting mid-line (which can break markdown links).
+      summary="$(truncate_safely "$body" 2000)"
 
       echo "  Processing release: ${tag}" >&2
 
@@ -132,8 +156,9 @@ elif [[ "$TYPE" == "issues" ]]; then
       labels=$(echo "$issue" | jq -r '[.labels[].name] | join(", ")')
 
       # Build summary from title + labels + body, truncated to 2000 chars
+      # at last newline boundary to avoid cutting mid-line.
       full_text="Labels: ${labels}\n\n${body}"
-      summary="${full_text:0:2000}"
+      summary="$(truncate_safely "$full_text" 2000)"
 
       echo "  Processing issue #${number}: ${title}" >&2
 
