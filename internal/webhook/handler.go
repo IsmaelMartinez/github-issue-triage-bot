@@ -499,7 +499,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 			// qualified form so GitHub doesn't auto-link them against the
 			// host repo, then append debug instructions and footer.
 			body = comment.SanitizeLLMOutput(synthResult)
-			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), nil)
+			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
 			if di := comment.DebugInstructions(result); di != "" {
 				body += "\n\n" + di
 			}
@@ -665,7 +665,7 @@ func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo
 			// qualified form so GitHub doesn't auto-link them against the
 			// host repo, then append debug instructions and footer.
 			body = comment.SanitizeLLMOutput(synthResult)
-			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), nil)
+			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
 			if di := comment.DebugInstructions(result); di != "" {
 				body += "\n\n" + di
 			}

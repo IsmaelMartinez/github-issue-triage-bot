@@ -115,6 +115,17 @@ func rewriteBareUpstreamRefs(text string, upstreamRefs []UpstreamRef, localIssue
 			}
 		}
 
+		// Skip backtick code spans as opaque so `#NNN` inside inline code
+		// (or fenced code blocks) is never rewritten. Unterminated runs fall
+		// through and are emitted literally.
+		if ch == '`' {
+			if end := findCodeSpanEnd(text, i); end > i {
+				out.WriteString(text[i:end])
+				i = end
+				continue
+			}
+		}
+
 		// Skip bare URLs (http:// or https://) as opaque spans so a `#NNN`
 		// inside a URL fragment or path is never rewritten.
 		if ch == 'h' || ch == 'H' {
@@ -206,7 +217,14 @@ func findMarkdownLinkEnd(s string, i int) int {
 // first whitespace, closing bracket/paren, or end-of-string.
 func findURLEnd(s string, i int) int {
 	rest := s[i:]
-	if !strings.HasPrefix(strings.ToLower(rest), "http://") && !strings.HasPrefix(strings.ToLower(rest), "https://") {
+	// Only lower-case the short prefix needed for the scheme check; lowering
+	// the entire remaining string would be O(n) per `h` byte encountered.
+	prefix := rest
+	if len(prefix) > 8 {
+		prefix = prefix[:8]
+	}
+	lowered := strings.ToLower(prefix)
+	if !strings.HasPrefix(lowered, "http://") && !strings.HasPrefix(lowered, "https://") {
 		return i
 	}
 	end := i
@@ -218,6 +236,44 @@ func findURLEnd(s string, i int) int {
 		end++
 	}
 	return end
+}
+
+// findCodeSpanEnd returns the byte offset just past a backtick-delimited code
+// span (or fenced code block) starting at i, or i if the span is unterminated.
+// Single-backtick spans `text` and multi-backtick spans ``text`` are supported,
+// where the opening run length determines the closing run length. Triple
+// backticks (```...```) are handled the same way, which transparently covers
+// fenced code blocks. Unterminated runs return i so the caller falls through
+// and emits the backtick(s) literally.
+func findCodeSpanEnd(s string, i int) int {
+	if i >= len(s) || s[i] != '`' {
+		return i
+	}
+	// Count opening backtick run length.
+	runLen := 0
+	for i+runLen < len(s) && s[i+runLen] == '`' {
+		runLen++
+	}
+	// Search for a closing run of exactly the same length (not part of a
+	// longer run). Scan forward looking for matching backtick runs.
+	j := i + runLen
+	for j < len(s) {
+		if s[j] != '`' {
+			j++
+			continue
+		}
+		closeLen := 0
+		for j < len(s) && s[j] == '`' {
+			closeLen++
+			j++
+		}
+		if closeLen == runLen {
+			return j
+		}
+		// Wrong-length run: continue searching past it.
+	}
+	// Unterminated: caller emits literal.
+	return i
 }
 
 func isDigit(b byte) bool {

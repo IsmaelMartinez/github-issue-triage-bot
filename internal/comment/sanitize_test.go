@@ -214,6 +214,43 @@ func TestRewriteBareUpstreamRefs(t *testing.T) {
 			refs: electron,
 			want: "fixed by electron/electron#50106. Try the latest build.",
 		},
+		{
+			name:       "current issue protected via localIssueHints",
+			in:         "this issue (#50106) reproduces the bug",
+			refs:       electron,
+			localHints: map[int]bool{50106: true},
+			want:       "this issue (#50106) reproduces the bug",
+		},
+		{
+			name: "single-backtick code span excluded",
+			in:   "see `#50106` for context",
+			refs: electron,
+			want: "see `#50106` for context",
+		},
+		{
+			name: "code span among normal prose",
+			in:   "see #50106 in `#50106` and #50106 again",
+			refs: electron,
+			want: "see electron/electron#50106 in `#50106` and electron/electron#50106 again",
+		},
+		{
+			name: "unterminated backtick falls through",
+			in:   "stray ` and #50106",
+			refs: electron,
+			want: "stray ` and electron/electron#50106",
+		},
+		{
+			name: "fenced code block excluded",
+			in:   "before\n```\n#50106\n```\nafter #50106",
+			refs: electron,
+			want: "before\n```\n#50106\n```\nafter electron/electron#50106",
+		},
+		{
+			name: "double-backtick span excluded",
+			in:   "text ``contains ` backtick and #50106`` and #50106 outside",
+			refs: electron,
+			want: "text ``contains ` backtick and #50106`` and electron/electron#50106 outside",
+		},
 	}
 
 	for _, tt := range tests {
