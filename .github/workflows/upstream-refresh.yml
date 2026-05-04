@@ -1,0 +1,68 @@
+name: Monthly Upstream Refresh
+
+# Refreshes upstream Electron release notes and issue summaries in the
+# vector store on the first day of each month. Active Electron majors are
+# regenerated via scripts/generate-upstream-index.sh and re-seeded through
+# `./seed features`. The committed data/electron-vNN-*.json snapshots are
+# left untouched — the live store is the source of truth; the snapshots
+# are kept for reference and reproducibility of the initial seed.
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: 'Comma-separated active Electron majors (e.g. "40,41")'
+        required: false
+        default: '40,41'
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build seed binary
+        run: go build -o seed ./cmd/seed
+
+      - name: Refresh upstream Electron docs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+          VERSIONS: ${{ inputs.versions || '40,41' }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra MAJORS <<< "$VERSIONS"
+          for raw in "${MAJORS[@]}"; do
+            major="$(echo "$raw" | tr -d '[:space:]')"
+            if [[ -z "$major" ]]; then continue; fi
+
+            echo "::group::Electron v${major} releases"
+            ./scripts/generate-upstream-index.sh \
+              --repo electron/electron \
+              --type releases \
+              --version "$major" \
+              --doc-type upstream_release \
+              > "/tmp/electron-v${major}-releases.json"
+            ./seed features "/tmp/electron-v${major}-releases.json"
+            echo "::endgroup::"
+
+            echo "::group::Electron v${major} issues"
+            ./scripts/generate-upstream-index.sh \
+              --repo electron/electron \
+              --type issues \
+              --version "${major}-x-y" \
+              --doc-type upstream_issue \
+              > "/tmp/electron-v${major}-issues.json"
+            ./seed features "/tmp/electron-v${major}-issues.json"
+            echo "::endgroup::"
+          done
