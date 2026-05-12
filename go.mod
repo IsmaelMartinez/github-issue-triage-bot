@@ -1,6 +1,8 @@
 module github.com/IsmaelMartinez/github-issue-triage-bot
 
-go 1.26.2
+go 1.26
+
+toolchain go1.26.3
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
