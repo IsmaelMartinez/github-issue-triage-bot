@@ -24,13 +24,15 @@ func main() {
 	trendsTool := tools.NewReportTrendsTool(baseURL, secret)
 	pendingTool := tools.NewPendingTriageTool(baseURL, secret)
 	briefingTool := tools.NewSynthesisBriefingTool(baseURL, secret)
+	briefPreviewTool := tools.NewBriefPreviewTool(baseURL, secret)
 
 	server.RegisterTool(healthTool.Def, healthTool.Handler)
 	server.RegisterTool(trendsTool.Def, trendsTool.Handler)
 	server.RegisterTool(pendingTool.Def, pendingTool.Handler)
 	server.RegisterTool(briefingTool.Def, briefingTool.Handler)
+	server.RegisterTool(briefPreviewTool.Def, briefPreviewTool.Handler)
 
-	logger.Info("triage-bot MCP server starting", "base_url", baseURL, "tools", 4)
+	logger.Info("triage-bot MCP server starting", "base_url", baseURL, "tools", 5)
 
 	if err := server.Run(os.Stdin, os.Stdout); err != nil {
 		logger.Error("MCP server error", "error", err)
