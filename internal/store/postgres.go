@@ -56,6 +56,22 @@ func (s *Store) UpsertDocument(ctx context.Context, doc Document) error {
 	return err
 }
 
+// UpdateIssueLabels replaces the labels column for an issue without touching
+// the embedding or any other field. Returns nil if the row does not exist
+// (label events can arrive before the issue has been embedded; the next
+// opened/edited event will populate the row).
+func (s *Store) UpdateIssueLabels(ctx context.Context, repo string, number int, labels []string) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE issues
+		SET labels = $1, updated_at = now()
+		WHERE repo = $2 AND number = $3
+	`, labels, repo, number)
+	if err != nil {
+		return fmt.Errorf("update issue labels: %w", err)
+	}
+	return nil
+}
+
 // UpsertIssue inserts or updates an issue and its embedding.
 // If issue.CreatedAt is set (non-zero), it is used as the issue creation timestamp;
 // otherwise the database default (now()) applies. On conflict, created_at is never overwritten.

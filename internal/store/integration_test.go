@@ -172,3 +172,52 @@ func TestIngestEndpointIntegration(t *testing.T) {
 		t.Errorf("CountEvents = %d, want 2", count)
 	}
 }
+
+func TestUpdateIssueLabelsIntegration(t *testing.T) {
+	s := testDB(t)
+	ctx := context.Background()
+	repo := "integration-test/labels"
+	number := 12345
+
+	t.Cleanup(func() {
+		_, _ = s.Pool().Exec(ctx, "DELETE FROM issues WHERE repo = $1 AND number = $2", repo, number)
+	})
+
+	embedding := make([]float32, store.EmbeddingDim)
+	embedding[0] = 0.5
+
+	if err := s.UpsertIssue(ctx, store.Issue{
+		Repo:      repo,
+		Number:    number,
+		Title:     "Test issue",
+		Summary:   "summary",
+		State:     "open",
+		Labels:    []string{"blocked", "authentication"},
+		Embedding: embedding,
+	}); err != nil {
+		t.Fatalf("seed UpsertIssue: %v", err)
+	}
+
+	if err := s.UpdateIssueLabels(ctx, repo, number, []string{"help wanted", "authentication", "ready"}); err != nil {
+		t.Fatalf("UpdateIssueLabels: %v", err)
+	}
+
+	var labels []string
+	if err := s.Pool().QueryRow(ctx, "SELECT labels FROM issues WHERE repo = $1 AND number = $2", repo, number).Scan(&labels); err != nil {
+		t.Fatalf("read back labels: %v", err)
+	}
+	want := []string{"help wanted", "authentication", "ready"}
+	if len(labels) != len(want) {
+		t.Fatalf("labels len = %d, want %d (got %v)", len(labels), len(want), labels)
+	}
+	for i, l := range want {
+		if labels[i] != l {
+			t.Errorf("labels[%d] = %q, want %q", i, labels[i], l)
+		}
+	}
+
+	// Updating a non-existent row should not error (label events can arrive before the row is embedded).
+	if err := s.UpdateIssueLabels(ctx, repo, 99999, []string{"any"}); err != nil {
+		t.Errorf("UpdateIssueLabels on non-existent row returned error: %v", err)
+	}
+}
