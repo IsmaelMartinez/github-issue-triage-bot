@@ -134,7 +134,7 @@ The `[Sim]` shadow issues during the eval are clearly marked and cross-linked to
 
 Three taxonomy and retrieval observations from the simulation that became concrete follow-ups:
 
-A `downloads` hat is worth adding. Two of the last ten issues (#2512 feature request for progress indicators, #2518 concurrent download stall) had no clean fit in the current taxonomy and defaulted to `other` or `enhancement-demand-gating`. The latter was a stretch in both cases. A `downloads` hat with keyword boost on `download`, `will-download`, `DownloadItem`, `shell.openExternal`, `setDisplayMediaRequestHandler` would route similar future cases properly. Defer until a third download-area issue accumulates.
+A `downloads` hat is worth adding. Two of the last ten issues (#2512 feature request for progress indicators, #2518 concurrent download stall) had no clean fit in the current taxonomy and defaulted to `other` or `enhancement-demand-gating`. The latter was a stretch in both cases. A `downloads` hat with keyword boost on `download`, `will-download`, `DownloadItem`, `shell.openExternal` would route similar future cases properly. Defer until a third download-area issue accumulates.
 
 A `tracking-validation` hat is worth adding. #2508 (the ozone-platform default validation tracking issue) is a cohort-roll-up shape, not a diagnostic shape. `configuration-cli` was the closest available match but its Phase 1 asks are wrong for a tracking issue. The new hat would have a `tracking-validation` posture that signals "do not run Phase 1 missing-info checks on this issue, summarise the cohort instead." Worth adding when a second tracking issue surfaces; one example is not yet enough to anchor a hat.
 
