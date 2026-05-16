@@ -12,7 +12,7 @@ The alternatives considered were: exposing data only via HTTP (simpler, but agen
 
 ## Decision
 
-Build a standalone MCP server (`cmd/mcp/main.go`) that connects to the triage bot's HTTP API as a client, not to the database directly. The MCP server uses the JSON-RPC 2.0 protocol over stdio, following the same pattern repo-butler established. Four tools wrap existing endpoints: `get_pending_triage` (wraps `/report`), `get_synthesis_briefing` and `get_report_trends` (wrap `/report/trends`), and `get_health_status` (wraps `/health-check`).
+Build a standalone MCP server (`cmd/mcp/main.go`) that connects to the triage bot's HTTP API as a client, not to the database directly. The MCP server uses the JSON-RPC 2.0 protocol over stdio, following the same pattern repo-butler established. Five tools wrap existing endpoints: `get_pending_triage` (wraps `/report`), `get_synthesis_briefing` and `get_report_trends` (wrap `/report/trends`), `get_health_status` (wraps `/health-check`), and `get_brief_preview` (wraps `/brief-preview`, added 2026-05-15 to expose hat-aware per-issue retrieval to the `teams-for-linux-issue-review` skill; see `docs/plans/2026-05-15-skill-driven-triage-design.md`).
 
 The HTTP-proxy approach was chosen over direct database access because it keeps the MCP binary stateless and decoupled from the database schema. The same binary works against the local dev server or the Cloud Run production URL, configured via a single `TRIAGE_BOT_URL` environment variable. Authentication uses the existing `INGEST_SECRET` bearer token.
 

@@ -2,6 +2,7 @@
 package tools
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,18 +23,30 @@ type Tool struct {
 
 // fetchJSON makes a GET request and returns the parsed JSON response.
 func fetchJSON(url, secret string) (any, error) {
-	return doRequest(http.MethodGet, url, secret)
+	return doRequest(http.MethodGet, url, secret, nil)
 }
 
-// postJSON makes a POST request and returns the parsed JSON response.
+// postJSON makes a POST request with no body and returns the parsed JSON response.
 func postJSON(url, secret string) (any, error) {
-	return doRequest(http.MethodPost, url, secret)
+	return doRequest(http.MethodPost, url, secret, nil)
 }
 
-func doRequest(method, url, secret string) (any, error) {
-	req, err := http.NewRequest(method, url, nil)
+// postJSONWithBody makes a POST request with a JSON body and returns the parsed JSON response.
+func postJSONWithBody(url, secret string, body []byte) (any, error) {
+	return doRequest(http.MethodPost, url, secret, body)
+}
+
+func doRequest(method, url, secret string, body []byte) (any, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	if secret != "" {
 		req.Header.Set("Authorization", "Bearer "+secret)
@@ -44,8 +57,8 @@ func doRequest(method, url, secret string) (any, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 	var result any
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
