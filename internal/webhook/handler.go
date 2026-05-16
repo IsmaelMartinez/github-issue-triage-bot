@@ -332,8 +332,24 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 		h.handleStateChange(ctx, repo, issue)
 	case "edited":
 		h.handleEdited(ctx, installationID, repo, issue, event.Changes)
+	case "labeled", "unlabeled":
+		h.handleLabelChange(ctx, repo, issue)
 	default:
 		h.logger.Info("ignoring action", "action", event.Action, "issue", issue.Number)
+	}
+}
+
+// handleLabelChange syncs the issue's labels column when GitHub emits a
+// labeled or unlabeled event. The full current label set comes through on
+// every label event, so we replace rather than diff. No re-embedding: label
+// edits do not affect the title/summary the embedding is computed from.
+func (h *Handler) handleLabelChange(ctx context.Context, repo string, issue gh.IssueDetail) {
+	labels := make([]string, len(issue.Labels))
+	for i, l := range issue.Labels {
+		labels[i] = l.Name
+	}
+	if err := h.store.UpdateIssueLabels(ctx, repo, issue.Number, labels); err != nil {
+		h.logger.Error("updating issue labels", "repo", repo, "issue", issue.Number, "error", err)
 	}
 }
 
