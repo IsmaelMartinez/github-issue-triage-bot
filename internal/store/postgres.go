@@ -223,6 +223,8 @@ func (s *Store) FindSimilarBlockedIssues(ctx context.Context, repo string, embed
 		return nil, fmt.Errorf("set ivfflat.probes: %w", err)
 	}
 
+	const blockedDistanceThreshold = 0.50
+
 	rows, err := tx.Query(ctx, `
 		SELECT id, repo, number, title, summary, state, labels, milestone,
 		       embedding, created_at, updated_at, closed_at,
@@ -231,9 +233,10 @@ func (s *Store) FindSimilarBlockedIssues(ctx context.Context, repo string, embed
 		WHERE repo = $2
 		  AND state = 'open'
 		  AND $3 = ANY(labels)
+		  AND embedding <=> $1 < $5
 		ORDER BY embedding <=> $1
 		LIMIT $4
-	`, pgvector.NewVector(embedding), repo, "blocked", limit)
+	`, pgvector.NewVector(embedding), repo, "blocked", limit, blockedDistanceThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("find similar blocked issues: %w", err)
 	}
