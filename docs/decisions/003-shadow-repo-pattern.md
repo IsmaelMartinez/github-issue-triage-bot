@@ -1,6 +1,8 @@
 # ADR-003: Shadow repo pattern for staging bot output
 
-**Status:** Accepted
+Superseded by [ADR 014](../adr/014-retire-shadow-repos.md) (2026-05-26): shadow posting removed, replaced by silent RAG mode.
+
+**Status:** Superseded by ADR 014
 **Date:** 2026-03-05
 
 ## Context

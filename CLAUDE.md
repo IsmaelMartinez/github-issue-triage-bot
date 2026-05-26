@@ -69,15 +69,15 @@ The service receives GitHub webhook events (issue opened/closed/reopened, issue 
 
 Phase 1 (pure parsing, no LLM): detects missing information in bug reports by checking form sections against known templates. Phase 2 (pgvector + LLM): embeds the issue, searches all document types (troubleshooting, configuration, ADR, roadmap, research) for similar entries with per-category relevance thresholds (troubleshooting 70%, ADR/roadmap/research 55%, configuration 50%), sends top-5 to Gemini to generate suggestions. Phase 4a (pgvector + LLM): searches roadmap/ADR/research documents for related context. All phases run for every issue regardless of labels; a single embedding is computed once and shared across Phase 2 and Phase 4a. Phase identifiers stored in the database use friendly names (`missing_info`, `doc_search`, `enhancement_context`, `synthesis`) — see `internal/store/migrations/013_rename_phases.sql`; the Go source files still use the historic `phase1.go` / `phase2.go` / `phase4a.go` naming.
 
-A synthesis step (`internal/phases/synthesis.go`) takes all phase outputs and produces one coherent response via an LLM call, weaving doc matches with missing-info requests (e.g., "this looks like [doc X], debug logs would help confirm"). The `ShouldSynthesize` guard skips the LLM call for trivially simple cases (single missing item, no doc matches). On synthesis failure, the comment builder (`internal/comment/builder.go`) produces a fallback concatenated response. Debug log instructions and the feedback footer are appended deterministically after synthesis. When a shadow repo is configured, the triage comment is posted there for maintainer review; on `lgtm`, a curated summary is promoted to the original public issue. The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends, stuck sessions, and orphaned triage, creating GitHub alert issues when thresholds are violated.
+A synthesis step (`internal/phases/synthesis.go`) takes all phase outputs and produces one coherent response via an LLM call, weaving doc matches with missing-info requests (e.g., "this looks like [doc X], debug logs would help confirm"). The `ShouldSynthesize` guard skips the LLM call for trivially simple cases (single missing item, no doc matches). On synthesis failure, the comment builder (`internal/comment/builder.go`) produces a fallback concatenated response. Debug log instructions and the feedback footer are appended deterministically after synthesis. Bug triage comments are posted directly on public issues; enhancement context is embedded silently for on-demand retrieval via `/brief-preview` (silent RAG mode, see ADR 014). The bot also tracks feedback signals: when users edit their issue to fill in Phase 1 flagged sections (via `issues.edited` webhook), and when users @mention the bot. A `/health-check` endpoint monitors confidence score trends and orphaned triage, creating GitHub alert issues when thresholds are violated.
 
 The vector store includes upstream dependency docs (Electron release notes, changelogs) in addition to project-specific docs, so Phase 2 can surface relevant upstream changes when triaging bug reports.
 
 The event journal (`repo_events` table) records all webhook events (issues, comments, pushes) and daily-scraped events (merged PRs, releases) for temporal analysis. On push to the default branch, auto-ingest detects changed documentation files matching the per-repo `butler.json` config's `doc_paths` patterns, fetches their content via the GitHub Contents API, embeds them, and upserts into the vector store. A cross-reference index (`doc_references` table) tracks `#NNN` issue and `ADR-NNN` document references extracted from content via regex.
 
-The synthesis engine (`internal/synthesis/`) runs three analysers weekly: cluster detection (groups recent issues by embedding cosine similarity via union-find), decision drift detection (flags ADRs contradicted by merged PRs and stale roadmap items), and upstream impact analysis (cross-references new upstream releases against existing ADRs/roadmap). Findings are combined into a `[Briefing]` shadow issue posted to the shadow repo. The `/synthesize` POST endpoint triggers synthesis on demand; a Monday cron workflow triggers it weekly.
+The synthesis engine (`internal/synthesis/`) runs three analysers weekly: cluster detection (groups recent issues by embedding cosine similarity via union-find), decision drift detection (flags ADRs contradicted by merged PRs and stale roadmap items), and upstream impact analysis (cross-references new upstream releases against existing ADRs/roadmap). Findings are stored in the database and exposed via `/report/trends`; they are no longer posted to shadow repos (retired per ADR 014). The `/synthesize` POST endpoint triggers synthesis on demand; a Monday cron workflow triggers it weekly.
 
-For enhancement issues with a configured shadow repo, the bot also starts an agent session. The agent creates a mirror issue and posts a context brief with relevant ADRs, roadmap items, and similar past issues from vector search, plus a short LLM-generated summary. The maintainer can reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge and close the session, or `reject` to discard. All agent outputs pass through two safety layers: a structural validator (length, URL hosts, mentions, control characters) and an LLM reviewer (relevance, tone, prompt injection detection). The agent escalates to a human after 4 round-trips without reaching review.
+For enhancement issues, the webhook embeds the issue and stores context silently. Maintainers retrieve context on demand via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill, which performs RAG over the vector store. Shadow repo posting and agent sessions were retired in ADR 014.
 
 ## Project Structure
 
@@ -95,9 +95,9 @@ internal/comment/builder.go   # Consolidates phase results into markdown (fallba
 internal/comment/sanitize.go  # LLM output and URL sanitization
 internal/llm/client.go        # Gemini API client (generation + embeddings)
 internal/github/client.go     # GitHub App client (comments, issues, branches, PRs)
-internal/mirror/              # Shadow repo mirroring (push events)
+internal/mirror/              # Shadow repo mirroring (historical, retired by ADR 014)
 internal/store/postgres.go    # PostgreSQL + pgvector queries
-internal/store/agent.go       # Agent session, audit log, and approval gate queries
+internal/store/agent.go       # Agent session, audit log, and approval gate queries (historical, retired by ADR 014)
 internal/store/report.go      # Dashboard stats queries
 internal/store/health.go      # Health monitor queries and threshold evaluation
 internal/store/feedback.go    # Feedback signal storage and stats
@@ -105,11 +105,11 @@ internal/store/models.go      # Shared data types (includes agent stage/gate con
 internal/store/events.go      # Event journal (repo_events) queries
 internal/store/references.go  # Cross-reference index (doc_references) queries
 internal/codenav/             # Code navigation: fetches relevant source files to augment Phase 2 prompts (opt-in via butler.json code_navigation capability)
-internal/agent/handler.go     # Agent handler: context brief (default) and research flows
-internal/agent/orchestrator.go # Approval signal parsing (lgtm, revise, reject, publish)
-internal/agent/research.go    # Enhancement analysis and research synthesis prompts
+internal/agent/handler.go     # Agent handler (historical, retired by ADR 014)
+internal/agent/orchestrator.go # Approval signal parsing (historical, retired by ADR 014)
+internal/agent/research.go    # Enhancement analysis and research synthesis prompts (historical, retired by ADR 014)
 internal/synthesis/types.go   # Synthesizer interface and Finding type
-internal/synthesis/runner.go  # Orchestrates synthesizers, posts briefing to shadow repo
+internal/synthesis/runner.go  # Orchestrates synthesizers, stores findings for /report/trends
 internal/synthesis/clusters.go # Issue cluster detection (cosine similarity, union-find)
 internal/synthesis/drift.go   # Decision drift and roadmap staleness detection
 internal/synthesis/upstream.go # Upstream impact analysis (release-vs-ADR cross-reference)
@@ -171,7 +171,7 @@ Phase 1 is pure string parsing (no network calls) and has the most comprehensive
 
 The comment builder produces concise output: a single-sentence preamble, no greeting line, a compact footer with a feedback hint. Keep builder output minimal. All LLM prompts and bot output (debug command, doc links, project name) are parameterized via `config.ProjectMeta` in the per-repo butler.json `project` field. Defaults match the teams-for-linux deployment.
 
-Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), SHADOW_REPOS (optional, comma-separated "owner/repo:owner/shadow" mappings for agent sessions), INGEST_SECRET (optional, authenticates /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause; empty disables auth), MAX_DAILY_LLM_CALLS (optional integer, overrides the default Gemini call budget), MIRROR_CACHE_DIR (optional, directory for the shadow-repo mirror service; defaults to os.TempDir()), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
+Environment variables: DATABASE_URL (required), GEMINI_API_KEY (optional, warns if missing), GITHUB_APP_ID (required, numeric App ID), GITHUB_PRIVATE_KEY (required, base64-encoded or raw PEM), WEBHOOK_SECRET (required), SOURCE_REPO (optional, overrides repo for vector searches), INGEST_SECRET (optional, authenticates /cleanup, /health-check, /ingest, /synthesize, /pause, /unpause; empty disables auth), MAX_DAILY_LLM_CALLS (optional integer, overrides the default Gemini call budget), PORT (optional, defaults to 8080). The cmd/sync-reactions tool uses REPO (optional, defaults to IsmaelMartinez/teams-for-linux) to select which repository's comments to sync.
 
 ## Issue Template Headers
 

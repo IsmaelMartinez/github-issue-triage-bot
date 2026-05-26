@@ -18,7 +18,7 @@ export GEMINI_API_KEY="..."
 export GITHUB_APP_ID="..."
 export GITHUB_PRIVATE_KEY="..."   # base64-encoded PEM
 export WEBHOOK_SECRET="..."
-export SHADOW_REPOS="owner/repo:owner/shadow"  # optional, comma-separated mappings; without it nothing is posted publicly
+# SHADOW_REPOS is no longer used (retired by ADR 014 — silent RAG mode)
 ```
 
 Build and run:
@@ -56,7 +56,7 @@ The triage pipeline runs in phases when a new GitHub issue is opened:
 - Phase 2 (vector search + LLM): Finds similar troubleshooting docs, upstream release notes, and past issues, then generates solution suggestions.
 - Phase 4a (vector search + LLM): For enhancements, finds related roadmap/ADR/research context.
 
-For enhancement issues with a configured shadow repo, the bot also starts an agent session. The agent creates a mirror issue in a private shadow repository and posts a context brief with relevant ADRs, roadmap items, and similar past issues. The maintainer can reply `research` to trigger full Gemini research synthesis, `use as context` to acknowledge, or `reject` to discard. All agent outputs pass through two safety layers — a structural validator and an LLM reviewer — and the agent escalates to a human after 4 round-trips without reaching review. See `internal/agent/` for the implementation and `docs/decisions/` for the relevant ADRs.
+For enhancement issues, the webhook embeds the issue and stores context silently (silent RAG mode, per ADR 014). Maintainers retrieve context on demand via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill. Shadow repo posting and agent sessions were retired — see `docs/adr/014-retire-shadow-repos.md`.
 
 All phase results are consolidated into a single comment by `internal/comment/builder.go`.
 
@@ -76,7 +76,7 @@ Each monitored repository can optionally include a `.github/butler.json` file to
 
 The top-level `enabled` field is a boolean kill switch. Omitting it (or setting it to `null`) is treated as `true`; setting it to `false` disables all bot activity on the repository immediately. The `capabilities` object selects individual features: `triage` and `research` are on by default, while `synthesis`, `auto_ingest`, and `code_navigation` are off. The `doc_paths` array contains glob patterns (e.g. `"docs/**"`, `"*.md"`) that tell the auto-ingest pipeline which files to embed when a push lands on the default branch. The `upstream` array lists external dependencies to track, each with a `repo` (owner/repo format), `doc_type` (e.g. `"upstream_release"`), and `track` value (e.g. a major version like `"39"`).
 
-The `synthesis` object controls weekly or monthly briefing generation with a `frequency` (`"weekly"` or `"monthly"`) and a `day` (any lowercase day of the week). The `shadow_repo` string (owner/repo format) designates where triage shadow issues, agent sessions, and synthesis briefings are posted. The `thresholds` map lets you override per-document-type relevance thresholds (float values between 0.0 and 1.0) used during vector search. Finally, `max_daily_llm_calls` caps the number of Gemini API calls per day (default 50).
+The `synthesis` object controls weekly or monthly briefing generation with a `frequency` (`"weekly"` or `"monthly"`) and a `day` (any lowercase day of the week). The `shadow_repo` string (owner/repo format) is no longer used for posting — shadow repo delivery was retired by ADR 014. The field is retained for backward compatibility but ignored at runtime. The `thresholds` map lets you override per-document-type relevance thresholds (float values between 0.0 and 1.0) used during vector search. Finally, `max_daily_llm_calls` caps the number of Gemini API calls per day (default 50).
 
 A minimal example enabling triage and synthesis on a repository:
 
@@ -84,7 +84,6 @@ A minimal example enabling triage and synthesis on a repository:
 {
   "enabled": true,
   "capabilities": { "triage": true, "synthesis": true },
-  "shadow_repo": "myorg/myrepo-shadow",
   "doc_paths": ["docs/**", "*.md"],
   "synthesis": { "frequency": "weekly", "day": "monday" },
   "upstream": [
@@ -95,7 +94,7 @@ A minimal example enabling triage and synthesis on a repository:
 }
 ```
 
-The bot validates the config on load and emits warnings for common mistakes: enabling synthesis without a `shadow_repo`, using an unrecognised frequency or day value, threshold values outside the 0.0-1.0 range, malformed glob patterns in `doc_paths`, and `max_daily_llm_calls` exceeding the Gemini free-tier limit of 250. Validation issues are logged as warnings rather than hard errors, so the bot will still start with the defaults for any misconfigured fields.
+The bot validates the config on load and emits warnings for common mistakes: using an unrecognised frequency or day value, threshold values outside the 0.0-1.0 range, malformed glob patterns in `doc_paths`, and `max_daily_llm_calls` exceeding the Gemini free-tier limit of 250. Validation issues are logged as warnings rather than hard errors, so the bot will still start with the defaults for any misconfigured fields.
 
 ## Submitting Changes
 

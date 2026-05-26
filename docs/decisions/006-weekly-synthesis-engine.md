@@ -13,7 +13,7 @@ Build a synthesis engine with three weekly analysers: issue cluster detection (g
 
 ## Consequences
 
-This added the `internal/synthesis/` package with cluster, drift, and upstream analysers, triggered weekly via a `/synthesize` endpoint called by a cron workflow. All findings go through the shadow repo pattern (ADR 003) before reaching maintainers. The engine depends on the event journal (`repo_events` table) for temporal analysis of repository activity, which was introduced as migration 011. This is the first proactive capability in the bot, shifting it from a reactive triage tool toward the repository strategist vision.
+This added the `internal/synthesis/` package with cluster, drift, and upstream analysers, triggered weekly via a `/synthesize` endpoint called by a cron workflow. Findings originally went through the shadow repo pattern (ADR 003) before reaching maintainers; as of ADR 014 (2026-05-26), shadow posting was retired and findings are now stored in the database and exposed via `/report/trends` for on-demand retrieval. The engine depends on the event journal (`repo_events` table) for temporal analysis of repository activity, which was introduced as migration 011. This is the first proactive capability in the bot, shifting it from a reactive triage tool toward the repository strategist vision.
 
 ## References
 
