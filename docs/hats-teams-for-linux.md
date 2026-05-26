@@ -100,6 +100,30 @@ Phase 1 asks. SSO stack (SAML / OIDC / FIDO2 / hardware token); proxy configurat
 
 Anchors. #2326 (Symantec + contextIsolation login); #2364 (login info does not persist).
 
+## downloads
+
+When to pick. Issues about downloading files, saving attachments, or exporting media from Teams. Symptoms include download buttons doing nothing, files saving as zero-byte, blob URLs failing to resolve, SharePoint-hosted attachments timing out, and inline images or media not saving to disk.
+
+Retrieval filter (soft rerank boost). Past issues mentioning file downloads, attachment handling, or media export; PRs touching download handlers, blob resolution, or SharePoint file paths; Electron `will-download` and `DownloadItem` API surface. Labels: download, attachments, files. Keywords: download, attachment, file, save, export, media, blob, sharepoint.
+
+Reasoning posture. `config-dependent` as first move — verify whether the download path is writable and whether a content-security or proxy policy is intercepting the request. Escalate to `upstream-likely` if the download failure traces to a Microsoft Teams web-app behaviour or a Chromium blob-URL regression.
+
+Phase 1 asks. File type and size; whether the download prompt appears at all; configured download path; proxy or content-filtering software in use; whether the same file downloads successfully via the PWA at `teams.microsoft.com`.
+
+Anchors. None yet — this is a new hat awaiting its first anchor issue.
+
+## tracking-validation
+
+When to pick. Issues where tracking protection, content blockers, or cookie/privacy settings interfere with Teams functionality. Symptoms include blank screens after login, embedded content failing to load, CSP or CORS errors in the console, and features breaking when strict privacy settings or browser-style tracking protection are enabled.
+
+Retrieval filter (soft rerank boost). Past issues mentioning tracking protection, content-security-policy violations, or CORS failures; PRs touching CSP headers, cookie policy, or partition configuration; Electron session and cookie API surface. Labels: privacy, security, content-policy. Keywords: tracking, protection, cookie, privacy, blocker, content-security, csp, cors.
+
+Reasoning posture. `config-dependent` — check whether the user has enabled strict tracking protection or a third-party content blocker, and whether disabling it resolves the issue. Escalate to `blocked-on-upstream` if the failure is caused by Chromium partition changes or Microsoft-side CSP headers that the app cannot override.
+
+Phase 1 asks. Whether any tracking-protection or content-blocker extension/setting is active; exact error from DevTools console (CSP or CORS violations); whether disabling tracking protection resolves the issue; Electron and app version.
+
+Anchors. None yet — this is a new hat awaiting its first anchor issue.
+
 ## other
 
 Fallback when no hat fits. Indicates the taxonomy may be missing an entry; the bot emits a generic brief without hat-specific posture and flags the gap for the maintainer to consider adding a new hat. Retrieval falls back to broad vector search with no boosts.
