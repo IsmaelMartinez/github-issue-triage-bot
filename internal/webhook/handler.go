@@ -326,28 +326,7 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Check if already processed (bot comment or shadow triage session)
-	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
-	if err != nil {
-		issueLog.Error("checking bot comment", "error", err)
-		return
-	}
-	if commented {
-		issueLog.Info("bot already commented")
-		return
-	}
-	triaged, err := h.store.HasTriageSession(ctx, repo, issue.Number)
-	if err != nil {
-		issueLog.Error("checking triage session", "error", err)
-		return
-	}
-	if triaged {
-		issueLog.Info("already triaged via shadow repo")
-		return
-	}
-
-	// Update issue in database under the webhook repo (after bot/duplicate checks to avoid wasting an embedding call).
-	// Silent RAG mode: embed the issue for retrieval via /brief-preview, but do not run triage or post comments.
+	// Silent RAG mode: embed the issue for retrieval via /brief-preview.
 	h.upsertIssue(ctx, repo, issue)
 	issueLog.Info("issue embedded for RAG retrieval")
 }
@@ -435,18 +414,6 @@ func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Only track edits on issues where the bot has posted a public comment.
-	// Shadow-only triage sessions don't count — users haven't seen the bot's feedback yet.
-	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
-	if err != nil {
-		log.Error("checking bot comment for edit feedback", "error", err)
-		return
-	}
-	if !commented {
-		log.Debug("edited issue has no public bot comment, skipping feedback check")
-		return
-	}
-
 	filled := computeFilledSections(changes.Body.From, issue.Body)
 	if len(filled) == 0 {
 		log.Debug("edit did not fill any missing sections")
@@ -477,16 +444,6 @@ func (h *Handler) checkMentionFeedback(ctx context.Context, repo string, issueNu
 	}
 
 	log := h.logger.With("repo", repo, "issue", issueNumber)
-
-	// Only record if the bot has posted a public comment on this issue
-	commented, err := h.store.HasBotCommented(ctx, repo, issueNumber)
-	if err != nil {
-		log.Error("checking bot comment for mention feedback", "error", err)
-		return
-	}
-	if !commented {
-		return
-	}
 
 	body := comment.Body
 	if len(body) > 500 {

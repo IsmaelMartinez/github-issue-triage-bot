@@ -75,10 +75,10 @@ func ApplyVersionBoost(docs []SimilarDocument, targetVersion string, exactBoost,
 		adj := d.Distance
 		if v, ok := d.Metadata["electron_version"].(string); ok {
 			if n, err := strconv.Atoi(v); err == nil {
-				switch {
-				case n == target:
+				switch n {
+				case target:
 					adj -= exactBoost
-				case n == target-1 || n == target+1:
+				case target - 1, target + 1:
 					adj -= adjacentBoost
 				}
 			}

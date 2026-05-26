@@ -193,9 +193,10 @@ func main() {
 
 		closed := 0
 		for _, ss := range stale {
-			if ss.SessionType == "agent" {
+			switch ss.SessionType {
+			case "agent":
 				_ = s.MarkSessionComplete(r.Context(), ss.ID)
-			} else if ss.SessionType == "triage" {
+			case "triage":
 				_ = s.MarkTriageSessionClosed(r.Context(), ss.ID)
 			}
 			closed++
