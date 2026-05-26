@@ -52,6 +52,14 @@ func main() {
 		}
 	}
 
+	mode := os.Getenv("BACKFILL_MODE")
+	// Also accept --mode=catchup from command line
+	for _, arg := range os.Args[1:] {
+		if len(arg) > 7 && arg[:7] == "--mode=" {
+			mode = arg[7:]
+		}
+	}
+
 	ctx := context.Background()
 
 	pool, err := store.ConnectPool(ctx, databaseURL)
@@ -65,8 +73,13 @@ func main() {
 	llmClient := llm.New(geminiAPIKey, logger)
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
+	if mode == "catchup" {
+		runCatchup(ctx, logger, httpClient, githubToken, repo, s, llmClient, limit)
+		return
+	}
+
 	logger.Info("fetching closed issues", "repo", repo, "limit", limit)
-	issues, err := fetchClosedIssues(ctx, httpClient, githubToken, repo, limit)
+	issues, err := fetchIssues(ctx, httpClient, githubToken, repo, "closed", limit)
 	if err != nil {
 		logger.Error("failed to fetch issues", "error", err)
 		os.Exit(1)
@@ -130,10 +143,84 @@ func main() {
 	logger.Info("backfill finished", "processed", len(issues))
 }
 
+func runCatchup(ctx context.Context, logger *slog.Logger, httpClient *http.Client, githubToken, repo string, s *store.Store, llmClient *llm.Client, limit int) {
+	logger.Info("catchup mode: fetching all issues", "repo", repo, "limit", limit)
+	issues, err := fetchIssues(ctx, httpClient, githubToken, repo, "all", limit)
+	if err != nil {
+		logger.Error("failed to fetch issues", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("fetched issues from GitHub", "count", len(issues))
+
+	existing, err := s.ExistingIssueNumbers(ctx, repo)
+	if err != nil {
+		logger.Error("failed to query existing issues", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("existing issues in store", "count", len(existing))
+
+	var embedded int
+	for _, iss := range issues {
+		if existing[iss.Number] {
+			continue
+		}
+		issLog := logger.With("issue", iss.Number)
+
+		summary := truncate(iss.Body, 200)
+		text := fmt.Sprintf("%s\n%s", iss.Title, summary)
+
+		embedding, err := llmClient.Embed(ctx, text)
+		if err != nil {
+			issLog.Error("embedding failed", "error", err)
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		labels := make([]string, len(iss.Labels))
+		for i, l := range iss.Labels {
+			labels[i] = l.Name
+		}
+
+		if err := s.UpsertIssue(ctx, store.Issue{
+			Repo:      repo,
+			Number:    iss.Number,
+			Title:     iss.Title,
+			Summary:   summary,
+			State:     iss.State,
+			Labels:    labels,
+			Embedding: embedding,
+		}); err != nil {
+			issLog.Error("upsert failed", "error", err)
+		} else {
+			issLog.Info("embedded missing issue")
+			embedded++
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
+	logger.Info("catchup finished", "checked", len(issues), "embedded", embedded)
+}
+
+// truncate returns the first n bytes of s, breaking at the last space before the limit.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	// Find last space before n
+	for i := n; i > 0; i-- {
+		if s[i] == ' ' {
+			return s[:i]
+		}
+	}
+	return s[:n]
+}
+
 type ghIssue struct {
 	Number int       `json:"number"`
 	Title  string    `json:"title"`
 	Body   string    `json:"body"`
+	State  string    `json:"state"`
 	Labels []ghLabel `json:"labels"`
 }
 
@@ -141,7 +228,7 @@ type ghLabel struct {
 	Name string `json:"name"`
 }
 
-func fetchClosedIssues(ctx context.Context, client *http.Client, token, repo string, limit int) ([]ghIssue, error) {
+func fetchIssues(ctx context.Context, client *http.Client, token, repo, state string, limit int) ([]ghIssue, error) {
 	var all []ghIssue
 	page := 1
 	perPage := 100
@@ -150,7 +237,7 @@ func fetchClosedIssues(ctx context.Context, client *http.Client, token, repo str
 	}
 
 	for len(all) < limit {
-		url := fmt.Sprintf("https://api.github.com/repos/%s/issues?state=closed&sort=updated&direction=desc&per_page=%d&page=%d", repo, perPage, page)
+		url := fmt.Sprintf("https://api.github.com/repos/%s/issues?state=%s&sort=updated&direction=desc&per_page=%d&page=%d", repo, state, perPage, page)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err

@@ -276,6 +276,10 @@ func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
 // labeled or unlabeled event. The full current label set comes through on
 // every label event, so we replace rather than diff. No re-embedding: label
 // edits do not affect the title/summary the embedding is computed from.
+//
+// When the bot has previously triaged the issue, the handler also checks for
+// meaningful label corrections (e.g. bug removed, enhancement toggled) and
+// captures them as triage_learning documents for RAG enrichment.
 func (h *Handler) handleLabelChange(ctx context.Context, repo string, issue gh.IssueDetail) {
 	labels := make([]string, len(issue.Labels))
 	for i, l := range issue.Labels {
@@ -284,6 +288,87 @@ func (h *Handler) handleLabelChange(ctx context.Context, repo string, issue gh.I
 	if err := h.store.UpdateIssueLabels(ctx, repo, issue.Number, labels); err != nil {
 		h.logger.Error("updating issue labels", "repo", repo, "issue", issue.Number, "error", err)
 	}
+
+	// Capture label corrections as learnings for issues the bot triaged.
+	h.captureLabelLearning(ctx, repo, issue, labels)
+}
+
+// classificationLabels are the labels whose addition or removal signals a
+// meaningful classification change worth capturing as a triage learning.
+var classificationLabels = map[string]bool{
+	"bug":         true,
+	"enhancement": true,
+	"question":    true,
+	"blocked":     true,
+	"wontfix":     true,
+	"invalid":     true,
+	"duplicate":   true,
+}
+
+// captureLabelLearning checks whether a label change on a bot-triaged issue
+// represents a correction, and if so upserts a triage_learning document.
+func (h *Handler) captureLabelLearning(ctx context.Context, repo string, issue gh.IssueDetail, currentLabels []string) {
+	log := h.logger.With("repo", repo, "issue", issue.Number)
+
+	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
+	if err != nil {
+		log.Error("checking bot comment for learning", "error", err)
+		return
+	}
+	if !commented {
+		return
+	}
+
+	// Build current classification label set.
+	var classLabels []string
+	for _, l := range currentLabels {
+		if classificationLabels[l] {
+			classLabels = append(classLabels, l)
+		}
+	}
+
+	// A correction worth capturing: the issue has classification labels that
+	// differ from what would be expected. Since we don't store the original
+	// bot classification, any non-trivial classification label set on a
+	// bot-triaged issue is worth recording — the maintainer's chosen labels
+	// become ground truth for future retrieval.
+	if len(classLabels) == 0 {
+		return
+	}
+
+	diffSummary := fmt.Sprintf(
+		"Issue #%d (%s) — maintainer set classification labels: [%s]. Title: %s",
+		issue.Number,
+		repo,
+		strings.Join(classLabels, ", "),
+		issue.Title,
+	)
+
+	embedding, err := h.llm.Embed(ctx, diffSummary)
+	if err != nil {
+		log.Error("embedding label learning", "error", err)
+		return
+	}
+
+	title := fmt.Sprintf("learning/%d/label_correction", issue.Number)
+	doc := store.Document{
+		Repo:    repo,
+		DocType: store.DocTypeLearning,
+		Title:   title,
+		Content: diffSummary,
+		Metadata: map[string]any{
+			"issue_number": issue.Number,
+			"kind":         "label_correction",
+			"labels":       classLabels,
+			"captured_at":  time.Now().UTC().Format(time.RFC3339),
+		},
+		Embedding: embedding,
+	}
+	if err := h.store.UpsertDocument(ctx, doc); err != nil {
+		log.Error("upserting label learning", "error", err)
+		return
+	}
+	log.Info("captured label correction learning", "labels", classLabels)
 }
 
 func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {

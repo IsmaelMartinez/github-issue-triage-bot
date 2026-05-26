@@ -413,6 +413,24 @@ func (s *Store) DeleteDocumentsByVersion(ctx context.Context, repo string, docTy
 	return tag.RowsAffected(), nil
 }
 
+// ExistingIssueNumbers returns the set of issue numbers already stored for a repo.
+func (s *Store) ExistingIssueNumbers(ctx context.Context, repo string) (map[int]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT number FROM issues WHERE repo = $1`, repo)
+	if err != nil {
+		return nil, fmt.Errorf("list existing issues: %w", err)
+	}
+	defer rows.Close()
+	result := make(map[int]bool)
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		result[n] = true
+	}
+	return result, rows.Err()
+}
+
 // ConnectPool creates a new pgxpool connection pool from a database URL.
 func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)

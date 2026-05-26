@@ -58,6 +58,7 @@ type SimilarIssue struct {
 // Document type constants.
 const (
 	DocTypeUpstreamRelease = "upstream_release"
+	DocTypeLearning        = "triage_learning"
 )
 
 // EnhancementDocTypes lists the document types that Phase 4a searches for
@@ -70,8 +71,9 @@ var UpstreamDocTypes = []string{DocTypeUpstreamRelease, "upstream_issue"}
 
 // AllSeedableDocTypes is the union of all valid doc_type values for the seed command.
 var AllSeedableDocTypes = append(
-	append([]string{"troubleshooting", "configuration"}, EnhancementDocTypes...),
-	UpstreamDocTypes...,
+	append(append([]string{"troubleshooting", "configuration"}, EnhancementDocTypes...),
+		UpstreamDocTypes...),
+	DocTypeLearning,
 )
 
 // Agent session stage constants.
