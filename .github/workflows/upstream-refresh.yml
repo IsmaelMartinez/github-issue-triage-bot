@@ -66,3 +66,10 @@ jobs:
             ./seed features "/tmp/electron-v${major}-issues.json"
             echo "::endgroup::"
           done
+
+      - name: Cleanup old Electron versions
+        env:
+          DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
+          ACTIVE_VERSIONS: ${{ inputs.versions || '40,41,42' }}
+        run: ./seed cleanup

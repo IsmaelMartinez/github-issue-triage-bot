@@ -15,23 +15,29 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	if len(os.Args) < 3 {
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage: seed <type> [<file>]\n")
+		fmt.Fprintf(os.Stderr, "  type: troubleshooting | issues | features | cleanup\n")
+		os.Exit(1)
+	}
+
+	seedType := os.Args[1]
+
+	// cleanup doesn't require a file argument
+	if seedType != "cleanup" && len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: seed <type> <file>\n")
 		fmt.Fprintf(os.Stderr, "  type: troubleshooting | issues | features\n")
 		os.Exit(1)
 	}
 
-	seedType := os.Args[1]
-	filePath := os.Args[2]
+	var filePath string
+	if len(os.Args) >= 3 {
+		filePath = os.Args[2]
+	}
 
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		fmt.Fprintf(os.Stderr, "DATABASE_URL environment variable is required\n")
-		os.Exit(1)
-	}
-	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	if geminiAPIKey == "" {
-		fmt.Fprintf(os.Stderr, "GEMINI_API_KEY environment variable is required\n")
 		os.Exit(1)
 	}
 
@@ -45,13 +51,6 @@ func main() {
 	defer pool.Close()
 
 	s := store.New(pool)
-	l := llm.New(geminiAPIKey, logger)
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		logger.Error("failed to read file", "error", err)
-		os.Exit(1)
-	}
 
 	repo := os.Getenv("REPO")
 	if repo == "" {
@@ -59,12 +58,31 @@ func main() {
 	}
 
 	switch seedType {
-	case "troubleshooting":
-		err = seedTroubleshooting(ctx, s, l, repo, data, logger)
-	case "issues":
-		err = seedIssues(ctx, s, l, repo, data, logger)
-	case "features":
-		err = seedFeatures(ctx, s, l, repo, data, logger)
+	case "cleanup":
+		err = cleanupOldVersions(ctx, s, repo, logger)
+	case "troubleshooting", "issues", "features":
+		geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+		if geminiAPIKey == "" {
+			fmt.Fprintf(os.Stderr, "GEMINI_API_KEY environment variable is required\n")
+			os.Exit(1)
+		}
+		l := llm.New(geminiAPIKey, logger)
+
+		var data []byte
+		data, err = os.ReadFile(filePath)
+		if err != nil {
+			logger.Error("failed to read file", "error", err)
+			os.Exit(1)
+		}
+
+		switch seedType {
+		case "troubleshooting":
+			err = seedTroubleshooting(ctx, s, l, repo, data, logger)
+		case "issues":
+			err = seedIssues(ctx, s, l, repo, data, logger)
+		case "features":
+			err = seedFeatures(ctx, s, l, repo, data, logger)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unknown seed type: %s\n", seedType)
 		os.Exit(1)
