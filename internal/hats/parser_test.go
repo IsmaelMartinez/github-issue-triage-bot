@@ -59,7 +59,8 @@ func TestParseSeedFile(t *testing.T) {
 		"display-session-media", "internal-regression-network",
 		"tray-notifications", "upstream-blocked", "packaging",
 		"configuration-cli", "enhancement-demand-gating",
-		"auth-network-edge", "other",
+		"auth-network-edge", "downloads", "tracking-validation",
+		"other",
 	}
 	if len(got.Hats) != len(wantNames) {
 		t.Fatalf("got %d hats, want %d", len(got.Hats), len(wantNames))
