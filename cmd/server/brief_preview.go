@@ -33,6 +33,7 @@ type briefPreviewResponse struct {
 	Class              string                  `json:"class"`
 	SimilarIssues      []store.SimilarIssue    `json:"similar_past_issues"`
 	Docs               []store.SimilarDocument `json:"docs"`
+	Learnings          []store.SimilarDocument `json:"learnings"`
 	RegressionPRs      []regression.PRSummary  `json:"regression_prs"`
 	UpstreamCandidates []int                   `json:"upstream_candidates"`
 }
@@ -114,6 +115,15 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		docs = store.ApplyVersionBoost(docs, m[1], 0.05, 0.02)
 	}
 
+	learnings, learnErr := srv.store.FindSimilarDocuments(ctx, req.Repo, []string{store.DocTypeLearning}, vec, 3)
+	if learnErr != nil {
+		srv.logger.Warn("brief-preview: learnings", "error", learnErr, "repo", req.Repo)
+		learnings = nil
+	}
+	if hat != nil {
+		learnings = store.ApplyHatBoost(learnings, hat.RetrievalBoostKeywords, 0.05)
+	}
+
 	similar, simErr := srv.store.FindSimilarIssues(ctx, req.Repo, vec, req.IssueNumber, 5)
 	if simErr != nil {
 		srv.logger.Warn("brief-preview: similar issues", "error", simErr, "repo", req.Repo)
@@ -162,6 +172,7 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		Class:              className(hat, req.HatName),
 		SimilarIssues:      similar,
 		Docs:               docs,
+		Learnings:          learnings,
 		RegressionPRs:      prs,
 		UpstreamCandidates: upstreamNums,
 	}

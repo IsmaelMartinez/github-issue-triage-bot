@@ -391,6 +391,14 @@ func main() {
 		srv.briefPreviewHandler(w, r)
 	})
 
+	mux.HandleFunc("/learning", func(w http.ResponseWriter, r *http.Request) {
+		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		srv.learningHandler(w, r)
+	})
+
 	// Live dashboard
 	sortedRepos := make([]string, 0, len(allowedRepos))
 	for r := range allowedRepos {
