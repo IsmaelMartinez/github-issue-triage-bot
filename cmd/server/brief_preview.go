@@ -119,6 +119,9 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		srv.logger.Warn("brief-preview: similar issues", "error", simErr, "repo", req.Repo)
 		similar = nil
 	}
+	if similar != nil {
+		similar = store.ApplyRecencyBoost(similar, 0.05, 0.02)
+	}
 
 	// Regression-window PR diff only runs when the issue body names a
 	// prior working version. Resolve current from the latest release tag.

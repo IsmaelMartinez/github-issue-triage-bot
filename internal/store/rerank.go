@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ApplyHatBoost rescales distances downward (closer) for documents whose
@@ -91,6 +92,50 @@ func ApplyVersionBoost(docs []SimilarDocument, targetVersion string, exactBoost,
 	result := make([]SimilarDocument, len(out))
 	for i, s := range out {
 		result[i] = s.doc
+		result[i].Distance = s.adjusted
+	}
+	return result
+}
+
+const (
+	RecencyRecentMonths = 6
+	RecencyMidMonths    = 12
+)
+
+// ApplyRecencyBoost rescales distances downward (closer) for recent issues.
+// Issues created within RecencyRecentMonths get recentBoost subtracted;
+// issues within RecencyMidMonths get midBoost subtracted. Returns a new
+// slice ordered ascending by the adjusted distance.
+func ApplyRecencyBoost(issues []SimilarIssue, recentBoost, midBoost float64) []SimilarIssue {
+	if recentBoost <= 0 && midBoost <= 0 {
+		return issues
+	}
+	now := time.Now()
+	recentCutoff := now.AddDate(0, -RecencyRecentMonths, 0)
+	midCutoff := now.AddDate(0, -RecencyMidMonths, 0)
+
+	type scored struct {
+		issue    SimilarIssue
+		adjusted float64
+	}
+	out := make([]scored, len(issues))
+	for i, iss := range issues {
+		adj := iss.Distance
+		switch {
+		case iss.CreatedAt.After(recentCutoff):
+			adj -= recentBoost
+		case iss.CreatedAt.After(midCutoff):
+			adj -= midBoost
+		}
+		if adj < 0 {
+			adj = 0
+		}
+		out[i] = scored{issue: iss, adjusted: adj}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].adjusted < out[j].adjusted })
+	result := make([]SimilarIssue, len(out))
+	for i, s := range out {
+		result[i] = s.issue
 		result[i].Distance = s.adjusted
 	}
 	return result

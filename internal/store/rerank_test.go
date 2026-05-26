@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestApplyHatBoost_BoostsKeywordMatches(t *testing.T) {
 	docs := []SimilarDocument{
@@ -64,6 +67,38 @@ func TestApplyVersionBoost_EmptyVersionReturnsOriginal(t *testing.T) {
 	got := ApplyVersionBoost(docs, "", 0.05, 0.02)
 	if got[0].Title != "a" || got[1].Title != "b" {
 		t.Errorf("order changed with empty version: %v", got)
+	}
+}
+
+func TestApplyRecencyBoost_RecentIssueRanksFirst(t *testing.T) {
+	now := time.Now()
+	issues := []SimilarIssue{
+		{Issue: Issue{Number: 1, Title: "Old crash bug", CreatedAt: now.AddDate(-2, 0, 0)}, Distance: 0.20},
+		{Issue: Issue{Number: 2, Title: "Recent screen-share fix", CreatedAt: now.AddDate(0, -3, 0)}, Distance: 0.25},
+		{Issue: Issue{Number: 3, Title: "Mid-age auth issue", CreatedAt: now.AddDate(0, -9, 0)}, Distance: 0.22},
+	}
+	got := ApplyRecencyBoost(issues, 0.06, 0.03)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	// Recent (0.25 - 0.06 = 0.19) < Old (0.20) < Mid (0.22 - 0.03 = 0.19)
+	// but stable sort keeps Recent before Mid when tied at 0.19
+	if got[0].Number != 2 {
+		t.Errorf("got[0].Number = %d, want 2 (recent issue first)", got[0].Number)
+	}
+	if got[2].Number != 1 {
+		t.Errorf("got[2].Number = %d, want 1 (old issue last)", got[2].Number)
+	}
+}
+
+func TestApplyRecencyBoost_ZeroBoostReturnsOriginal(t *testing.T) {
+	issues := []SimilarIssue{
+		{Issue: Issue{Number: 1, Title: "a"}, Distance: 0.1},
+		{Issue: Issue{Number: 2, Title: "b"}, Distance: 0.2},
+	}
+	got := ApplyRecencyBoost(issues, 0, 0)
+	if got[0].Number != 1 || got[1].Number != 2 {
+		t.Errorf("order changed with zero boosts: %v", got)
 	}
 }
 
