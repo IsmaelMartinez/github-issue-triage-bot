@@ -132,7 +132,7 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 		if relErr != nil {
 			srv.logger.Warn("brief-preview: resolve latest release", "error", relErr, "repo", req.Repo)
 		} else if len(releases) > 0 {
-			keywords := extractSymptomKeywords(issue.Body)
+			keywords := srv.extractSymptomKeywordsLLM(ctx, issue.Body)
 			diff := regression.NewDiff(srv.gh)
 			found, runErr := diff.Run(ctx, installID, req.Repo, working, releases[0].TagName, keywords)
 			if runErr != nil {
@@ -199,9 +199,27 @@ func className(h *hats.Hat, requested string) string {
 	return "other"
 }
 
+// extractSymptomKeywordsLLM asks the LLM to pull technical keywords from the
+// issue body, falling back to the hardcoded list if the call fails or returns
+// nothing useful.
+func (srv *server) extractSymptomKeywordsLLM(ctx context.Context, body string) []string {
+	prompt := `Extract 3-8 technical keywords from this GitHub issue body that would help find relevant pull requests. Focus on: component names, API names, error messages, platform terms, Electron subsystem names. Return JSON: {"keywords": ["word1", "word2"]}`
+
+	result, err := srv.llm.GenerateJSON(ctx, prompt+"\n\nIssue body:\n"+body, 0.1, 256)
+	if err == nil {
+		var parsed struct {
+			Keywords []string `json:"keywords"`
+		}
+		if json.Unmarshal([]byte(result), &parsed) == nil && len(parsed.Keywords) > 0 {
+			return parsed.Keywords
+		}
+	}
+	return extractSymptomKeywords(body)
+}
+
 // extractSymptomKeywords pulls a very small set of candidate keywords from
-// the issue body to drive regression-window PR filtering.
-// TODO: replace with LLM extraction once the brief generator lands.
+// the issue body to drive regression-window PR filtering. Used as a fallback
+// when LLM extraction is unavailable.
 func extractSymptomKeywords(body string) []string {
 	candidates := []string{"iframe", "reload", "network", "auth", "wayland", "ozone", "camera", "screen", "tray", "notification", "sharepoint"}
 	lowered := strings.ToLower(body)
