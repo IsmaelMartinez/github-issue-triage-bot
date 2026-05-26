@@ -395,6 +395,21 @@ func (s *Store) CleanupOldDeliveries(ctx context.Context, olderThan time.Duratio
 	return tag.RowsAffected(), nil
 }
 
+// DeleteDocumentsByVersion deletes all documents for a repo and doc types
+// where metadata->>'electron_version' matches the given version string.
+func (s *Store) DeleteDocumentsByVersion(ctx context.Context, repo string, docTypes []string, version string) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		DELETE FROM documents
+		WHERE repo = $1
+		AND doc_type = ANY($2)
+		AND metadata->>'electron_version' = $3
+	`, repo, docTypes, version)
+	if err != nil {
+		return 0, fmt.Errorf("delete by version: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ConnectPool creates a new pgxpool connection pool from a database URL.
 func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)

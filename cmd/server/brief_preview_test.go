@@ -73,6 +73,18 @@ func TestExtractSymptomKeywords(t *testing.T) {
 	}
 }
 
+func TestExtractSymptomKeywords_Fallback(t *testing.T) {
+	body := "wayland screen sharing is broken and notifications don't work"
+	got := extractSymptomKeywords(body)
+	want := map[string]bool{"wayland": true, "screen": true, "notification": true}
+	for _, k := range got {
+		delete(want, k)
+	}
+	if len(want) > 0 {
+		t.Errorf("missing expected keywords: %v", want)
+	}
+}
+
 func TestWorkingVersionRe(t *testing.T) {
 	cases := []struct {
 		in   string

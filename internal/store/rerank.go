@@ -2,7 +2,9 @@ package store
 
 import (
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // ApplyHatBoost rescales distances downward (closer) for documents whose
@@ -47,6 +49,93 @@ func ApplyHatBoost(docs []SimilarDocument, keywords []string, boost float64) []S
 	result := make([]SimilarDocument, len(out))
 	for i, s := range out {
 		result[i] = s.doc
+		result[i].Distance = s.adjusted
+	}
+	return result
+}
+
+// ApplyVersionBoost rescales distances downward for documents whose
+// electron_version metadata matches or is adjacent to the target version.
+// Returns a new slice ordered ascending by the adjusted distance.
+func ApplyVersionBoost(docs []SimilarDocument, targetVersion string, exactBoost, adjacentBoost float64) []SimilarDocument {
+	if targetVersion == "" || (exactBoost <= 0 && adjacentBoost <= 0) {
+		return docs
+	}
+	target, err := strconv.Atoi(targetVersion)
+	if err != nil {
+		return docs
+	}
+
+	type scored struct {
+		doc      SimilarDocument
+		adjusted float64
+	}
+	out := make([]scored, len(docs))
+	for i, d := range docs {
+		adj := d.Distance
+		if v, ok := d.Metadata["electron_version"].(string); ok {
+			if n, err := strconv.Atoi(v); err == nil {
+				switch n {
+				case target:
+					adj -= exactBoost
+				case target - 1, target + 1:
+					adj -= adjacentBoost
+				}
+			}
+		}
+		if adj < 0 {
+			adj = 0
+		}
+		out[i] = scored{doc: d, adjusted: adj}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].adjusted < out[j].adjusted })
+	result := make([]SimilarDocument, len(out))
+	for i, s := range out {
+		result[i] = s.doc
+		result[i].Distance = s.adjusted
+	}
+	return result
+}
+
+const (
+	RecencyRecentMonths = 6
+	RecencyMidMonths    = 12
+)
+
+// ApplyRecencyBoost rescales distances downward (closer) for recent issues.
+// Issues created within RecencyRecentMonths get recentBoost subtracted;
+// issues within RecencyMidMonths get midBoost subtracted. Returns a new
+// slice ordered ascending by the adjusted distance.
+func ApplyRecencyBoost(issues []SimilarIssue, recentBoost, midBoost float64) []SimilarIssue {
+	if recentBoost <= 0 && midBoost <= 0 {
+		return issues
+	}
+	now := time.Now()
+	recentCutoff := now.AddDate(0, -RecencyRecentMonths, 0)
+	midCutoff := now.AddDate(0, -RecencyMidMonths, 0)
+
+	type scored struct {
+		issue    SimilarIssue
+		adjusted float64
+	}
+	out := make([]scored, len(issues))
+	for i, iss := range issues {
+		adj := iss.Distance
+		switch {
+		case iss.CreatedAt.After(recentCutoff):
+			adj -= recentBoost
+		case iss.CreatedAt.After(midCutoff):
+			adj -= midBoost
+		}
+		if adj < 0 {
+			adj = 0
+		}
+		out[i] = scored{issue: iss, adjusted: adj}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].adjusted < out[j].adjusted })
+	result := make([]SimilarIssue, len(out))
+	for i, s := range out {
+		result[i] = s.issue
 		result[i].Distance = s.adjusted
 	}
 	return result

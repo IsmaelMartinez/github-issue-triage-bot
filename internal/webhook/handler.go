@@ -14,12 +14,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/agent"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/config"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/codenav"
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/safety"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
@@ -48,20 +45,16 @@ type Handler struct {
 	logger        *slog.Logger
 	wg            sync.WaitGroup
 	ctx           context.Context
-	agentHandler  *agent.AgentHandler
-	structural    *safety.StructuralValidator
-	shadowRepos   map[string]string
-	mirror        *mirror.Service
-	configCaches  map[string]*config.Cache
-	configMu      sync.Mutex
-	codeNav       *codenav.Navigator
+	agentHandler *agent.AgentHandler
+	structural   *safety.StructuralValidator
+	configCaches map[string]*config.Cache
+	configMu     sync.Mutex
 }
 
 // New creates a new webhook Handler.
 // sourceRepo overrides the repo used for data lookups (vector searches). If empty, the webhook repo is used.
 // ctx is used as the parent context for background triage goroutines.
-// shadowRepos maps source repos to their shadow repos for triage review and agent sessions.
-func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context, shadowRepos map[string]string, mirrorSvc *mirror.Service) *Handler {
+func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider, g *gh.Client, logger *slog.Logger, ctx context.Context) *Handler {
 	structural := safety.NewStructuralValidator(safety.StructuralConfig{
 		MaxCommentLength: maxCommentLength,
 		AllowedURLHosts: []string{
@@ -78,7 +71,6 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 	})
 	llmSafety := safety.NewLLMValidator(l)
 	agentHandler := agent.NewAgentHandler(s, l, g, structural, llmSafety, logger)
-	codeNav := codenav.New(g, l, logger)
 
 	return &Handler{
 		webhookSecret: webhookSecret,
@@ -90,10 +82,7 @@ func New(webhookSecret string, sourceRepo string, s *store.Store, l llm.Provider
 		ctx:           ctx,
 		agentHandler:  agentHandler,
 		structural:    structural,
-		shadowRepos:   shadowRepos,
-		mirror:        mirrorSvc,
 		configCaches:  make(map[string]*config.Cache),
-		codeNav:       codeNav,
 	}
 }
 
@@ -229,15 +218,6 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 	log := h.logger.With("repo", repo, "issue", issueNumber, "commentUser", commentUser)
 	log.Info("processing comment event")
 
-	// Handle /retriage command on source repo issues
-	if strings.TrimSpace(commentBody) == "/retriage" {
-		if _, ok := h.shadowRepos[repo]; ok {
-			log.Info("retriage requested")
-			h.handleRetriage(ctx, installationID, repo, event.Issue)
-			return
-		}
-	}
-
 	// Handle /pause and /unpause commands (repo owner only)
 	trimmed := strings.TrimSpace(commentBody)
 	if trimmed == "/pause" || trimmed == "/unpause" {
@@ -262,15 +242,6 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 		return
 	}
 
-	// Check triage session first
-	handled, err := h.handleTriageComment(ctx, installationID, repo, issueNumber, commentBody)
-	if err != nil {
-		log.Error("handling triage comment", "error", err)
-	}
-	if handled {
-		return
-	}
-
 	// Fall through to agent session handler
 	if err := h.agentHandler.HandleComment(ctx, installationID, repo, issueNumber, commentBody, commentUser); err != nil {
 		log.Error("handling agent comment", "error", err)
@@ -278,44 +249,6 @@ func (h *Handler) processCommentEvent(ctx context.Context, event gh.IssueComment
 
 	// Check for @mention feedback on the source repo
 	h.checkMentionFeedback(ctx, repo, issueNumber, event.Comment)
-}
-
-func (h *Handler) handleTriageComment(ctx context.Context, installationID int64, shadowRepo string, shadowIssueNumber int, commentBody string) (bool, error) {
-	ts, err := h.store.GetTriageSessionByShadow(ctx, shadowRepo, shadowIssueNumber)
-	if err != nil {
-		return false, err
-	}
-	if ts == nil {
-		return false, nil
-	}
-
-	log := h.logger.With("repo", ts.Repo, "issue", ts.IssueNumber, "shadowRepo", shadowRepo, "shadowIssue", shadowIssueNumber)
-	signal := agent.ParseApprovalSignal(commentBody)
-
-	switch signal {
-	case agent.SignalApproved:
-		if err := PromoteTriageSession(ctx, h.github, h.store, installationID, *ts); err != nil {
-			// Record that a promotion is owed so the daily cleanup cron can retry.
-			// Without this, a transient cold-start TLS failure against api.github.com
-			// silently drops the maintainer's `lgtm` signal.
-			if markErr := h.store.MarkPendingPromotion(ctx, ts.ID); markErr != nil {
-				log.Error("recording pending promotion", "error", markErr)
-			}
-			return true, err
-		}
-		_ = h.store.ClearPendingPromotion(ctx, ts.ID)
-		log.Info("triage comment promoted to public issue")
-		return true, nil
-
-	case agent.SignalReject, agent.SignalDismiss:
-		_ = h.github.CloseIssue(ctx, installationID, shadowRepo, shadowIssueNumber)
-		log.Info("triage session rejected/dismissed")
-		return true, nil
-
-	default:
-		log.Info("ignoring non-signal comment on triage shadow issue")
-		return false, nil
-	}
 }
 
 func (h *Handler) processEvent(ctx context.Context, event gh.IssueEvent) {
@@ -393,364 +326,9 @@ func (h *Handler) handleOpened(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Check if already processed (bot comment or shadow triage session)
-	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
-	if err != nil {
-		issueLog.Error("checking bot comment", "error", err)
-		return
-	}
-	if commented {
-		issueLog.Info("bot already commented")
-		return
-	}
-	triaged, err := h.store.HasTriageSession(ctx, repo, issue.Number)
-	if err != nil {
-		issueLog.Error("checking triage session", "error", err)
-		return
-	}
-	if triaged {
-		issueLog.Info("already triaged via shadow repo")
-		return
-	}
-
-	// Update issue in database under the webhook repo (after bot/duplicate checks to avoid wasting an embedding call)
+	// Silent RAG mode: embed the issue for retrieval via /brief-preview.
 	h.upsertIssue(ctx, repo, issue)
-
-	// Use sourceRepo for data lookups (vector searches), falling back to webhook repo
-	dataRepo := repo
-	if h.sourceRepo != "" {
-		dataRepo = h.sourceRepo
-		issueLog.Info("using source repo for data lookups", "dataRepo", dataRepo)
-	}
-
-	// Determine issue type
-	isBug := hasLabel(issue.Labels, "bug")
-	isEnhancement := hasLabel(issue.Labels, "enhancement")
-	issueLog.Info("issue classification", "isBug", isBug, "isEnhancement", isEnhancement, "labelCount", len(issue.Labels))
-
-	// Run phases (only if triage capability is enabled)
-	var result comment.TriageResult
-	result.IsBug = isBug
-	result.IsEnhancement = isEnhancement
-	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
-	result.DocsURL = cfg.Project.DocsURL
-	result.DebugCommand = cfg.Project.DebugCommand
-	var phaseErrors []string // track LLM phase errors for shadow-mode fallback
-	var embedding []float32
-
-	if !cfg.Capabilities.Triage {
-		issueLog.Info("triage capability disabled, skipping phases")
-	}
-
-	// Phase 1: Missing info (always runs when triage enabled)
-	if cfg.Capabilities.Triage {
-		result.Phase1 = phases.Phase1(issue.Body)
-
-		// Compute embedding once for reuse across Phase 2 and Phase 4a
-		cleanBody := phases.StripCodeFences(issue.Body, 1500)
-		queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
-		var embedErr error
-		embedding, embedErr = h.llm.Embed(ctx, queryText)
-		if embedErr != nil {
-			issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
-			embedding = nil
-		}
-	}
-
-	// Code navigation: fetch relevant source files for Phase 2 context (bugs only)
-	var codeCtx string
-	if isBug && cfg.Capabilities.Triage && cfg.Capabilities.CodeNavigation {
-		cc, err := h.codeNav.Navigate(ctx, installationID, dataRepo, issue.Title, issue.Body, cfg.Project.Name)
-		if err != nil {
-			issueLog.Error("code navigation failed", "error", err)
-		} else {
-			codeCtx = cc.FormatForPrompt()
-		}
-	}
-
-	// Phase 2: Solution suggestions
-	if cfg.Capabilities.Triage {
-		p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, codeCtx, embedding, cfg.Project.Name)
-		if err != nil {
-			issueLog.Error("phase 2 failed", "error", err)
-			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
-		}
-		issueLog.Info("phase 2 complete", "suggestions", len(p2))
-		result.Phase2 = p2
-	}
-
-	// Phase 4a: Enhancement context
-	if cfg.Capabilities.Triage {
-		p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding, cfg.Project.Name)
-		if err != nil {
-			issueLog.Error("phase 4a failed", "error", err)
-			phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
-		}
-		issueLog.Info("phase 4a complete", "matches", len(p4a))
-		result.Phase4a = p4a
-	}
-
-	// Build triage comment — try synthesis first, fall back to concatenation
-	synthInput := phases.SynthesisInput{
-		IssueTitle:    issue.Title,
-		IssueBody:     issue.Body,
-		IsBug:         isBug,
-		IsEnhancement: isEnhancement,
-		IsDocBug:      result.IsDocBug,
-		ProjectName:   cfg.Project.Name,
-		Phase1:        result.Phase1,
-		Phase2:        result.Phase2,
-		Phase4a:       result.Phase4a,
-	}
-
-	var synthesized bool
-	var body string
-	if phases.ShouldSynthesize(synthInput) {
-		synthResult, synthErr := phases.Synthesize(ctx, h.llm, synthInput)
-		if synthErr != nil {
-			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
-			body = comment.Build(result)
-		} else if synthResult != "" {
-			// Sanitise LLM output, rewrite bare upstream refs to their
-			// qualified form so GitHub doesn't auto-link them against the
-			// host repo, then append debug instructions and footer.
-			body = comment.SanitizeLLMOutput(synthResult)
-			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
-			if di := comment.DebugInstructions(result); di != "" {
-				body += "\n\n" + di
-			}
-			body += "\n\n" + comment.Footer(result)
-			synthesized = true
-		}
-	}
-	if body == "" {
-		body = comment.Build(result)
-	}
-	phasesRun := collectPhasesRun(result, synthesized)
-
-	if shadowRepo, ok := h.shadowRepos[repo]; ok && body != "" {
-		// Post to shadow repo for review
-		const totalSections = 4
-		filled := totalSections - len(result.Phase1.MissingItems)
-		shadowTitle := fmt.Sprintf("[Triage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
-		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
-		shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
-		if err != nil {
-			issueLog.Error("creating shadow triage issue", "error", err)
-		} else {
-			instructions := "\n\n---\n\nReply `lgtm` to post this comment publicly, or `reject` to discard."
-			_, err = h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, body+instructions)
-			if err != nil {
-				issueLog.Error("posting triage comment on shadow issue", "error", err)
-			} else {
-				if err := h.store.CreateTriageSession(ctx, store.TriageSession{
-					Repo:              repo,
-					IssueNumber:       issue.Number,
-					ShadowRepo:        shadowRepo,
-					ShadowIssueNumber: shadowNumber,
-					TriageComment:     body,
-					PhasesRun:         phasesRun,
-				}); err != nil {
-					issueLog.Error("recording triage session", "error", err)
-				}
-				issueLog.Info("triage comment posted to shadow repo", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber)
-			}
-		}
-	} else if body != "" {
-		commentID, err := h.github.CreateComment(ctx, installationID, repo, issue.Number, body)
-		if err != nil {
-			issueLog.Error("posting comment", "error", err)
-		} else {
-			if err := h.store.RecordBotComment(ctx, store.BotComment{
-				Repo:        repo,
-				IssueNumber: issue.Number,
-				CommentID:   commentID,
-				PhasesRun:   phasesRun,
-			}); err != nil {
-				issueLog.Error("recording bot comment", "error", err)
-			}
-			issueLog.Info("comment posted", "phases", phasesRun)
-		}
-	} else if shadowRepo, ok := h.shadowRepos[repo]; ok && len(phaseErrors) > 0 {
-		// Phase 2/4a errored (e.g. rate limit) but Phase 1 had nothing to flag.
-		// Create a shadow issue with an error note so the issue isn't silently lost.
-		// No TriageSession is created — there is no promotable comment. The issue
-		// remains eligible for /retriage on the source repo.
-		const totalSections = 4
-		filled := totalSections - len(result.Phase1.MissingItems)
-		shadowTitle := fmt.Sprintf("[Triage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
-		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
-		shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
-		if err != nil {
-			issueLog.Error("creating shadow triage issue for errored phases", "error", err)
-		} else {
-			errNote := fmt.Sprintf("**Note:** Analysis was incomplete due to errors. LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*Reply `/retriage` on the source issue to retry.*", strings.Join(phaseErrors, "\n"))
-			if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errNote); err != nil {
-				issueLog.Error("posting error note on shadow issue", "error", err)
-			}
-			issueLog.Info("created shadow issue with error note", "shadowRepo", shadowRepo, "shadowIssue", shadowNumber, "errors", len(phaseErrors))
-		}
-	} else {
-		issueLog.Info("nothing to report in triage comment")
-	}
-
-	// Start agent session for enhancements with shadow repo (requires research capability)
-	if isEnhancement && cfg.Capabilities.Research {
-		if shadowRepo, ok := h.shadowRepos[repo]; ok {
-			issueLog.Info("starting agent session", "shadowRepo", shadowRepo)
-			if err := h.agentHandler.StartSession(ctx, installationID, repo, issue.Number, shadowRepo, issue.Title, issue.Body, cfg.Project.Name, cfg.Project.Description); err != nil {
-				issueLog.Error("starting agent session", "error", err)
-			}
-		}
-	}
-}
-
-// handleRetriage re-runs the triage pipeline for an existing issue and posts
-// the result to a new shadow issue. Called when a maintainer comments /retriage.
-func (h *Handler) handleRetriage(ctx context.Context, installationID int64, repo string, issue gh.IssueDetail) {
-	issueLog := h.logger.With("repo", repo, "issue", issue.Number)
-
-	// Re-upsert the issue in case the body was edited
-	h.upsertIssue(ctx, repo, issue)
-
-	dataRepo := repo
-	if h.sourceRepo != "" {
-		dataRepo = h.sourceRepo
-	}
-
-	cfg := h.getConfig(ctx, installationID, repo)
-
-	isBug := hasLabel(issue.Labels, "bug")
-	isEnhancement := hasLabel(issue.Labels, "enhancement")
-
-	var result comment.TriageResult
-	result.IsBug = isBug
-	result.IsEnhancement = isEnhancement
-	result.IsDocBug = isBug && isDocumentationBug(issue.Title)
-	result.DocsURL = cfg.Project.DocsURL
-	result.DebugCommand = cfg.Project.DebugCommand
-	var phaseErrors []string
-
-	result.Phase1 = phases.Phase1(issue.Body)
-
-	// Compute embedding once for reuse across phases
-	cleanBody := phases.StripCodeFences(issue.Body, 1500)
-	queryText := fmt.Sprintf("%s\n%s", phases.Truncate(issue.Title, 200), cleanBody)
-	embedding, embedErr := h.llm.Embed(ctx, queryText)
-	if embedErr != nil {
-		issueLog.Warn("embedding failed, LLM phases will compute their own", "error", embedErr)
-		embedding = nil
-	}
-
-	p2, err := phases.Phase2(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, "", embedding, cfg.Project.Name)
-	if err != nil {
-		issueLog.Error("retriage phase 2 failed", "error", err)
-		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 2: %s", err.Error()))
-	}
-	result.Phase2 = p2
-
-	p4a, err := phases.Phase4a(ctx, h.store, h.llm, issueLog, dataRepo, issue.Title, issue.Body, embedding, cfg.Project.Name)
-	if err != nil {
-		issueLog.Error("retriage phase 4a failed", "error", err)
-		phaseErrors = append(phaseErrors, fmt.Sprintf("Phase 4a: %s", err.Error()))
-	}
-	result.Phase4a = p4a
-
-	// Build triage comment — try synthesis first, fall back to concatenation
-	synthInput := phases.SynthesisInput{
-		IssueTitle:    issue.Title,
-		IssueBody:     issue.Body,
-		IsBug:         isBug,
-		IsEnhancement: isEnhancement,
-		IsDocBug:      result.IsDocBug,
-		ProjectName:   cfg.Project.Name,
-		Phase1:        result.Phase1,
-		Phase2:        result.Phase2,
-		Phase4a:       result.Phase4a,
-	}
-
-	var synthesized bool
-	var body string
-	if phases.ShouldSynthesize(synthInput) {
-		synthResult, synthErr := phases.Synthesize(ctx, h.llm, synthInput)
-		if synthErr != nil {
-			issueLog.Error("synthesis failed, falling back to concatenation", "error", synthErr)
-			body = comment.Build(result)
-		} else if synthResult != "" {
-			// Sanitise LLM output, rewrite bare upstream refs to their
-			// qualified form so GitHub doesn't auto-link them against the
-			// host repo, then append debug instructions and footer.
-			body = comment.SanitizeLLMOutput(synthResult)
-			body = comment.RewriteBareUpstreamRefs(body, collectUpstreamRefs(synthInput), map[int]bool{issue.Number: true})
-			if di := comment.DebugInstructions(result); di != "" {
-				body += "\n\n" + di
-			}
-			body += "\n\n" + comment.Footer(result)
-			synthesized = true
-		}
-	}
-	if body == "" {
-		body = comment.Build(result)
-	}
-	phasesRun := collectPhasesRun(result, synthesized)
-
-	shadowRepo, ok := h.shadowRepos[repo]
-	if !ok {
-		issueLog.Info("no shadow repo configured for retriage")
-		return
-	}
-	if body == "" && len(phaseErrors) > 0 {
-		// Phases errored but nothing to show — create error-note shadow issue
-		const totalSections = 4
-		filled := totalSections - len(result.Phase1.MissingItems)
-		shadowTitle := fmt.Sprintf("[Retriage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
-		shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
-		shadowNumber, createErr := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
-		if createErr != nil {
-			issueLog.Error("creating retriage error shadow issue", "error", createErr)
-			return
-		}
-		errNote := fmt.Sprintf("**Note:** Retriage was incomplete due to errors. LLM-powered phases could not run.\n\n<details><summary>Errors</summary>\n\n%s\n\n</details>\n\n*Reply `/retriage` on the source issue to retry.*", strings.Join(phaseErrors, "\n"))
-		if _, err := h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, errNote); err != nil {
-			issueLog.Error("posting retriage error note", "error", err)
-		}
-		return
-	}
-	if body == "" {
-		issueLog.Info("retriage produced no output")
-		return
-	}
-
-	const totalSections = 4
-	filled := totalSections - len(result.Phase1.MissingItems)
-	shadowTitle := fmt.Sprintf("[Retriage] [%d/%d] #%d: %s", filled, totalSections, issue.Number, issue.Title)
-	shadowBody := gh.FormatShadowIssueBody(repo, issue.Number, issue.Title, issue.Body)
-	shadowNumber, err := h.github.CreateIssue(ctx, installationID, shadowRepo, shadowTitle, shadowBody)
-	if err != nil {
-		issueLog.Error("creating retriage shadow issue", "error", err)
-		return
-	}
-
-	instructions := "\n\n---\n\nReply `lgtm` to post this comment publicly, or `reject` to discard."
-	_, err = h.github.CreateComment(ctx, installationID, shadowRepo, shadowNumber, body+instructions)
-	if err != nil {
-		issueLog.Error("posting retriage comment on shadow issue", "error", err)
-		return
-	}
-
-	// Upsert the triage session so lgtm/reject still work
-	if err := h.store.CreateTriageSession(ctx, store.TriageSession{
-		Repo:              repo,
-		IssueNumber:       issue.Number,
-		ShadowRepo:        shadowRepo,
-		ShadowIssueNumber: shadowNumber,
-		TriageComment:     body,
-		PhasesRun:         phasesRun,
-	}); err != nil {
-		issueLog.Error("recording retriage session", "error", err)
-	}
-
-	issueLog.Info("retriage complete, posted to shadow repo", "shadowIssue", shadowNumber)
+	issueLog.Info("issue embedded for RAG retrieval")
 }
 
 func (h *Handler) getConfig(ctx context.Context, installationID int64, repo string) config.ButlerConfig {
@@ -776,18 +354,9 @@ func (h *Handler) handlePush(ctx context.Context, event gh.PushEvent) {
 
 	h.recordEvent(ctx, pushToRepoEvent(repo, event.Ref))
 
-	shadowRepo, ok := h.shadowRepos[repo]
-	if ok && h.mirror != nil {
-		log.Info("triggering mirror sync for push event")
-		if err := h.mirror.Sync(ctx, event.Installation.ID, repo, shadowRepo); err != nil {
-			log.Error("mirror sync failed", "error", err)
-		} else {
-			log.Info("mirror sync completed successfully")
-		}
-	}
-
 	cfg := h.getConfig(ctx, event.Installation.ID, repo)
 	if cfg.Capabilities.AutoIngest {
+		log.Info("auto-ingesting docs from push")
 		h.autoIngestDocs(ctx, event.Installation.ID, repo, event.Commits, cfg.DocPaths)
 	}
 }
@@ -845,18 +414,6 @@ func (h *Handler) handleEdited(ctx context.Context, installationID int64, repo s
 		return
 	}
 
-	// Only track edits on issues where the bot has posted a public comment.
-	// Shadow-only triage sessions don't count — users haven't seen the bot's feedback yet.
-	commented, err := h.store.HasBotCommented(ctx, repo, issue.Number)
-	if err != nil {
-		log.Error("checking bot comment for edit feedback", "error", err)
-		return
-	}
-	if !commented {
-		log.Debug("edited issue has no public bot comment, skipping feedback check")
-		return
-	}
-
 	filled := computeFilledSections(changes.Body.From, issue.Body)
 	if len(filled) == 0 {
 		log.Debug("edit did not fill any missing sections")
@@ -887,16 +444,6 @@ func (h *Handler) checkMentionFeedback(ctx context.Context, repo string, issueNu
 	}
 
 	log := h.logger.With("repo", repo, "issue", issueNumber)
-
-	// Only record if the bot has posted a public comment on this issue
-	commented, err := h.store.HasBotCommented(ctx, repo, issueNumber)
-	if err != nil {
-		log.Error("checking bot comment for mention feedback", "error", err)
-		return
-	}
-	if !commented {
-		return
-	}
 
 	body := comment.Body
 	if len(body) > 500 {
@@ -1005,35 +552,3 @@ func sanitizeBody(body string, maxLen int) string {
 	return result
 }
 
-// collectUpstreamRefs gathers GitHub issue/PR references from the doc URLs
-// that were sent into the synthesis prompt, so synthesised prose can have
-// bare `#NNN` references rewritten to their qualified `OWNER/REPO#NNN` form.
-func collectUpstreamRefs(input phases.SynthesisInput) []comment.UpstreamRef {
-	urls := make([]string, 0, len(input.Phase2)+len(input.Phase4a))
-	for _, s := range input.Phase2 {
-		if s.DocURL != "" {
-			urls = append(urls, s.DocURL)
-		}
-	}
-	for _, c := range input.Phase4a {
-		if c.DocURL != "" {
-			urls = append(urls, c.DocURL)
-		}
-	}
-	return comment.ExtractUpstreamRefs(urls)
-}
-
-func collectPhasesRun(r comment.TriageResult, synthesized bool) []string {
-	var phases []string
-	phases = append(phases, "missing_info")
-	if r.Phase2 != nil {
-		phases = append(phases, "doc_search")
-	}
-	if r.Phase4a != nil {
-		phases = append(phases, "enhancement_context")
-	}
-	if synthesized {
-		phases = append(phases, "synthesis")
-	}
-	return phases
-}

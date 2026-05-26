@@ -160,6 +160,24 @@ func TestPhase1(t *testing.T) {
 			wantMissingCount: 2,
 			wantPWA:          false,
 		},
+		{
+			name: "non-English (Spanish) body with debug missing",
+			body: "### Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?\n\nNo\n\n### Describe the bug\n\nLa aplicación se congela al intentar compartir pantalla en una reunión con más de 10 participantes.\n\n### Reproduction steps\n\n1. Unirse a una reunión con más de 10 participantes\n2. Hacer clic en el botón de compartir pantalla\n3. Seleccionar la ventana a compartir\n4. La aplicación se congela completamente\n\n### Expected Behavior\n\nLa pantalla debería compartirse sin problemas, igual que en la aplicación oficial de Microsoft Teams.\n\n### Debug\n\n_No response_",
+			wantMissingCount: 1,
+			wantPWA:          false,
+		},
+		{
+			name: "injection payload in all sections",
+			body: "### Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?\n\nYes\n\n### Describe the bug\n\n<script>alert('xss')</script> The app crashes <img src=x onerror=alert(1)>\n\n### Reproduction steps\n\n1. Navigate to [click me](javascript:alert('xss'))\n2. Enter <script>document.cookie</script> in the search box\n3. Observe the <img src=x onerror=alert(document.domain)> error\n\n### Expected Behavior\n\nThe app should sanitize <script>alert('expected')</script> inputs properly\n\n### Debug\n\n```\n<script>alert('debug')</script>\nERROR: javascript:void(0) triggered\n<img src=x onerror=alert('debug')>\n```",
+			wantMissingCount: 0,
+			wantPWA:          true,
+		},
+		{
+			name: "enhancement via bug template with description repro and debug all no-response",
+			body: "### Can you reproduce this bug on the Microsoft Teams web app (https://teams.microsoft.com)?\n\nNo\n\n### Describe the bug\n\n_No response_\n\n### Reproduction steps\n\n_No response_\n\n### Expected Behavior\n\n_No response_\n\n### Debug\n\n_No response_",
+			wantMissingCount: 3,
+			wantPWA:          false,
+		},
 	}
 
 	for _, tt := range tests {
