@@ -234,6 +234,9 @@ func seedFeatures(ctx context.Context, s *store.Store, l *llm.Client, repo strin
 			},
 			Embedding: embedding,
 		}
+		if ver := extractElectronVersion(e.Topic); ver != "" {
+			doc.Metadata["electron_version"] = ver
+		}
 		if err := s.UpsertDocument(ctx, doc); err != nil {
 			return fmt.Errorf("upsert feature %d: %w", i, err)
 		}
