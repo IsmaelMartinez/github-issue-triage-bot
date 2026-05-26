@@ -17,3 +17,4 @@ This directory records significant architecture decisions for the GitHub Issue T
 | [011](011-public-dashboard.md) | Public Dashboard with GitHub Pages | Superseded by ADR 012 |
 | [012](012-dashboard-consolidation.md) | Dashboard Consolidation — Live Endpoint Only | Implemented |
 | [013](013-mcp-server.md) | MCP Server for Agent Integration | Implemented |
+| [014](014-retire-shadow-repos.md) | Retire Shadow Repos — Silent RAG Mode | Implemented |

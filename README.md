@@ -14,7 +14,7 @@ The bot searches project documentation for content that might help resolve the b
 
 ### Related context for enhancements
 
-For feature requests, the bot searches architecture decision records, roadmap items, and research documents to surface existing context about similar ideas. A maintainer reviews the context brief in a private shadow repository before any output reaches the public issue. The maintainer can request deeper research synthesis, acknowledge the context, or discard it.
+For feature requests, the bot silently embeds the issue and stores relevant context (architecture decision records, roadmap items, research documents) in the vector database for on-demand retrieval. A maintainer can query this context at any time via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill, which uses RAG over the embedded documents to produce a context brief. No bot comment is posted on enhancement issues unless the maintainer explicitly promotes one.
 
 All bot output passes through two quality layers — a structural validator (length limits, URL allowlists, mention blocking) and an LLM reviewer (relevance, tone, prompt injection detection). The bot escalates to a human if it cannot produce useful output within 4 attempts.
 
@@ -28,7 +28,7 @@ React with a thumbs up or thumbs down on bot comments, or mention @ismael-triage
 
 ## Dashboard
 
-A live dashboard showing triage activity, phase hit rates, and agent session status is available at https://triage-bot-lhuutxzbnq-uc.a.run.app/dashboard. A daily snapshot is also published to [GitHub Pages](https://ismaelmartinez.github.io/github-issue-triage-bot/).
+A live dashboard showing triage activity and phase hit rates is available at https://triage-bot-lhuutxzbnq-uc.a.run.app/dashboard. A daily snapshot is also published to [GitHub Pages](https://ismaelmartinez.github.io/github-issue-triage-bot/).
 
 ---
 
@@ -62,19 +62,11 @@ Cloud Run (Go binary)
         +-- Triage Pipeline
         |       +-- Missing info check: template parsing (no LLM)
         |       +-- Known solutions: pgvector search + Gemini (bugs)
-        |       +-- Related context: pgvector search + Gemini (enhancements)
+        |       +-- Related context: embed + store (enhancements, silent RAG)
         |       +-- Synthesis: weave phase outputs into a single coherent comment (Gemini)
-        |       |
-        |       v
-        |   Post to shadow repo for maintainer review (lgtm to promote to public issue)
         |
-        +-- Enhancement Researcher Agent (if shadow repo configured)
-        |       +-- Create mirror issue in shadow repo
-        |       +-- Post context brief (pgvector + Gemini summary)
-        |       +-- Maintainer signals: research / use as context / reject
-        |       +-- Full research pipeline (if research signal)
-        |       +-- Safety layers (structural + LLM)
-        |       +-- Publish summary to public issue
+        +-- On-Demand Retrieval (/brief-preview)
+        |       +-- RAG over embedded docs for maintainer or skill queries
         |
         +-- Feedback Tracking
         |       +-- Issue edit detection (Phase 1 fill rate)
@@ -82,24 +74,23 @@ Cloud Run (Go binary)
         |
         +-- Health Monitor (/health-check)
                 +-- Confidence score trends
-                +-- Stuck session detection
                 +-- Orphaned triage detection
         |
         v
 Neon PostgreSQL + pgvector             GitHub Pages Dashboard
 (documents, issues, bot_comments,      (daily via cmd/dashboard)
- agent_sessions, feedback_signals)
+ feedback_signals)
 ```
 
-### Shadow-repo review gate
+### Silent RAG mode
 
-Every triage comment and agent session is first mirrored into a private shadow repository configured via `SHADOW_REPOS`. Maintainers review the draft there and reply with `lgtm` to promote a curated summary to the public issue, or `reject` to discard. Nothing reaches public issues without explicit approval. This pattern replaced the original silent-mode observer design (see `docs/decisions/003-shadow-repo-pattern.md`, which supersedes `docs/decisions/002-silent-mode.md`).
+Shadow repo posting was retired in [ADR 014](docs/adr/014-retire-shadow-repos.md). The webhook now embeds issues and stores context silently. Maintainers retrieve context on demand via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill, which performs RAG over the vector store. Bug triage comments are still posted directly on public issues when relevant matches are found.
 
 ### Environment variables
 
 The server requires `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_PRIVATE_KEY`, and `WEBHOOK_SECRET`. `GEMINI_API_KEY` is optional (the bot logs a warning and skips LLM phases if unset). `GITHUB_PRIVATE_KEY` should contain the PEM content either as raw PEM text or base64-encoded PEM.
 
-Optional variables controlling runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks). `SHADOW_REPOS` defines shadow repo mappings as comma-separated `owner/repo:owner/shadow` pairs (e.g., `IsmaelMartinez/teams-for-linux:IsmaelMartinez/triage-bot-shadow`); without it, the bot skips mirroring and posts nothing publicly. `INGEST_SECRET` authenticates the `/cleanup`, `/health-check`, `/ingest`, `/synthesize`, `/pause`, and `/unpause` endpoints (empty disables auth). `MAX_DAILY_LLM_CALLS` overrides the default daily Gemini budget. `MIRROR_CACHE_DIR` sets the shadow-repo mirror cache (defaults to the system temp dir). `PORT` sets the HTTP listen port (defaults to 8080).
+Optional variables controlling runtime behavior: `SOURCE_REPO` overrides the repository used for vector similarity searches (useful when testing against a different repo than the one sending webhooks). `INGEST_SECRET` authenticates the `/cleanup`, `/health-check`, `/ingest`, `/synthesize`, `/pause`, and `/unpause` endpoints (empty disables auth). `MAX_DAILY_LLM_CALLS` overrides the default daily Gemini budget. `PORT` sets the HTTP listen port (defaults to 8080).
 
 ### Deployment
 
@@ -147,6 +138,6 @@ To use this bot on your own repository:
 
 1. Register a GitHub App at https://github.com/settings/apps/new with permissions: Issues (read & write), Contents (read & write), Pull requests (read & write). Subscribe to "Issues", "Issue comments", and "Issue edits" webhook events. Set the webhook URL to your Cloud Run service URL + `/webhook`.
 2. Generate and download a private key PEM file from the App settings.
-3. Install the App on the target repository. If using the Enhancement Researcher agent, also install it on the shadow repository so the bot can create mirror issues and respond to approval signals there.
+3. Install the App on the target repository.
 4. Set the environment variables: `GITHUB_APP_ID` (numeric App ID from settings), `GITHUB_PRIVATE_KEY` (base64-encoded PEM or raw PEM content), and `WEBHOOK_SECRET` (the secret you configured when creating the App).
 5. Deploy via `terraform apply` or set the secrets in your CI/CD environment.

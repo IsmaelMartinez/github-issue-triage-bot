@@ -1,3 +1,5 @@
+**SUPERSEDED** by [ADR 014](../adr/014-retire-shadow-repos.md) (2026-05-26): shadow posting removed, replaced by silent RAG mode. The design below is historical.
+
 > **IMPLEMENTED**: Shadow repo triage is live. All triage comments route through shadow issues for maintainer review before public posting.
 
 # Shadow Triage Implementation Plan

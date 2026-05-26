@@ -102,4 +102,4 @@ Anchors. #2326 (Symantec + contextIsolation login); #2364 (login info does not p
 
 ## other
 
-Fallback when no hat fits. Indicates the taxonomy may be missing an entry; the bot emits a generic brief without hat-specific posture and flags the gap in the shadow for the maintainer to consider adding a new hat. Retrieval falls back to broad vector search with no boosts.
+Fallback when no hat fits. Indicates the taxonomy may be missing an entry; the bot emits a generic brief without hat-specific posture and flags the gap for the maintainer to consider adding a new hat. Retrieval falls back to broad vector search with no boosts.
