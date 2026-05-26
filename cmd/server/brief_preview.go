@@ -19,6 +19,10 @@ import (
 // v1.2.3" or "worked in 1.2".
 var workingVersionRe = regexp.MustCompile(`(?i)(?:works\s+in|worked\s+in|working\s+on|prior\s+working)\s+v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)`)
 
+// electronVersionFromBodyRe captures a major Electron version from issue body
+// text like "Electron 42" or "electron: v42".
+var electronVersionFromBodyRe = regexp.MustCompile(`(?i)[Ee]lectron[\s:]+v?(\d+)`)
+
 type briefPreviewRequest struct {
 	Repo        string `json:"repo"`
 	IssueNumber int    `json:"issue_number"`
@@ -105,6 +109,9 @@ func (srv *server) briefPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if hat != nil {
 		docs = store.ApplyHatBoost(docs, hat.RetrievalBoostKeywords, 0.05)
+	}
+	if m := electronVersionFromBodyRe.FindStringSubmatch(issue.Body); m != nil {
+		docs = store.ApplyVersionBoost(docs, m[1], 0.05, 0.02)
 	}
 
 	similar, simErr := srv.store.FindSimilarIssues(ctx, req.Repo, vec, req.IssueNumber, 5)

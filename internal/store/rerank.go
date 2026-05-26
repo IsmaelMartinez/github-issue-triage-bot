@@ -2,6 +2,7 @@ package store
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,49 @@ func ApplyHatBoost(docs []SimilarDocument, keywords []string, boost float64) []S
 			if strings.Contains(hay, k) {
 				adj -= boost
 				break
+			}
+		}
+		if adj < 0 {
+			adj = 0
+		}
+		out[i] = scored{doc: d, adjusted: adj}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].adjusted < out[j].adjusted })
+	result := make([]SimilarDocument, len(out))
+	for i, s := range out {
+		result[i] = s.doc
+		result[i].Distance = s.adjusted
+	}
+	return result
+}
+
+// ApplyVersionBoost rescales distances downward for documents whose
+// electron_version metadata matches or is adjacent to the target version.
+// Returns a new slice ordered ascending by the adjusted distance.
+func ApplyVersionBoost(docs []SimilarDocument, targetVersion string, exactBoost, adjacentBoost float64) []SimilarDocument {
+	if targetVersion == "" || (exactBoost <= 0 && adjacentBoost <= 0) {
+		return docs
+	}
+	target, err := strconv.Atoi(targetVersion)
+	if err != nil {
+		return docs
+	}
+
+	type scored struct {
+		doc      SimilarDocument
+		adjusted float64
+	}
+	out := make([]scored, len(docs))
+	for i, d := range docs {
+		adj := d.Distance
+		if v, ok := d.Metadata["electron_version"].(string); ok {
+			if n, err := strconv.Atoi(v); err == nil {
+				switch {
+				case n == target:
+					adj -= exactBoost
+				case n == target-1 || n == target+1:
+					adj -= adjacentBoost
+				}
 			}
 		}
 		if adj < 0 {
