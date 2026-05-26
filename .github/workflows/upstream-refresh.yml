@@ -15,7 +15,7 @@ on:
       versions:
         description: 'Comma-separated active Electron majors (e.g. "40,41")'
         required: false
-        default: '40,41'
+        default: '40,41,42'
 
 permissions:
   contents: read
@@ -38,7 +38,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATABASE_URL: ${{ secrets.TF_VAR_DATABASE_URL }}
           GEMINI_API_KEY: ${{ secrets.TF_VAR_GEMINI_API_KEY }}
-          VERSIONS: ${{ inputs.versions || '40,41' }}
+          VERSIONS: ${{ inputs.versions || '40,41,42' }}
         run: |
           set -euo pipefail
           IFS=',' read -ra MAJORS <<< "$VERSIONS"
