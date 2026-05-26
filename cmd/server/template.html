@@ -85,8 +85,6 @@
             </div>
             <nav class="sidebar-nav">
                 <a href="#overview" class="active" onclick="showView('overview',this);return false"><span class="dot" id="dot-overview"></span> Overview</a>
-                <a href="#triage" onclick="showView('triage',this);return false"><span class="dot" id="dot-triage"></span> Triage</a>
-                <a href="#agent" onclick="showView('agent',this);return false"><span class="dot" id="dot-agent"></span> Agent</a>
                 <a href="#system" onclick="showView('system',this);return false"><span class="dot" id="dot-system"></span> System</a>
                 <a href="#trends" onclick="showView('trends',this);return false"><span class="dot" id="dot-trends"></span> Trends</a>
             </nav>
@@ -96,28 +94,11 @@
             <div id="view-overview" class="view active">
                 <h2>Overview</h2>
                 <div class="health-cards" id="overview-cards"></div>
-                <div class="panel"><h3>Activity (30 days)</h3><div class="chart-container"><canvas id="activity-chart"></canvas></div></div>
+                <div class="panel"><h3>Feedback (30 days)</h3><div class="chart-container"><canvas id="feedback-overview-chart"></canvas></div></div>
                 <div class="two-col">
-                    <div class="panel"><h3>Recent Activity</h3><div id="activity-feed"></div></div>
+                    <div class="panel"><h3>Recent Comments</h3><div id="activity-feed"></div></div>
                     <div class="panel"><h3>Vector Store</h3><table id="vector-table"><thead><tr><th>Type</th><th style="text-align:right">Count</th></tr></thead><tbody></tbody></table></div>
                 </div>
-            </div>
-            <div id="view-triage" class="view">
-                <h2>Bug Triage</h2>
-                <div class="health-cards" id="triage-cards"></div>
-                <div class="panel"><h3>Phase Hit Rate</h3><div id="phase-bars"></div></div>
-                <div class="panel"><h3>Feedback Trend (30 days)</h3><div class="chart-container"><canvas id="feedback-chart"></canvas></div></div>
-                <div class="panel"><h3>Recent Sessions</h3><table id="triage-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Status</th><th>Date</th></tr></thead><tbody></tbody></table></div>
-                <div class="panel"><h3>Recent Feedback</h3><table id="feedback-table"><thead><tr><th>Issue</th><th>Type</th><th>Date</th></tr></thead><tbody></tbody></table></div>
-            </div>
-            <div id="view-agent" class="view">
-                <h2>Enhancement Agent</h2>
-                <div class="health-cards" id="agent-cards"></div>
-                <div class="two-col">
-                    <div class="panel"><h3>Approval Gates</h3><div id="gate-list"></div></div>
-                    <div class="panel"><h3>Round Trips</h3><table id="rt-table"><thead><tr><th>Trips</th><th style="text-align:right">Sessions</th></tr></thead><tbody></tbody></table></div>
-                </div>
-                <div class="panel"><h3>Recent Sessions</h3><table id="agent-table"><thead><tr><th>Issue</th><th>Shadow</th><th>Stage</th><th>Date</th></tr></thead><tbody></tbody></table></div>
             </div>
             <div id="view-system" class="view">
                 <h2>System</h2>
@@ -132,35 +113,15 @@
                 <h2>12-Week Trends</h2>
 
                 <div class="panel">
-                    <h3>Triage Readiness</h3>
-                    <div class="chart-container" style="height:200px"><canvas id="chart-triage-trend"></canvas></div>
-                    <div id="triage-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No triage data yet</div>
+                    <h3>Phase Hit Rates</h3>
+                    <div class="chart-container" style="height:200px"><canvas id="chart-phase-trend"></canvas></div>
+                    <div id="phase-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No phase data yet</div>
                 </div>
 
-                <div class="two-col">
-                    <div class="panel">
-                        <h3>Phase Hit Rates</h3>
-                        <div class="chart-container"><canvas id="chart-phase-trend"></canvas></div>
-                        <div id="phase-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No phase data yet</div>
-                    </div>
-                    <div class="panel">
-                        <h3>Avg Response Time</h3>
-                        <div class="chart-container"><canvas id="chart-response-trend"></canvas></div>
-                        <div id="response-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No response data yet</div>
-                    </div>
-                </div>
-
-                <div class="two-col">
-                    <div class="panel">
-                        <h3>Agent Sessions</h3>
-                        <div class="chart-container"><canvas id="chart-agent-trend"></canvas></div>
-                        <div id="agent-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No agent data yet</div>
-                    </div>
-                    <div class="panel">
-                        <h3>Synthesis &amp; Feedback</h3>
-                        <div class="chart-container"><canvas id="chart-synth-trend"></canvas></div>
-                        <div id="synth-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No synthesis or feedback data yet</div>
-                    </div>
+                <div class="panel">
+                    <h3>Synthesis &amp; Feedback</h3>
+                    <div class="chart-container" style="height:200px"><canvas id="chart-synth-trend"></canvas></div>
+                    <div id="synth-trend-empty" style="display:none;color:#888;text-align:center;padding:40px 0;font-size:0.85rem">No synthesis or feedback data yet</div>
                 </div>
             </div>
         </main>
@@ -187,62 +148,50 @@
         return e;
     }
     function mkTag(t, c) { return el('span', {text: t, cls: 'tag ' + (c || 'tag-default')}); }
-    function stageTag(s) { var m = {complete:'tag-complete', context_brief:'tag-pending', review_pending:'tag-research', researching:'tag-research', approved:'tag-promoted', new:'tag-default'}; return mkTag(s, m[s] || 'tag-default'); }
     function iLink(r, n) { return el('a', {href: 'https://github.com/' + r + '/issues/' + n, text: '#' + n}); }
     function fDate(d) { return d ? d.substring(0, 10) : ''; }
     function hCls(v, g, y, hi) { if (v == null) return 'hc-neutral'; if (hi) return v >= g ? 'hc-green' : v >= y ? 'hc-yellow' : 'hc-red'; return v <= g ? 'hc-green' : v <= y ? 'hc-yellow' : 'hc-red'; }
     function addCards(id, cards) { var c = document.getElementById(id); cards.forEach(function(d) { c.appendChild(el('div', {cls: 'health-card ' + d.cls}, [el('div', {cls: 'label', text: d.label}), el('div', {cls: 'value', text: d.value}), d.sub ? el('div', {cls: 'sub', text: d.sub}) : null])); }); }
     function fillTbl(id, rows) { var tb = document.querySelector('#' + id + ' tbody'); rows.forEach(function(r) { var tr = el('tr'); r.forEach(function(c) { var td = el('td'); if (typeof c === 'string' || typeof c === 'number') td.textContent = c; else td.appendChild(c); tr.appendChild(td); }); tb.appendChild(tr); }); }
-    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); if (n === 'triage' && typeof initFeedbackChart === 'function') initFeedbackChart(); if (n === 'trends' && typeof loadTrends === 'function') loadTrends(); }
+    function showView(n, lk) { document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); }); document.getElementById('view-' + n).classList.add('active'); document.querySelectorAll('.sidebar-nav a').forEach(function(a) { a.classList.remove('active'); }); if (lk) lk.classList.add('active'); if (n === 'trends' && typeof loadTrends === 'function') loadTrends(); }
 
     /* Data */
-    var ts = stats.triage_stats || {total:0, promoted:0, pending:0, recent:[]};
-    var ag = stats.agent_stats || {total:0, stage_breakdown:{}, action_breakdown:{}, recent:[]};
     var ss = stats.safety_stats || {total_actions:0, passed:0, avg_confidence:null};
     var syn = stats.synthesis_stats || {total_briefings:0, total_findings:0, findings_by_type:{}, recent_briefing:''};
-    var gates = stats.approval_gate_stats || [];
-    var rt = stats.round_trip_distribution || [];
     var phr = stats.phase_hit_rate || {};
-    var ab = ag.action_breakdown || {};
 
-    var promRate = ts.total > 0 ? (ts.promoted / ts.total * 100) : null;
     var safeRate = ss.total_actions > 0 ? (ss.passed / ss.total_actions * 100) : null;
-    var avgR = stats.avg_response_seconds;
-    var rStr = 'N/A';
-    if (avgR != null) { var sec = Math.round(avgR); rStr = sec < 60 ? sec + 's' : sec < 3600 ? Math.round(sec / 60) + 'm' : (sec / 3600).toFixed(1) + 'h'; }
 
     /* Sidebar health dots */
     function setDot(id, c) { document.getElementById(id).style.background = c; }
     setDot('dot-overview', '#2ea44f');
-    setDot('dot-triage', promRate == null ? '#484f58' : promRate >= 50 ? '#2ea44f' : promRate >= 25 ? '#d29922' : '#da3633');
-    var pendAg = Object.keys(ag.stage_breakdown).reduce(function(n, k) { return k !== 'complete' ? n + ag.stage_breakdown[k] : n; }, 0);
-    setDot('dot-agent', pendAg > 0 ? '#d29922' : '#2ea44f');
     setDot('dot-system', safeRate == null ? '#484f58' : safeRate >= 95 ? '#2ea44f' : safeRate >= 80 ? '#d29922' : '#da3633');
     setDot('dot-trends', '#484f58');
 
     /* Overview cards */
+    var tUp = stats.total_thumbs_up || 0, tDn = stats.total_thumbs_down || 0, tTot = tUp + tDn;
+    var tRate = tTot > 0 ? (tUp / tTot * 100).toFixed(0) + '%' : 'No reactions';
     addCards('overview-cards', [
-        {label: 'Triage', value: promRate != null ? promRate.toFixed(0) + '%' : 'N/A', sub: ts.promoted + '/' + ts.total + ' promoted', cls: hCls(promRate, 50, 25, true)},
-        {label: 'Agent', value: pendAg, sub: pendAg > 0 ? 'pending review' : 'all complete', cls: pendAg > 0 ? 'hc-yellow' : 'hc-green'},
+        {label: 'Comments', value: stats.total_comments, cls: 'hc-neutral'},
         {label: 'Synthesis', value: syn.total_briefings, sub: syn.total_findings + ' findings', cls: syn.total_briefings > 0 ? 'hc-green' : 'hc-neutral'},
         {label: 'Safety', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', sub: 'pass rate', cls: hCls(safeRate, 95, 80, true)},
-        {label: 'Response', value: rStr, sub: 'avg time', cls: hCls(avgR, 60, 300, false)}
+        {label: 'Reactions', value: tRate, sub: tTot > 0 ? tUp + ' up / ' + tDn + ' down' : '', cls: 'hc-neutral'}
     ]);
 
-    /* Activity feed: merge triage + agent recent, sort by date desc */
-    var feed = [];
-    (ts.recent || []).forEach(function(t) { feed.push({date: t.created_at, type: 'triage', repo: t.repo, num: t.issue_number, sr: t.shadow_repo, sn: t.shadow_issue, status: t.promoted ? 'promoted' : 'pending'}); });
-    (ag.recent || []).forEach(function(a) { feed.push({date: a.created_at, type: 'agent', repo: a.repo, num: a.issue_number, sr: a.shadow_repo, sn: a.shadow_issue, status: a.stage}); });
-    feed.sort(function(a, b) { return b.date.localeCompare(a.date); });
+    /* Recent comments feed in overview */
     var feedEl = document.getElementById('activity-feed');
-    feed.slice(0, 15).forEach(function(f) {
-        var tc = f.status === 'promoted' ? 'tag-promoted' : f.status === 'pending' ? 'tag-pending' : f.status === 'complete' ? 'tag-complete' : f.status === 'context_brief' ? 'tag-pending' : 'tag-research';
+    var recentComments = stats.recent_comments || [];
+    recentComments.slice(0, 15).forEach(function(c) {
+        var lk = iLink(c.repo, c.issue_number);
+        if (c.comment_id) lk.href += '#issuecomment-' + c.comment_id;
+        var ph = el('div', {cls: 'phases', style: 'display:inline'});
+        (c.phases_run || []).forEach(function(p) { ph.appendChild(el('span', {cls: 'phase-tag', text: p})); });
         feedEl.appendChild(el('div', {style: 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.82rem;border-bottom:1px solid #f0f0f0'}, [
-            el('span', {text: fDate(f.date), style: 'color:#8b949e;width:65px;flex-shrink:0;font-size:0.75rem'}),
-            iLink(f.repo, f.num), el('span', {text: f.type, style: 'color:#8b949e;font-size:0.72rem'}), mkTag(f.status, tc)
+            el('span', {text: fDate(c.created_at), style: 'color:#8b949e;width:65px;flex-shrink:0;font-size:0.75rem'}),
+            lk, ph
         ]));
     });
-    if (feed.length === 0) feedEl.appendChild(el('div', {text: 'No activity yet', style: 'color:#8b949e;font-size:0.85rem;padding:8px 0'}));
+    if (recentComments.length === 0) feedEl.appendChild(el('div', {text: 'No comments yet', style: 'color:#8b949e;font-size:0.85rem;padding:8px 0'}));
 
     /* Vector store tables (overview + system) */
     var dc = stats.document_counts || {};
@@ -251,31 +200,10 @@
     fillTbl('vector-table', vr);
     fillTbl('sys-vector-table', vr);
 
-    /* Charts */
-    var dtc = stats.daily_triage_counts || [];
-    var dac = stats.daily_agent_counts || [];
+    /* Feedback overview chart */
     var dfc = stats.daily_feedback_counts || [];
-
-    if (dtc.length > 0 && typeof Chart !== 'undefined') {
-        new Chart(document.getElementById('activity-chart'), {
-            type: 'line',
-            data: {
-                labels: dtc.map(function(d) { return d.date.substring(5); }),
-                datasets: [
-                    { label: 'Triage', data: dtc.map(function(d) { return d.count; }), borderColor: '#2ea44f', backgroundColor: 'rgba(46,164,79,0.1)', fill: true, tension: 0.3, pointRadius: 2 },
-                    { label: 'Agent', data: dac.map(function(d) { return d.count; }), borderColor: '#0366d6', backgroundColor: 'rgba(3,102,214,0.1)', fill: true, tension: 0.3, pointRadius: 2 }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } }, scales: { x: { ticks: { maxTicksAutoSkip: true, maxRotation: 0 } }, y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-        });
-    }
-
-    /* Feedback chart — deferred until Triage view is shown (canvas must be visible for Chart.js to measure) */
-    var feedbackChartInit = false;
-    function initFeedbackChart() {
-        if (feedbackChartInit || dfc.length === 0 || typeof Chart === 'undefined') return;
-        feedbackChartInit = true;
-        new Chart(document.getElementById('feedback-chart'), {
+    if (dfc.length > 0 && typeof Chart !== 'undefined') {
+        new Chart(document.getElementById('feedback-overview-chart'), {
             type: 'bar',
             data: {
                 labels: dfc.map(function(d) { return d.date.substring(5); }),
@@ -288,144 +216,9 @@
     /* Modal drill-down */
     function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
     document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
-    function fetchJSON(url) {
-        return fetch(url).then(function(r) {
-            if (!r.ok) { return r.text().then(function(t) { throw new Error(t || ('HTTP ' + r.status)); }); }
-            return r.json();
-        });
-    }
-    function openModalError(title, msg) {
-        var mc = document.getElementById('modal-content');
-        mc.textContent = '';
-        mc.appendChild(el('h3', {text: title, id: 'modal-title'}));
-        mc.appendChild(el('p', {text: msg || 'Request failed'}));
-        document.getElementById('modal-overlay').classList.add('open');
-    }
-
-    function showTriageDetail(repo, issue) {
-        fetchJSON('/api/triage/' + issue + '?repo=' + encodeURIComponent(repo))
-            .then(function(d) {
-                var mc = document.getElementById('modal-content');
-                mc.textContent = '';
-                var h = el('h3', {text: 'Triage: #' + d.issue_number, id: 'modal-title'});
-                var meta = el('p');
-                meta.appendChild(el('strong', {text: 'Repo: '}));
-                meta.appendChild(document.createTextNode(d.repo + ' | '));
-                meta.appendChild(el('strong', {text: 'Shadow: '}));
-                meta.appendChild(document.createTextNode(d.shadow_repo + '#' + d.shadow_issue + ' | '));
-                meta.appendChild(el('strong', {text: 'Status: '}));
-                meta.appendChild(document.createTextNode(d.promoted ? 'Promoted' : 'Pending'));
-                meta.appendChild(document.createTextNode(' | '));
-                meta.appendChild(el('strong', {text: 'Date: '}));
-                meta.appendChild(document.createTextNode(fDate(d.created_at)));
-                var phases = el('p');
-                phases.appendChild(el('strong', {text: 'Phases: '}));
-                phases.appendChild(document.createTextNode((d.phases_run || []).join(', ')));
-                var commentH = el('h4', {text: 'Triage Comment'});
-                var pre = el('pre', {text: d.triage_comment || ''});
-                mc.appendChild(h);
-                mc.appendChild(meta);
-                mc.appendChild(phases);
-                mc.appendChild(commentH);
-                mc.appendChild(pre);
-                document.getElementById('modal-overlay').classList.add('open');
-            })
-            .catch(function(err) { openModalError('Triage detail error', err.message); });
-    }
-
-    function showAgentDetail(repo, issue) {
-        fetchJSON('/api/agent/' + issue + '?repo=' + encodeURIComponent(repo))
-            .then(function(d) {
-                var mc = document.getElementById('modal-content');
-                mc.textContent = '';
-                var h = el('h3', {text: 'Agent: #' + d.issue_number, id: 'modal-title'});
-                var meta = el('p');
-                meta.appendChild(el('strong', {text: 'Repo: '}));
-                meta.appendChild(document.createTextNode(d.repo + ' | '));
-                meta.appendChild(el('strong', {text: 'Shadow: '}));
-                meta.appendChild(document.createTextNode(d.shadow_repo + '#' + d.shadow_issue + ' | '));
-                meta.appendChild(el('strong', {text: 'Stage: '}));
-                meta.appendChild(document.createTextNode(d.stage + ' | '));
-                meta.appendChild(el('strong', {text: 'Round trips: '}));
-                meta.appendChild(document.createTextNode(d.round_trip_count));
-                meta.appendChild(document.createTextNode(' | '));
-                meta.appendChild(el('strong', {text: 'Date: '}));
-                meta.appendChild(document.createTextNode(fDate(d.created_at)));
-                var logH = el('h4', {text: 'Audit Log'});
-                mc.appendChild(h);
-                mc.appendChild(meta);
-                mc.appendChild(logH);
-                (d.audit_log || []).forEach(function(ae) {
-                    var entry = el('div', {cls: 'audit-entry ' + (ae.safety_passed ? 'passed' : 'failed')});
-                    entry.appendChild(el('strong', {text: ae.action_type}));
-                    entry.appendChild(document.createTextNode(' \u2014 ' + fDate(ae.created_at) + ' (confidence: ' + (ae.confidence_score * 100).toFixed(0) + '%, safety: ' + (ae.safety_passed ? 'pass' : 'fail') + ')'));
-                    entry.appendChild(el('br'));
-                    entry.appendChild(document.createTextNode((ae.output_summary || '').substring(0, 500)));
-                    mc.appendChild(entry);
-                });
-                document.getElementById('modal-overlay').classList.add('open');
-            })
-            .catch(function(err) { openModalError('Agent detail error', err.message); });
-    }
-
-    /* Triage view */
-    var fb = stats.feedback_stats || {total_edit_signals:0, total_mentions:0, fill_rate:null, recent_feedback:[]};
-    var fillPct = fb.fill_rate != null ? (fb.fill_rate * 100).toFixed(0) + '%' : 'N/A';
-    var fillCls = fb.fill_rate == null ? 'hc-neutral' : fb.fill_rate >= 0.5 ? 'hc-green' : fb.fill_rate >= 0.25 ? 'hc-yellow' : 'hc-red';
-    addCards('triage-cards', [
-        {label: 'Total', value: ts.total, cls: 'hc-neutral'},
-        {label: 'Promoted', value: ts.promoted, sub: 'via lgtm', cls: 'hc-green'},
-        {label: 'Pending', value: ts.pending, cls: ts.pending > 0 ? 'hc-yellow' : 'hc-neutral'},
-        {label: 'P1 Fill Rate', value: fillPct, sub: fb.total_edit_signals + ' edits, ' + fb.total_mentions + ' mentions', cls: fillCls}
-    ]);
-    var barsEl = document.getElementById('phase-bars');
-    var pkeys = Object.keys(phr).sort();
-    if (pkeys.length === 0) barsEl.appendChild(el('div', {text: 'No triage data yet', style: 'color:#8b949e;font-size:0.85rem'}));
-    pkeys.forEach(function(p) { var pct = (phr[p] * 100).toFixed(0); barsEl.appendChild(el('div', {cls: 'bar-row'}, [el('span', {cls: 'bar-label', text: p}), el('div', {cls: 'bar-track'}, [el('div', {cls: 'bar-fill', style: 'width:' + pct + '%'})]), el('span', {cls: 'bar-pct', text: pct + '%'})])); });
-    (ts.recent || []).forEach(function(t) {
-        var tr = el('tr', {cls: 'clickable', tabindex: '0', role: 'button', 'aria-label': 'Open triage details for issue ' + t.issue_number});
-        tr.onclick = function() { showTriageDetail(t.repo, t.issue_number); };
-        tr.onkeydown = function(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showTriageDetail(t.repo, t.issue_number); } };
-        var cells = [iLink(t.repo, t.issue_number), t.shadow_repo ? iLink(t.shadow_repo, t.shadow_issue) : el('span', {text: '#' + t.shadow_issue}), t.promoted ? mkTag('promoted', 'tag-promoted') : mkTag('pending', 'tag-pending'), fDate(t.created_at)];
-        cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
-        document.querySelector('#triage-table tbody').appendChild(tr);
-    });
-    fillTbl('feedback-table', (fb.recent_feedback || []).map(function(f) {
-        var tc = f.signal_type === 'issue_edit_filled' ? 'tag-promoted' : 'tag-default';
-        var label = f.signal_type === 'issue_edit_filled' ? 'edit' : 'mention';
-        return [iLink(f.repo, f.issue_number), mkTag(label, tc), fDate(f.created_at)];
-    }));
-
-    /* Agent view */
-    addCards('agent-cards', [
-        {label: 'Sessions', value: ag.total, cls: 'hc-neutral'},
-        {label: 'Briefs', value: ab['posted_context_brief'] || 0, cls: 'hc-neutral'},
-        {label: 'Researched', value: ab['posted_research'] || 0, cls: 'hc-neutral'},
-        {label: 'Acknowledged', value: ab['context_acknowledged'] || 0, cls: 'hc-neutral'}
-    ]);
-    var gEl = document.getElementById('gate-list');
-    if (gates.length === 0) gEl.appendChild(el('div', {text: 'No approval gates yet', style: 'color:#8b949e;font-size:0.85rem'}));
-    var gbt = {}; gates.forEach(function(g) { if (!gbt[g.gate_type]) gbt[g.gate_type] = []; gbt[g.gate_type].push(g); });
-    Object.keys(gbt).sort().forEach(function(gt) {
-        var row = el('div', {style: 'margin-bottom:6px;font-size:0.82rem'});
-        row.appendChild(el('span', {text: gt + ': ', style: 'color:#555'}));
-        gbt[gt].forEach(function(g) { var c = g.status === 'approved' ? 'tag-promoted' : g.status === 'rejected' ? 'tag-rejected' : g.status === 'pending' ? 'tag-pending' : 'tag-research'; row.appendChild(mkTag(g.count + ' ' + g.status, c)); row.appendChild(document.createTextNode(' ')); });
-        gEl.appendChild(row);
-    });
-    fillTbl('rt-table', rt.map(function(b) { return [b.round_trips, b.count]; }));
-    (ag.recent || []).forEach(function(a) {
-        var tr = el('tr', {cls: 'clickable', tabindex: '0', role: 'button', 'aria-label': 'Open agent details for issue ' + a.issue_number});
-        tr.onclick = function() { showAgentDetail(a.repo, a.issue_number); };
-        tr.onkeydown = function(ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); showAgentDetail(a.repo, a.issue_number); } };
-        var cells = [iLink(a.repo, a.issue_number), a.shadow_repo ? iLink(a.shadow_repo, a.shadow_issue) : el('span', {text: '#' + a.shadow_issue}), stageTag(a.stage), fDate(a.created_at)];
-        cells.forEach(function(c) { var td = el('td'); if (typeof c === 'string') td.textContent = c; else td.appendChild(c); tr.appendChild(td); });
-        document.querySelector('#agent-table tbody').appendChild(tr);
-    });
 
     /* System view */
     var avgC = ss.avg_confidence != null ? (ss.avg_confidence * 100).toFixed(0) + '%' : 'N/A';
-    var tUp = stats.total_thumbs_up || 0, tDn = stats.total_thumbs_down || 0, tTot = tUp + tDn;
-    var tRate = tTot > 0 ? (tUp / tTot * 100).toFixed(0) + '%' : 'No reactions';
     addCards('system-cards', [
         {label: 'Safety Pass', value: safeRate != null ? safeRate.toFixed(0) + '%' : 'N/A', cls: hCls(safeRate, 95, 80, true)},
         {label: 'Avg Confidence', value: avgC, cls: 'hc-neutral'},
@@ -447,10 +240,9 @@
     if (syn.recent_briefing) synRows.push(['Last Briefing', fDate(syn.recent_briefing)]);
     fillTbl('synthesis-table', synRows);
 
-    /* Auto-refresh every 60 seconds, skip when modal is open or page hidden */
+    /* Auto-refresh every 60 seconds, skip when page hidden */
     setInterval(function() {
         if (document.hidden) return;
-        if (document.getElementById('modal-overlay').classList.contains('open')) return;
         location.reload();
     }, 60000);
 
@@ -462,10 +254,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 trendsLoaded = true;
-                renderTriageTrend(data.triage);
                 renderPhaseTrend(data.phases);
-                renderResponseTrend(data.response_time);
-                renderAgentTrend(data.agents);
                 renderSynthTrend(data.synthesis, data.feedback);
             })
             .catch(function(e) { console.error('Failed to load trends:', e); });
@@ -485,21 +274,6 @@
         document.getElementById(emptyId).style.display = isEmpty ? 'block' : 'none';
     }
 
-    function renderTriageTrend(data) {
-        if (isAllZero(data, ['total'])) { showEmpty('chart-triage-trend', 'triage-trend-empty', true); return; }
-        showEmpty('chart-triage-trend', 'triage-trend-empty', false);
-        new Chart(document.getElementById('chart-triage-trend'), {
-            data: {
-                labels: data.map(function(d) { return fmtWeek(d.week); }),
-                datasets: [
-                    { type: 'bar', label: 'Sessions', data: data.map(function(d) { return d.total; }), backgroundColor: 'rgba(46,164,79,0.5)', yAxisID: 'y' },
-                    { type: 'line', label: 'Promotion %', data: data.map(function(d) { return Math.round(d.rate * 100); }), borderColor: '#0366d6', yAxisID: 'y1', tension: 0.3 }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Sessions' } }, y1: { position: 'right', beginAtZero: true, max: 100, title: { display: true, text: '%' }, grid: { drawOnChartArea: false } } } }
-        });
-    }
-
     function renderPhaseTrend(data) {
         if (isAllZero(data, ['missing_info', 'doc_search', 'enhancement_context'])) { showEmpty('chart-phase-trend', 'phase-trend-empty', true); return; }
         showEmpty('chart-phase-trend', 'phase-trend-empty', false);
@@ -514,37 +288,6 @@
                 ]
             },
             options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Hit Rate %' } } } }
-        });
-    }
-
-    function renderResponseTrend(data) {
-        if (isAllZero(data, ['avg_seconds'])) { showEmpty('chart-response-trend', 'response-trend-empty', true); return; }
-        showEmpty('chart-response-trend', 'response-trend-empty', false);
-        new Chart(document.getElementById('chart-response-trend'), {
-            type: 'line',
-            data: {
-                labels: data.map(function(d) { return fmtWeek(d.week); }),
-                datasets: [{ label: 'Avg (seconds)', data: data.map(function(d) { return Math.round(d.avg_seconds * 10) / 10; }), borderColor: '#e36209', fill: true, backgroundColor: 'rgba(227,98,9,0.1)', tension: 0.3 }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, title: { display: true, text: 'Seconds' } } } }
-        });
-    }
-
-    function renderAgentTrend(data) {
-        if (isAllZero(data, ['total'])) { showEmpty('chart-agent-trend', 'agent-trend-empty', true); return; }
-        showEmpty('chart-agent-trend', 'agent-trend-empty', false);
-        new Chart(document.getElementById('chart-agent-trend'), {
-            type: 'bar',
-            data: {
-                labels: data.map(function(d) { return fmtWeek(d.week); }),
-                datasets: [
-                    { label: 'Approved', data: data.map(function(d) { return d.approved; }), backgroundColor: '#2ea44f' },
-                    { label: 'Complete', data: data.map(function(d) { return d.complete; }), backgroundColor: '#0366d6' },
-                    { label: 'Pending', data: data.map(function(d) { return d.pending; }), backgroundColor: '#dbab09' },
-                    { label: 'Rejected', data: data.map(function(d) { return d.rejected; }), backgroundColor: '#da3633' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
         });
     }
 
