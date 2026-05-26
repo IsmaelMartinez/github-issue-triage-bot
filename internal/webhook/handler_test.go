@@ -3,9 +3,7 @@ package webhook
 import (
 	"testing"
 
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/comment"
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/phases"
 )
 
 func TestSanitizeBody(t *testing.T) {
@@ -107,50 +105,6 @@ func TestHasLabel(t *testing.T) {
 			t.Errorf("hasLabel(nil, \"bug\") = %v, want false", got)
 		}
 	})
-}
-
-func TestCollectPhasesRun(t *testing.T) {
-	tests := []struct {
-		name   string
-		result comment.TriageResult
-		want   []string
-	}{
-		{
-			name:   "missing_info always included",
-			result: comment.TriageResult{},
-			want:   []string{"missing_info"},
-		},
-		{
-			name: "all active phases",
-			result: comment.TriageResult{
-				Phase2:  []phases.Suggestion{{}},
-				Phase4a: []phases.ContextMatch{{}},
-			},
-			want: []string{"missing_info", "doc_search", "enhancement_context"},
-		},
-		{
-			name: "bug phases only",
-			result: comment.TriageResult{
-				IsBug:  true,
-				Phase2: []phases.Suggestion{{}},
-			},
-			want: []string{"missing_info", "doc_search"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := collectPhasesRun(tt.result, false)
-			if len(got) != len(tt.want) {
-				t.Fatalf("collectPhasesRun() returned %v, want %v", got, tt.want)
-			}
-			for i, phase := range got {
-				if phase != tt.want[i] {
-					t.Errorf("collectPhasesRun()[%d] = %q, want %q", i, phase, tt.want[i])
-				}
-			}
-		})
-	}
 }
 
 func TestIsDocumentationBug(t *testing.T) {

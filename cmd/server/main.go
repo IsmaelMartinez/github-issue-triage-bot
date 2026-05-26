@@ -18,9 +18,7 @@ import (
 
 	gh "github.com/IsmaelMartinez/github-issue-triage-bot/internal/github"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/llm"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/mirror"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/store"
-	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/synthesis"
 	"github.com/IsmaelMartinez/github-issue-triage-bot/internal/webhook"
 )
 
@@ -141,25 +139,8 @@ func main() {
 		logger.Info("api.github.com TLS warmup ok")
 	}()
 
-	// Parse shadow repos configuration
-	shadowRepos := parseShadowRepos(os.Getenv("SHADOW_REPOS"))
-	if len(shadowRepos) > 0 {
-		logger.Info("shadow repos configured", "count", len(shadowRepos))
-	}
-
-	// Set up mirror service for shadow repo code sync
-	var mirrorSvc *mirror.Service
-	if len(shadowRepos) > 0 {
-		mirrorCacheDir := os.Getenv("MIRROR_CACHE_DIR")
-		if mirrorCacheDir == "" {
-			mirrorCacheDir = os.TempDir()
-		}
-		mirrorSvc = mirror.New(ghClient, logger, mirrorCacheDir)
-		logger.Info("mirror service configured", "cacheDir", mirrorCacheDir)
-	}
-
 	// Set up HTTP server
-	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx, shadowRepos, mirrorSvc)
+	handler := webhook.New(webhookSecret, sourceRepo, s, llmClient, ghClient, logger, ctx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", handler.ServeHTTP)
@@ -177,10 +158,6 @@ func main() {
 	}
 	if sourceRepo != "" {
 		allowedRepos[sourceRepo] = true
-	}
-	for source, shadow := range shadowRepos {
-		allowedRepos[source] = true
-		allowedRepos[shadow] = true
 	}
 
 	srv := &server{
@@ -200,12 +177,6 @@ func main() {
 			return
 		}
 
-		// Retry promotions that were requested via `lgtm` but failed to post
-		// publicly (typically a cold-start TLS hiccup). Running before the
-		// stale-session pass means a successful retry clears the session
-		// rather than closing it as stale.
-		promotionsRetried, promotionsFailed := retryPendingPromotions(r.Context(), s, ghClient, logger)
-
 		staleDuration := 14 * 24 * time.Hour
 		stale, err := s.ListStaleSessions(r.Context(), staleDuration)
 		if err != nil {
@@ -220,48 +191,19 @@ func main() {
 			return
 		}
 
-		// Get installation ID for closing issues
-		installations, err := ghClient.ListInstallations(r.Context())
-		if err != nil || len(installations) == 0 {
-			logger.Error("failed to get installations for cleanup", "error", err)
-			http.Error(w, "failed to get installations", http.StatusInternalServerError)
-			return
-		}
-		installID := installations[0]
-
 		closed := 0
 		for _, ss := range stale {
-			// Orphaned agent sessions have ShadowIssueNumber == 0 (NULL in the DB);
-			// there's no shadow issue to close, so just mark the session complete.
-			if ss.ShadowIssueNumber == 0 {
-				if ss.SessionType == "agent" {
-					_ = s.MarkSessionComplete(r.Context(), ss.ID)
-				}
-				closed++
-				logger.Info("closed orphaned agent session with no shadow issue", "session_id", ss.ID, "shadow_repo", ss.ShadowRepo)
-				continue
-			}
-			note := "This shadow issue has been automatically closed after 14 days without a response."
-			if _, err := ghClient.CreateComment(r.Context(), installID, ss.ShadowRepo, ss.ShadowIssueNumber, note); err != nil {
-				logger.Error("failed to comment on stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
-				continue
-			}
-			if err := ghClient.CloseIssue(r.Context(), installID, ss.ShadowRepo, ss.ShadowIssueNumber); err != nil {
-				logger.Error("failed to close stale shadow issue", "error", err, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
-				continue
-			}
-			switch ss.SessionType {
-			case "agent":
+			if ss.SessionType == "agent" {
 				_ = s.MarkSessionComplete(r.Context(), ss.ID)
-			case "triage":
+			} else if ss.SessionType == "triage" {
 				_ = s.MarkTriageSessionClosed(r.Context(), ss.ID)
 			}
 			closed++
-			logger.Info("closed stale shadow issue", "type", ss.SessionType, "shadow_repo", ss.ShadowRepo, "shadow_issue", ss.ShadowIssueNumber)
+			logger.Info("closed stale session", "type", ss.SessionType, "session_id", ss.ID)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d,"promotions_retried":%d,"promotions_failed":%d}`, closed, len(stale), promotionsRetried, promotionsFailed)
+		fmt.Fprintf(w, `{"closed":%d,"total_stale":%d}`, closed, len(stale))
 	})
 	mux.HandleFunc("/health-check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -430,55 +372,6 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"repo":%q,"status":"unpaused"}`, repo)
-	})
-
-	mux.HandleFunc("/synthesize", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if !validateIngestAuth(r.Header.Get("Authorization"), ingestSecret) {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		repo := r.URL.Query().Get("repo")
-		if repo == "" || !allowedRepos[repo] {
-			http.Error(w, "invalid or missing repo parameter", http.StatusBadRequest)
-			return
-		}
-		shadowRepo, hasShadow := shadowRepos[repo]
-		if !hasShadow {
-			http.Error(w, "no shadow repo configured for this repo", http.StatusBadRequest)
-			return
-		}
-
-		installations, instErr := ghClient.ListInstallations(r.Context())
-		if instErr != nil {
-			logger.Error("failed to get installations for synthesis", "error", instErr)
-			http.Error(w, "failed to get installations", http.StatusInternalServerError)
-			return
-		}
-		if len(installations) == 0 {
-			http.Error(w, "no installations found", http.StatusInternalServerError)
-			return
-		}
-		installID := installations[0]
-
-		clusterSynth := synthesis.NewClusterSynthesizer(s)
-		driftSynth := synthesis.NewDriftSynthesizer(s)
-		upstreamSynth := synthesis.NewUpstreamSynthesizer(s)
-		runner := synthesis.NewRunner(ghClient, s, logger, clusterSynth, driftSynth, upstreamSynth)
-
-		const weeklyLookback = 7 * 24 * time.Hour
-		findingCount, runErr := runner.Run(r.Context(), installID, repo, shadowRepo, weeklyLookback)
-		if runErr != nil {
-			logger.Error("synthesis run failed", "error", runErr, "repo", repo)
-			http.Error(w, "synthesis failed", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","findings":%d}`, findingCount)
 	})
 
 	mux.HandleFunc("/upstream-watch", func(w http.ResponseWriter, r *http.Request) {
@@ -662,38 +555,6 @@ func main() {
 	}
 }
 
-// retryPendingPromotions re-attempts triage-session promotions whose lgtm was
-// received but the follow-up CreateComment failed. Returns counts of retried
-// and failed attempts. Safe to call when nothing is pending.
-func retryPendingPromotions(ctx context.Context, s *store.Store, ghClient *gh.Client, logger *slog.Logger) (retried, failed int) {
-	pending, err := s.ListPendingPromotions(ctx)
-	if err != nil {
-		logger.Error("list pending promotions", "error", err)
-		return 0, 0
-	}
-	if len(pending) == 0 {
-		return 0, 0
-	}
-	installations, err := ghClient.ListInstallations(ctx)
-	if err != nil || len(installations) == 0 {
-		logger.Error("get installations for pending promotion retry", "error", err)
-		return 0, 0
-	}
-	installID := installations[0]
-	for _, ts := range pending {
-		if err := webhook.PromoteTriageSession(ctx, ghClient, s, installID, ts); err != nil {
-			logger.Error("retry pending promotion", "error", err, "repo", ts.Repo, "issue", ts.IssueNumber)
-			failed++
-			continue
-		}
-		_ = s.ClearPendingPromotion(ctx, ts.ID)
-		_ = s.MarkTriageSessionClosed(ctx, ts.ID)
-		retried++
-		logger.Info("retried pending promotion", "repo", ts.Repo, "issue", ts.IssueNumber)
-	}
-	return retried, failed
-}
-
 func requireEnv(key string) string {
 	val := os.Getenv(key)
 	if val == "" {
@@ -725,16 +586,3 @@ func parseWeeksParam(s string) int {
 	return store.ClampWeeks(n)
 }
 
-func parseShadowRepos(s string) map[string]string {
-	result := make(map[string]string)
-	if s == "" {
-		return result
-	}
-	for _, pair := range strings.Split(s, ",") {
-		parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
-		if len(parts) == 2 {
-			result[parts[0]] = parts[1]
-		}
-	}
-	return result
-}
