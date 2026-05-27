@@ -1,7 +1,7 @@
-# ADR-007: simili-bot trial — interim outcome and reconfiguration
+# ADR-007: simili-bot trial — dropped
 
-**Status:** In progress (mid-trial reconfiguration)
-**Date:** 2026-04-26
+**Status:** Closed (dropped)
+**Date:** 2026-04-26 (updated 2026-05-27)
 
 ## Context
 
@@ -19,17 +19,25 @@ The second is that against the as-installed configuration, two of the four succe
 
 The "Similar Threads" list — the only output the trial actually wanted — was useful in every case. #2433 specifically was unblocked by it.
 
-## Decision
+## Interim decision (2026-04-26)
 
-Reconfigure simili-bot in the teams-for-linux repo to true similarity-only output before deciding adopt vs drop. Keep the "Similar Threads" table because that is the genuinely useful signal. Remove the duplicate-confidence callout, the auto-close countdown, and the Quality Score / Quality Improvements sections. The reconfiguration is a workflow-level change in the teams-for-linux repo and is being handed off there as a separate task.
+Reconfigure simili-bot in the teams-for-linux repo to true similarity-only output before deciding adopt vs drop. Keep the "Similar Threads" table because that is the genuinely useful signal. Remove the duplicate-confidence callout, the auto-close countdown, and the Quality Score / Quality Improvements sections.
 
-After the reconfiguration is in place, observe the next ~10 issues to confirm the noise has dropped, then return to this record with adopt / extend / drop. If simili-bot's configuration cannot be reduced to "Similar Threads only" without forking, drop the bot and note the reason here.
+## Post-reconfiguration observation (2026-04-27 to 2026-05-18)
+
+The reconfiguration shipped on 2026-04-27 with an explicit `steps:` list in `.github/simili.yaml` that bypassed the broken workflow-name handling. Between 2026-04-27 and 2026-05-18, simili-bot posted 24 reports across newly opened issues — all correctly in similarity-only mode with no duplicate callouts, no auto-close countdowns, and no quality score sections. The noise problems from the first 30 days were eliminated.
+
+User engagement with the reports was minimal. One user (jayenashar on #2512) explicitly followed up on the similar-threads list and used it to disambiguate linked issues — the single strongest signal in the trial. The maintainer referenced similar threads from the report in replies on #2499 and #2531. No user or maintainer ever explicitly said the simili report was helpful or reacted to one. The reports were passively useful as background context but did not change the outcome of any issue conversation beyond the two cited cases.
+
+## Final decision: drop (2026-05-27)
+
+The simili-bot trial concludes with a drop verdict. The upstream repository (`similigh/simili-bot`) returned 404 as of 2026-05-20, causing all subsequent workflow runs to fail with "Repository access blocked". This makes continued operation impossible regardless of the tool's value. Even before the upstream disappearance, the evidence was marginal: 24 reports with two cases of explicit engagement is not strong enough to justify maintaining a forked copy of a disappeared dependency.
+
+The duplicate-detection gap left by Phase 3 removal stays open. The team accepts this rather than pursuing a replacement immediately. The similar-threads use case is partially covered by this bot's own vector-search neighbours in `/brief-preview` and the `teams-for-linux-issue-review` skill, which already surfaces related issues with richer context (including in-flight PRs and upstream cross-references).
 
 ## Consequences
 
-Simili-bot stays installed but its output collapses to a similar-threads list. The trial timeline extends past the original 30-day window because the first ~30 days were measuring a misconfigured tool. The decision to make this an interim record rather than a final one is deliberate — closing it out now would either be a premature drop or a premature adoption based on data that does not match the intended configuration.
-
-This bot's Phase 1 stays the source of truth for missing-info detection. The duplicate-detection gap left by removing Phase 3 remains open until simili-bot's reconfigured behaviour is observed; if it does not work in the narrower mode either, the gap stays open and we accept that.
+The `simili.yml` and `simili-seed.yml` workflows and `.github/simili.yaml` config should be removed from `IsmaelMartinez/teams-for-linux`. The Qdrant Cloud instance (if still active) can be decommissioned. No code changes needed in this repo.
 
 ## Learnings worth keeping regardless of final outcome
 
