@@ -14,8 +14,6 @@ type HealthMetrics struct {
 	ConfidenceAllTime   *float64 `json:"confidence_all_time"`
 	StuckSessionCount   int      `json:"stuck_session_count"`
 	TotalRecentSessions int      `json:"total_recent_sessions"`
-	OrphanedTriageCount int      `json:"orphaned_triage_count"`
-	TotalTriageSessions int      `json:"total_triage_sessions"`
 	CheckedAt           string   `json:"checked_at"`
 }
 
@@ -67,22 +65,6 @@ func (s *Store) GetHealthMetrics(ctx context.Context, repo string) (*HealthMetri
 		errs = append(errs, fmt.Errorf("stuck sessions query: %w", err))
 	}
 
-	// Orphaned triage sessions: no bot_comment, not closed, older than 14 days.
-	// Shadow triage sessions legitimately wait for maintainer review (lgtm/reject),
-	// so 14 days matches the stale cleanup threshold.
-	err = s.pool.QueryRow(ctx, `
-		SELECT
-			(SELECT COUNT(*) FROM triage_sessions t
-			 LEFT JOIN bot_comments b ON t.repo = b.repo AND t.issue_number = b.issue_number
-			 WHERE t.repo = $1 AND b.id IS NULL AND t.closed_at IS NULL AND t.created_at < now() - interval '14 days'),
-			(SELECT COUNT(*) FROM triage_sessions
-			 WHERE repo = $1 AND created_at > now() - interval '30 days')
-	`, repo).Scan(&m.OrphanedTriageCount, &m.TotalTriageSessions)
-	if err != nil {
-		log.Warn("health check: orphaned triage query failed", "error", err)
-		errs = append(errs, fmt.Errorf("orphaned triage query: %w", err))
-	}
-
 	return m, errors.Join(errs...)
 }
 
@@ -111,16 +93,6 @@ func EvaluateThresholds(m *HealthMetrics) []HealthAlert {
 			Current:   float64(m.StuckSessionCount),
 			Threshold: 2,
 			Message:   "More than 2 agent sessions are stuck in non-terminal stages for over 1 hour",
-		})
-	}
-
-	// Orphaned triage: more than 3 triage sessions without bot_comment or closure
-	if m.OrphanedTriageCount > 3 {
-		alerts = append(alerts, HealthAlert{
-			Metric:    "orphaned_triage",
-			Current:   float64(m.OrphanedTriageCount),
-			Threshold: 3,
-			Message:   "More than 3 triage sessions older than 1 hour have no bot comment and are not closed",
 		})
 	}
 
