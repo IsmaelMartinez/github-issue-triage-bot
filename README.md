@@ -84,7 +84,7 @@ Neon PostgreSQL + pgvector             GitHub Pages Dashboard
 
 ### Silent RAG mode
 
-Shadow repo posting was retired in [ADR 014](docs/adr/014-retire-shadow-repos.md). The webhook now embeds issues and stores context silently. Maintainers retrieve context on demand via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill, which performs RAG over the vector store. Bug triage comments are still posted directly on public issues when relevant matches are found.
+Shadow repo posting was retired in [ADR 014](docs/adr/014-retire-shadow-repos.md). The webhook now embeds issues and stores context silently — it posts no triage comments on public issues. Maintainers retrieve context on demand via the `/brief-preview` endpoint or the `teams-for-linux-issue-review` Claude Code skill, which performs RAG over the vector store. The only comment the bot posts on a public issue is the acknowledgement to a `/pause` or `/unpause` command from the repo owner.
 
 ### Environment variables
 
