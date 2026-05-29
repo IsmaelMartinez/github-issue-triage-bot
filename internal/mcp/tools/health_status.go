@@ -22,7 +22,7 @@ func NewHealthStatusTool(baseURL, secret string) Tool {
 
 	def := mcp.ToolDef{
 		Name:        "get_health_status",
-		Description: "Returns operational health metrics: confidence score trends, stuck sessions, orphaned triage.",
+		Description: "Returns operational health metrics: confidence score trends and stuck sessions.",
 		InputSchema: schema,
 	}
 
