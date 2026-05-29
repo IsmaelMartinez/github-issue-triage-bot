@@ -40,14 +40,22 @@ No option is chosen yet. The deciding input is usage, not architecture taste, an
 This section is intentionally a scaffold; the next working session will turn each line into a grounded finding.
 
 - Capability inventory and usage audit: enumerate every endpoint and `internal/` package, classify each as used / unused / dead, and map each to (a) a commodity tool, (b) "the agent can do it directly," or (c) "genuinely bespoke."
-- Sourcebot specifics (needs verification, not assumed): what it indexes (code only?), whether it touches issues or docs at all, self-host vs cloud, cost, multi-repo support, MCP integration, and which exact capability here it would actually replace (likely `internal/codenav`, not the core).
 - The semantic-issue-search question: is semantic search over the issue corpus worth keeping at all given the observed noise, or does `gh search` plus the agent suffice? If kept, does it need this service or could a lighter index serve?
-- Temporal synthesis value: is anyone (the maintainer, repo-butler) actually consuming cluster/drift/upstream findings, and would they if presented differently? This is the make-or-break for option 2.
 - Cost and maintenance ledger: current Cloud Run + Neon + CI + Terraform run-cost and the maintenance burden (this session alone fixed a doc drift, a dead metric, an embedding leak, and a misrouted MCP registration on an unused service), versus the footprint of each alternative.
 - Data preservation: is the pgvector corpus worth exporting/keeping, and what is the migration/rollback path for each option.
 - Multi-repo ambition: is portfolio-wide institutional memory still a goal, or has the project effectively become teams-for-linux-only? This reframes everything.
 - The repo-butler boundary: what repo-butler already covers, so we do not retire something it depends on or rebuild something it provides.
 - Interaction with the deferred rename (roadmap Stream 7): if the service dissolves, the rename question is moot; if it survives as synthesis-only, the rename should reflect the narrower identity.
+
+## Findings (2026-05-29)
+
+Two of the specifics above have been investigated and are now grounded.
+
+Sourcebot does not replace the core; it covers a peripheral slice. Verified against its official docs, GitHub, and changelog: Sourcebot indexes code only (no issues, PRs, discussions, or release notes), searches lexically/regex via Zoekt (no semantic/embedding search — that is a roadmap aspiration, not shipped), offers an agentic "Ask Sourcebot" code Q&A, and exposes an 11-tool MCP server that operates entirely on code, symbols, commits, and diffs. It is multi-repo, self-hosted (Docker plus Postgres and Redis), under a fair-source FSL licence. It does none of triage, duplicate detection, temporal/trend analysis, decision-drift detection, or upstream cross-referencing. Conclusion: Sourcebot (or a tool like it) could replace `internal/codenav` and the general "find relevant source for an issue" need — and would do so better than the bespoke build, with a ready MCP server — but it cannot replace the institutional-memory core (issue/doc/upstream RAG, synthesis). This sharpens the framing: the "gather now" half decomposes cleanly into commodity tools, but the "remember over time" half has no off-the-shelf substitute. The choice is therefore not "swap in tools" but "is the bespoke memory core worth keeping at all."
+
+The synthesis engine runs reliably but its output is barely consumed. The weekly cron has executed nine successful scheduled runs since 2026-03-30, each generating findings. But consumption is near-zero: `/report/trends` — the structured endpoint built specifically for repo-butler to ingest findings, the entire Month-3 integration justification — had zero reads in the last 30 days, so that integration is effectively dead. The findings do surface on the live `/dashboard`, which was viewed roughly seven times in the same window (presumably by the maintainer), plus one `/report` read. So the output is glanced at occasionally by a human but never consumed programmatically, and at "occasional glance" volume rather than "drives decisions."
+
+This leaves one decision-hinging question that logs cannot answer and that only the maintainer can: in those dashboard glances, has a synthesis finding ever actually changed a call — prompted an ADR revision, a roadmap reprioritisation, or caught an upstream unblock that would otherwise have been missed? If yes even a few times, the synthesis sliver has earned its place and option 2 is real. If the glances were curiosity with no action following, then both halves are unused in practice — retrieval (untried, because the skill wiring was broken until 2026-05-29) and synthesis (tried for two months, never acted on) — and option 1 (dissolve) is essentially forced. Note the asymmetry: synthesis has had a fair two-month trial and its consumption failed; retrieval has not had a fair trial yet and is owed the 10–20 live-issue measurement from the decision gate before being judged.
 
 ## What we are not deciding yet
 
@@ -60,3 +68,4 @@ We are not committing to retire, rebuild, or migrate anything in this ADR. This 
 - Lean pivot: `docs/decisions/004-lean-bot-pivot.md`
 - Skill-driven triage design and pilot: `docs/plans/2026-05-15-skill-driven-triage-design.md`
 - simili-bot trial outcome (a prior "buy vs build" call): `docs/decisions/007-simili-bot-trial.md`
+- Sourcebot capability profile (2026-05-29 investigation): docs.sourcebot.dev/docs/overview, docs.sourcebot.dev/docs/features/mcp-server, sourcebot.dev/changelog, sourcebot.dev/blog/fair-source
