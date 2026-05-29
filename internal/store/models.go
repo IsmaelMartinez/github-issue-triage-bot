@@ -10,7 +10,7 @@ type Document struct {
 	Title     string
 	Content   string
 	Metadata  map[string]any
-	Embedding []float32
+	Embedding []float32 `json:"-"` // internal vector; never serialized over JSON APIs
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -25,7 +25,7 @@ type Issue struct {
 	State     string
 	Labels    []string
 	Milestone *string
-	Embedding []float32
+	Embedding []float32 `json:"-"` // internal vector; never serialized over JSON APIs
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	ClosedAt  *time.Time
