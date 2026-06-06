@@ -1,6 +1,6 @@
 # ADR-008: Bespoke service vs. a composition of tools and a skill
 
-Status: Proposed (under discussion — no decision made yet)
+Status: Resolved by ADR-009 (2026-06-05) — decision is to retire the service and re-home the useful slice
 Date: 2026-05-29
 
 ## Context
