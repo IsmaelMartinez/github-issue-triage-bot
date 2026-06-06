@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **This project is being retired.** It ran its course as a successful experiment and answered the question it set out to: where intelligence belongs in a maintainer's workflow. The one capability that proved useful in real use — semantic recall over the full issue history — is moving into [teams-for-linux](https://github.com/IsmaelMartinez/teams-for-linux) as a thin local index the issue-review skill calls directly, and GitHub's native [semantic issue search](https://github.blog/changelog/2026-05-20-semantic-issue-search-in-copilot-chat/) (shipped 2026-05-20) is the eventual replacement for even that. The reasoning is recorded in [ADR-009](docs/decisions/009-retire-the-service.md); the wind-down steps are in the [retirement plan](docs/plans/2026-06-05-retire-service-keep-capability.md). The service is still running for now; execution is not yet scheduled.
+
 # GitHub Issue Triage Bot
 
 Helps maintainers of [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux) triage GitHub issues faster by checking bug reports for completeness and surfacing relevant project documentation. When a new issue is opened, the bot analyzes its content and provides useful context drawn from troubleshooting guides, upstream Electron release notes, architecture decisions, and past issues.
