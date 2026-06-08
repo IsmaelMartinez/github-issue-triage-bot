@@ -6,7 +6,7 @@ toolchain go1.26.4
 
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.18.0
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pgvector/pgvector-go v0.4.0
 	github.com/pgvector/pgvector-go/pgx v0.4.0
 )
