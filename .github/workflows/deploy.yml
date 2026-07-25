@@ -29,10 +29,63 @@ jobs:
         run: |
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
           golangci-lint run ./...
+
+  # Advisory-driven, so deliberately NOT a required check: a newly published Go
+  # advisory must never silently block every open PR (see #169). The signal is
+  # still surfaced - this job goes red and, on main, opens/refreshes a tracking
+  # issue.
+  vulncheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+
       - name: Vulnerability check
+        id: scan
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          if govulncheck ./... > govulncheck.txt 2>&1; then
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat govulncheck.txt
+
+      - name: Open or refresh tracking issue
+        if: steps.scan.outputs.clean == 'false' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "govulncheck: vulnerabilities detected on main"
+        run: |
+          {
+            echo "\`govulncheck\` reported vulnerabilities on \`main\` (\`${GITHUB_SHA}\`)."
+            echo
+            echo '```'
+            cat govulncheck.txt
+            echo '```'
+            echo
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > body.md
+
+          existing=$(gh issue list --state open --limit 100 --json number,title \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file body.md
+          else
+            gh issue create --title "$TITLE" --body-file body.md
+          fi
+
+      - name: Report scan result
+        if: steps.scan.outputs.clean == 'false'
+        run: |
+          echo "::error::govulncheck reported vulnerabilities - see the job log and the tracking issue"
+          exit 1
 
   deploy:
     needs: test
